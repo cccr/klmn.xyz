@@ -71,6 +71,7 @@
                         <select id="operation" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white">
                             <option>Side Milling</option>
                             <option>Slotting</option>
+                            <option>Boring</option>
                         </select>
                     </div>
                     <div class="mb-4">
@@ -186,7 +187,18 @@
         "Acrylic":{chipload_mm_min:0.03,chipload_mm_max:0.07,sfm_min:150,sfm_max:800,note:"Prevent melting: keep chips thick, RPM moderate, feed steady."}
     };
     function diameterScaleFactor(d){ if(d<=3.5)return 1.0; if(d<=6.5)return 1.6; if(d<=8.5)return 1.9; return 2.4; }
-    function suggestionDocWoc(op,rig){ const isRigid=rig==="Rigid CNC"; const slot=op==="Slotting"; if(slot){return{doc:isRigid?0.5:0.2,woc:1.0};} return{doc:isRigid?1.0:0.5,woc:isRigid?0.4:0.2}; }
+    function suggestionDocWoc(op,rig){
+      const isRigid = rig === "Rigid CNC";
+      if (op === "Slotting") {
+        return { doc: isRigid ? 0.5 : 0.2, woc: 1.0 };
+      }
+      if (op === "Boring") {
+        // Circular interpolation / boring: light radial engagement, modest axial step
+        return { doc: isRigid ? 0.3 : 0.15, woc: isRigid ? 0.1 : 0.05 };
+      }
+      // Side Milling (default)
+      return { doc: isRigid ? 1.0 : 0.5, woc: isRigid ? 0.4 : 0.2 };
+    }
 
     let units="Metric";
     function q(id){return document.getElementById(id);}
@@ -272,7 +284,11 @@
 
         els.docOut.textContent=docDisplay;
         els.wocOut.textContent=wocDisplay;
-        els.wocSub.textContent=(operation==='Slotting')? 'Slotting uses full width' : 'Fraction of diameter for side milling';
+        els.wocSub.textContent = (operation === 'Slotting')
+          ? 'Slotting uses full width'
+          : (operation === 'Boring')
+            ? 'Radial stepover per circular pass'
+            : 'Fraction of diameter for side milling';
 
         els.ctxMaterial.textContent=material;
         els.ctxMatNote.textContent=mat.note;
@@ -283,15 +299,29 @@
         const notes=[];
         notes.push(mat.note);
         if(material.toLowerCase().includes('aluminum')) notes.push('Use strong air blast; light mist or WD-40 reduces built-up edge.');
-        if(operation==='Slotting') notes.push('Favor helical ramp entries; keep stepdowns smaller to maintain chip evacuation.');
-        else notes.push('Side milling: aim for steady chip thickness; adjust WOC to avoid chatter/rubbing.');
+        if (operation === 'Slotting') {
+          notes.push('Favor helical ramp entries; keep stepdowns smaller to maintain chip evacuation.');
+        } else if (operation === 'Boring') {
+          notes.push('Boring: use small radial stepover and light DOC; keep feed smooth during circular interpolation.');
+        } else {
+          notes.push('Side milling: aim for steady chip thickness; adjust WOC to avoid chatter/rubbing.');
+        }
         if(toolMaterial==='HSS') notes.push('HSS heats faster—keep SFM modest and ensure chips (not dust) are produced.');
         else notes.push('Carbide tolerates higher SFM but still needs proper chipload to avoid rubbing.');
         els.notesList.innerHTML='';
         notes.forEach(n=>{ const li=document.createElement('li'); li.textContent=n; els.notesList.appendChild(li); });
     }
 
-    function suggestionDocWoc(op,rig){ const isRigid=(rig==='Rigid CNC'); const slot=(op==='Slotting'); if(slot){return {doc:isRigid?0.5:0.2,woc:1.0};} return {doc:isRigid?1.0:0.5,woc:isRigid?0.4:0.2}; }
+    function suggestionDocWoc(op,rig){
+      const isRigid = (rig === 'Rigid CNC');
+      if (op === 'Slotting') {
+        return { doc: isRigid ? 0.5 : 0.2, woc: 1.0 };
+      }
+      if (op === 'Boring') {
+        return { doc: isRigid ? 0.3 : 0.15, woc: isRigid ? 0.1 : 0.05 };
+      }
+      return { doc: isRigid ? 1.0 : 0.5, woc: isRigid ? 0.4 : 0.2 };
+    }
 
     update();
 </script>
