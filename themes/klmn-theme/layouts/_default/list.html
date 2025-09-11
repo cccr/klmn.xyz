@@ -1,0 +1,13 @@
+{{ define "main" }}
+<h1 class="text-3xl font-bold tracking-tight mb-6">{{ .Title }}</h1>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    {{ range .Pages.ByTitle }}
+    <article class="bg-white/70 border border-slate-200 rounded-2xl p-5">
+        <h2 class="text-xl font-semibold mb-2">
+            <a class="hover:underline" href="{{ .RelPermalink }}">{{ .LinkTitle }}</a>
+        </h2>
+        <p class="text-slate-600 text-sm">{{ .Summary }}</p>
+    </article>
+    {{ end }}
+</div>
+{{ end }}

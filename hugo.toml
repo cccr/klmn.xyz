@@ -1,0 +1,15 @@
+baseURL = 'https://klmn.xyz/'
+languageCode = 'en-us'
+title = 'KLMN'
+theme = "klmn-theme"
+
+[menu]
+[[menu.main]]
+name = "Home"
+url  = "/"
+weight = 1
+
+[[menu.main]]
+name = "Tools"
+url  = "/tools/"
+weight = 10

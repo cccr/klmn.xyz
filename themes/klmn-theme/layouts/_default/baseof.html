@@ -1,0 +1,33 @@
+{{- /* Base layout */ -}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>{{ if .Title }}{{ .Title }} — {{ end }}{{ site.Title }}</title>
+    <meta name="description" content="{{ with .Params.description }}{{ . }}{{ else }}{{ site.Params.description }}{{ end }}"/>
+    {{ partial "head.html" . }}
+</head>
+<body class="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100 text-slate-800">
+<header class="w-full border-b border-slate-200 bg-white/70 backdrop-blur">
+    <div class="max-w-6xl mx-auto px-5 py-4 flex items-center justify-between gap-4">
+        <a href="{{ site.BaseURL }}" class="text-xl font-semibold tracking-tight text-slate-900">{{ site.Title }}</a>
+        <nav class="flex items-center gap-4 text-sm">
+            {{ range site.Menus.main }}
+            <a class="text-slate-700 hover:text-slate-900" href="{{ .URL }}">{{ .Name }}</a>
+            {{ end }}
+        </nav>
+    </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-5 py-8">
+    {{ block "main" . }}{{ end }}
+</main>
+
+<footer class="mt-12 border-t border-slate-200 bg-white/60">
+    <div class="max-w-6xl mx-auto px-5 py-6 text-xs text-slate-500">
+        Built with ❤️ using Hugo &amp; klmn-theme.
+    </div>
+</footer>
+</body>
+</html>
