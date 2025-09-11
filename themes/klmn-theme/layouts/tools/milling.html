@@ -24,18 +24,18 @@
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="text-sm font-medium text-slate-700">Material</label><span class="text-[11px] text-slate-500">Sets chipload &amp; SFM bands</span></div>
+                        <div class="flex items-center justify-between"><label class="form-label">Material</label><span class="form-tooltip">Sets chipload &amp; SFM bands</span></div>
                         <select id="material" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white"></select>
                     </div>
                     <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="text-sm font-medium text-slate-700">Tool Material</label><span class="text-[11px] text-slate-500">Carbide tolerates higher SFM</span></div>
+                        <div class="flex items-center justify-between"><label class="form-label">Tool Material</label><span class="form-tooltip">Carbide tolerates higher SFM</span></div>
                         <select id="toolMaterial" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white">
                             <option>HSS</option>
                             <option>Carbide</option>
                         </select>
                     </div>
                     <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="text-sm font-medium text-slate-700">Diameter</label><span class="text-[11px] text-slate-500">Click a quick size or set precisely</span></div>
+                        <div class="flex items-center justify-between"><label class="form-label">Diameter</label><span class="form-tooltip">Click a quick size or set precisely</span></div>
                         <div class="flex items-center gap-2">
                             <input id="diamMm" type="number" step="0.001" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white" />
                             <span class="text-xs text-slate-500 whitespace-nowrap">mm</span>
@@ -43,7 +43,7 @@
                         <div class="flex flex-wrap gap-2 mt-2" id="quickDia"></div>
                     </div>
                     <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="text-sm font-medium text-slate-700">Flutes</label><span class="text-[11px] text-slate-500">More flutes → lower chipload/tooth on light machines</span></div>
+                        <div class="flex items-center justify-between"><label class="form-label">Flutes</label><span class="form-tooltip">More flutes → lower chipload/tooth on light machines</span></div>
                         <select id="flutes" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white">
                             <option value="1">1</option>
                             <option value="2">2</option>
@@ -60,28 +60,28 @@
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="text-sm font-medium text-slate-700">Machine Rigidity</label><span class="text-[11px] text-slate-500">DIY routers need gentler settings</span></div>
+                        <div class="flex items-center justify-between"><label class="form-label">Machine Rigidity</label><span class="form-tooltip">DIY routers need gentler settings</span></div>
                         <select id="rigidity" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white">
                             <option>DIY Router</option>
                             <option>Rigid CNC</option>
                         </select>
                     </div>
                     <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="text-sm font-medium text-slate-700">Operation</label><span class="text-[11px] text-slate-500">Side milling is easier than slotting</span></div>
+                        <div class="flex items-center justify-between"><label class="form-label">Operation</label><span class="form-tooltip">Side milling is easier than slotting</span></div>
                         <select id="operation" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white">
                             <option>Side Milling</option>
                             <option>Slotting</option>
                         </select>
                     </div>
                     <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="text-sm font-medium text-slate-700">Spindle RPM</label><span class="text-[11px] text-slate-500">We’ll nudge into target SFM if needed</span></div>
+                        <div class="flex items-center justify-between"><label class="form-label">Spindle RPM</label><span class="form-tooltip">We’ll nudge into target SFM if needed</span></div>
                         <div class="flex items-center gap-3">
                             <input id="rpm" type="range" min="3000" max="24000" step="100" class="w-full accent-slate-800" />
                             <span id="rpmPill" class="px-2.5 py-1 rounded-full bg-slate-900 text-white text-[11px] tracking-wide">12000 RPM</span>
                         </div>
                     </div>
                     <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="text-sm font-medium text-slate-700">Conservative ↔ Aggressive</label><span class="text-[11px] text-slate-500">Controls chipload and DOC/WOC within safe bands</span></div>
+                        <div class="flex items-center justify-between"><label class="form-label">Conservative ↔ Aggressive</label><span class="form-tooltip">Controls chipload and DOC/WOC within safe bands</span></div>
                         <div class="flex items-center gap-3">
                             <input id="aggr" type="range" min="0" max="100" step="1" class="w-full accent-slate-800" />
                             <span id="aggrPill" class="px-2.5 py-1 rounded-full bg-slate-900 text-white text-[11px] tracking-wide">30%</span>

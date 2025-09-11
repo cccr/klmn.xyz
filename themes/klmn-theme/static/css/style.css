@@ -1,3 +1,15 @@
 /* Minimal refinements */
 html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; color: #0f172a; }
 .prose h1, .prose h2 { color: #0f172a; }
+
+.form-label {
+  font-size: 0.875rem; /* 14px */
+  font-weight: 500;
+  color: #334155; /* slate-700 */
+}
+
+.form-tooltip {
+  font-size: 11px;
+  color: #64748b; /* slate-500 */
+  text-align: right;
+}
