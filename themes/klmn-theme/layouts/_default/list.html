@@ -6,7 +6,7 @@
         <h2 class="text-xl font-semibold mb-2">
             <a class="hover:underline" href="{{ .RelPermalink }}">{{ .LinkTitle }}</a>
         </h2>
-        <p class="text-slate-600 text-sm">{{ .Summary }}</p>
+        <p class="text-slate-600 text-sm">{{ .Params.description }}</p>
     </article>
     {{ end }}
 </div>
