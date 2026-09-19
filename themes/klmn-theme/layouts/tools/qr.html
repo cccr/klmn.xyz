@@ -1,0 +1,390 @@
+{{ define "main" }}
+<style>
+    .qr-seg button { transition: background-color .15s, color .15s, border-color .15s; }
+    .qr-canvas-wrap { background: #f8fafc; }
+    #qrCanvas {
+        max-width: 100%;
+        height: auto;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        display: block;
+    }
+    input[type="color"] {
+        -webkit-appearance: none;
+        appearance: none;
+        padding: 0;
+        border: 1px solid #cbd5e1;
+        border-radius: 0.5rem;
+        width: 2.75rem;
+        height: 2.25rem;
+        background: none;
+        cursor: pointer;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 3px; }
+    input[type="color"]::-webkit-color-swatch { border: none; border-radius: 0.3rem; }
+    input[type="color"]::-moz-color-swatch { border: none; border-radius: 0.3rem; }
+</style>
+
+<div class="max-w-6xl mx-auto px-0 py-0">
+    <header class="mb-8 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+            <h1 class="text-3xl md:text-4xl font-bold tracking-tight">QR Code Generator</h1>
+            <p class="text-slate-600 mt-2 max-w-2xl">
+                Paste a link or any text and get a scannable QR code instantly. Tune error correction,
+                module size, quiet zone, and colors, then download a crisp PNG or a lossless SVG.
+                Everything runs in your browser &mdash; nothing is uploaded.
+            </p>
+        </div>
+        <button id="btnReset" class="px-3 py-1.5 rounded-full border text-sm bg-white text-slate-700 border-slate-300 hover:bg-slate-50" title="Restore all controls to their defaults">Reset</button>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Left: Controls -->
+        <div class="lg:col-span-6 space-y-6">
+            <section class="bg-white/70 backdrop-blur border border-slate-200 rounded-2xl p-5 shadow-sm">
+                <div class="mb-3">
+                    <h2 class="text-xl font-semibold text-slate-800">Content</h2>
+                    <p class="text-slate-500 text-sm leading-relaxed">A URL, a wifi password, a note &mdash; anything that fits. The code updates as you type.</p>
+                </div>
+                <div class="flex items-center justify-between">
+                    <label class="form-label" for="payload">Text or URL</label>
+                    <span class="form-tooltip" id="charCount">0 characters</span>
+                </div>
+                <textarea id="payload" rows="4" spellcheck="false"
+                          class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-sm resize-y"
+                          placeholder="https://klmn.xyz"></textarea>
+            </section>
+
+            <section class="bg-white/70 backdrop-blur border border-slate-200 rounded-2xl p-5 shadow-sm">
+                <div class="mb-3">
+                    <h2 class="text-xl font-semibold text-slate-800">Encoding</h2>
+                    <p class="text-slate-500 text-sm leading-relaxed">Higher error correction survives scuffs, print bleed, and logos &mdash; at the cost of a denser code.</p>
+                </div>
+                <div class="flex items-center justify-between">
+                    <label class="form-label">Error correction</label>
+                    <span class="form-tooltip">Recoverable damage</span>
+                </div>
+                <div class="qr-seg inline-flex rounded-xl border border-slate-300 overflow-hidden mt-1" role="group" id="eccGroup">
+                    <button type="button" data-ecc="LOW"      class="px-3 py-1.5 text-sm bg-white text-slate-700 border-r border-slate-300"  title="~7% recoverable &mdash; smallest code">L <span class="text-xs opacity-60">7%</span></button>
+                    <button type="button" data-ecc="MEDIUM"   class="px-3 py-1.5 text-sm bg-white text-slate-700 border-r border-slate-300"  title="~15% recoverable &mdash; a good default">M <span class="text-xs opacity-60">15%</span></button>
+                    <button type="button" data-ecc="QUARTILE" class="px-3 py-1.5 text-sm bg-white text-slate-700 border-r border-slate-300"  title="~25% recoverable &mdash; for print and stickers">Q <span class="text-xs opacity-60">25%</span></button>
+                    <button type="button" data-ecc="HIGH"     class="px-3 py-1.5 text-sm bg-white text-slate-700"                            title="~30% recoverable &mdash; rough conditions or a center logo">H <span class="text-xs opacity-60">30%</span></button>
+                </div>
+            </section>
+
+            <section class="bg-white/70 backdrop-blur border border-slate-200 rounded-2xl p-5 shadow-sm">
+                <div class="mb-3">
+                    <h2 class="text-xl font-semibold text-slate-800">Appearance</h2>
+                    <p class="text-slate-500 text-sm leading-relaxed">Module size sets the exported PNG resolution. The SVG is resolution-independent either way.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="mb-1">
+                        <div class="flex items-center justify-between">
+                            <label class="form-label" for="modulePx">Module size</label>
+                            <span class="form-tooltip" id="moduleOut">8 px</span>
+                        </div>
+                        <input id="modulePx" type="range" min="2" max="20" step="1" value="8" class="w-full accent-slate-800" />
+                    </div>
+                    <div class="mb-1">
+                        <div class="flex items-center justify-between">
+                            <label class="form-label" for="quietZone">Quiet zone</label>
+                            <span class="form-tooltip" id="quietOut">4 modules</span>
+                        </div>
+                        <input id="quietZone" type="range" min="0" max="8" step="1" value="4" class="w-full accent-slate-800" />
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between">
+                            <label class="form-label" for="fgColor">Foreground</label>
+                            <span class="form-tooltip">Dark modules</span>
+                        </div>
+                        <div class="flex items-center gap-2 mt-1">
+                            <input id="fgColor" type="color" value="#0f172a" />
+                            <code id="fgHex" class="text-xs text-slate-500">#0f172a</code>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between">
+                            <label class="form-label" for="bgColor">Background</label>
+                            <span class="form-tooltip">Light modules &amp; quiet zone</span>
+                        </div>
+                        <div class="flex items-center gap-2 mt-1">
+                            <input id="bgColor" type="color" value="#ffffff" />
+                            <code id="bgHex" class="text-xs text-slate-500">#ffffff</code>
+                        </div>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-500 mt-4">
+                    The spec calls for a quiet zone of at least 4 modules. Below that, many scanners
+                    will refuse to lock on.
+                </p>
+            </section>
+        </div>
+
+        <!-- Right: Preview -->
+        <div class="lg:col-span-6">
+            <section class="bg-white/70 backdrop-blur border border-slate-200 rounded-2xl p-5 shadow-sm lg:sticky lg:top-6">
+                <div class="mb-3">
+                    <h2 class="text-xl font-semibold text-slate-800">Preview</h2>
+                    <p class="text-slate-500 text-sm leading-relaxed">Scan it with your phone before you print a thousand of them.</p>
+                </div>
+
+                <div class="qr-canvas-wrap rounded-xl border border-slate-200 p-4 flex items-center justify-center min-h-[280px]">
+                    <canvas id="qrCanvas" width="0" height="0"></canvas>
+                    <p id="emptyHint" class="text-slate-400 text-sm text-center px-6">Type something on the left and your QR code appears here.</p>
+                </div>
+
+                <p id="qrStatus" class="text-sm text-slate-600 mt-3 text-center"></p>
+                <p id="qrWarning" class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-3 hidden"></p>
+                <p id="qrError" class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mt-3 hidden"></p>
+
+                <div class="flex flex-wrap gap-2 mt-4">
+                    <button id="btnPng" disabled
+                            class="px-4 py-2 rounded-xl text-sm bg-slate-900 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800"
+                            title="Download the bitmap at the current module size">Download PNG</button>
+                    <button id="btnSvg" disabled
+                            class="px-4 py-2 rounded-xl text-sm bg-white text-slate-700 border border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
+                            title="Download a vector copy that scales to any size">Download SVG</button>
+                </div>
+
+                <p class="text-xs text-slate-500 mt-5 pt-4 border-t border-slate-200">
+                    QR encoding by Project Nayuki&rsquo;s
+                    <a class="underline hover:text-slate-700" href="https://www.nayuki.io/page/qr-code-generator-library" rel="noopener">qrcodegen</a>
+                    (MIT). QR Code is a registered trademark of Denso Wave.
+                </p>
+            </section>
+        </div>
+    </div>
+</div>
+
+<script src="/tools/qr/qrcodegen.js"></script>
+<script>
+(function () {
+    'use strict';
+
+    var DEFAULTS = { ecc: 'MEDIUM', modulePx: 8, quietZone: 4, fg: '#0f172a', bg: '#ffffff' };
+    var ECC_LABEL = { LOW: 'L', MEDIUM: 'M', QUARTILE: 'Q', HIGH: 'H' };
+    var ECC_BY_ORDINAL = ['L', 'M', 'Q', 'H'];
+
+    var els = {
+        payload:    document.getElementById('payload'),
+        charCount:  document.getElementById('charCount'),
+        eccGroup:   document.getElementById('eccGroup'),
+        modulePx:   document.getElementById('modulePx'),
+        moduleOut:  document.getElementById('moduleOut'),
+        quietZone:  document.getElementById('quietZone'),
+        quietOut:   document.getElementById('quietOut'),
+        fgColor:    document.getElementById('fgColor'),
+        bgColor:    document.getElementById('bgColor'),
+        fgHex:      document.getElementById('fgHex'),
+        bgHex:      document.getElementById('bgHex'),
+        canvas:     document.getElementById('qrCanvas'),
+        emptyHint:  document.getElementById('emptyHint'),
+        status:     document.getElementById('qrStatus'),
+        warning:    document.getElementById('qrWarning'),
+        error:      document.getElementById('qrError'),
+        btnPng:     document.getElementById('btnPng'),
+        btnSvg:     document.getElementById('btnSvg'),
+        btnReset:   document.getElementById('btnReset')
+    };
+
+    var ecc = DEFAULTS.ecc;
+    var current = null; // last successfully encoded QrCode
+
+    /* ── Rendering ─────────────────────────────────────────────── */
+
+    function drawCanvas(qr, quiet, px, fg, bg) {
+        var n = qr.size + quiet * 2;
+        var dim = n * px;
+        els.canvas.width = dim;
+        els.canvas.height = dim;
+        var ctx = els.canvas.getContext('2d');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, dim, dim);
+        ctx.fillStyle = fg;
+        for (var y = 0; y < qr.size; y++) {
+            for (var x = 0; x < qr.size; x++) {
+                if (qr.getModule(x, y)) {
+                    ctx.fillRect((x + quiet) * px, (y + quiet) * px, px, px);
+                }
+            }
+        }
+        return dim;
+    }
+
+    function toSvgString(qr, quiet, fg, bg) {
+        var n = qr.size + quiet * 2;
+        var parts = [];
+        for (var y = 0; y < qr.size; y++) {
+            for (var x = 0; x < qr.size; x++) {
+                if (qr.getModule(x, y)) {
+                    parts.push('M' + (x + quiet) + ',' + (y + quiet) + 'h1v1h-1z');
+                }
+            }
+        }
+        return [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 ' + n + ' ' + n + '" ' +
+                'width="' + n + '" height="' + n + '" shape-rendering="crispEdges">',
+            '\t<rect width="100%" height="100%" fill="' + bg + '"/>',
+            '\t<path d="' + parts.join('') + '" fill="' + fg + '"/>',
+            '</svg>',
+            ''
+        ].join('\n');
+    }
+
+    /* ── Contrast guard ────────────────────────────────────────── */
+
+    function luminance(hex) {
+        var c = [1, 3, 5].map(function (i) {
+            var v = parseInt(hex.substr(i, 2), 16) / 255;
+            return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+        });
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    }
+
+    function contrastNote(fg, bg) {
+        var lf = luminance(fg), lb = luminance(bg);
+        var ratio = (Math.max(lf, lb) + 0.05) / (Math.min(lf, lb) + 0.05);
+        if (lf > lb) {
+            return 'Your foreground is lighter than your background. Most scanners expect a dark code ' +
+                   'on a light field and will not read an inverted one.';
+        }
+        if (ratio < 3) {
+            return 'Only ' + ratio.toFixed(1) + ':1 contrast between the two colors. Aim for 3:1 or ' +
+                   'more, or scanners will struggle.';
+        }
+        return null;
+    }
+
+    /* ── Main ──────────────────────────────────────────────────── */
+
+    function render() {
+        var text = els.payload.value;
+        var px = parseInt(els.modulePx.value, 10);
+        var quiet = parseInt(els.quietZone.value, 10);
+        var fg = els.fgColor.value;
+        var bg = els.bgColor.value;
+
+        els.charCount.textContent = text.length + (text.length === 1 ? ' character' : ' characters');
+        els.moduleOut.textContent = px + ' px';
+        els.quietOut.textContent = quiet + (quiet === 1 ? ' module' : ' modules');
+        els.fgHex.textContent = fg;
+        els.bgHex.textContent = bg;
+        els.error.classList.add('hidden');
+        els.warning.classList.add('hidden');
+
+        if (text.length === 0) {
+            current = null;
+            els.canvas.width = els.canvas.height = 0;
+            els.canvas.style.display = 'none';
+            els.emptyHint.style.display = '';
+            els.status.textContent = '';
+            els.btnPng.disabled = els.btnSvg.disabled = true;
+            return;
+        }
+
+        var qr;
+        try {
+            qr = qrcodegen.QrCode.encodeText(text, qrcodegen.QrCode.Ecc[ecc]);
+        } catch (e) {
+            current = null;
+            els.btnPng.disabled = els.btnSvg.disabled = true;
+            els.error.textContent = (e instanceof RangeError)
+                ? 'That is too much data for a single QR code at error correction ' + ECC_LABEL[ecc] +
+                  '. Shorten the text' + (ecc === 'LOW' ? '' : ', or drop to a lower level') + '.'
+                : 'Could not generate a QR code: ' + e.message;
+            els.error.classList.remove('hidden');
+            if (!(e instanceof RangeError)) { console.error(e); }
+            return;
+        }
+
+        current = qr;
+        els.emptyHint.style.display = 'none';
+        els.canvas.style.display = '';
+        var dim = drawCanvas(qr, quiet, px, fg, bg);
+
+        var effective = ECC_BY_ORDINAL[qr.errorCorrectionLevel.ordinal];
+        var eccText = 'ECC ' + effective;
+        if (effective !== ECC_LABEL[ecc]) {
+            eccText += ' (' + ECC_LABEL[ecc] + ' requested, upgraded for free)';
+        }
+        els.status.textContent = 'Version ' + qr.version + ' · ' + qr.size + '×' + qr.size +
+            ' modules · ' + eccText + ' · ' + dim + '×' + dim + ' px';
+
+        if (quiet < 4) {
+            els.warning.textContent = 'A quiet zone under 4 modules is below spec — test carefully before printing.';
+            els.warning.classList.remove('hidden');
+        } else {
+            var note = contrastNote(fg, bg);
+            if (note) {
+                els.warning.textContent = note;
+                els.warning.classList.remove('hidden');
+            }
+        }
+
+        els.btnPng.disabled = els.btnSvg.disabled = false;
+    }
+
+    /* ── Downloads ─────────────────────────────────────────────── */
+
+    function saveBlob(blob, filename) {
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }
+
+    /* ── Wiring ────────────────────────────────────────────────── */
+
+    var ECC_BTN_BASE = 'px-3 py-1.5 text-sm border-slate-300';
+
+    function paintEccButtons() {
+        Array.prototype.forEach.call(els.eccGroup.children, function (b, i, all) {
+            var on = b.dataset.ecc === ecc;
+            b.className = ECC_BTN_BASE +
+                (i < all.length - 1 ? ' border-r' : '') +
+                (on ? ' bg-slate-900 text-white' : ' bg-white text-slate-700 hover:bg-slate-50');
+        });
+    }
+
+    els.eccGroup.addEventListener('click', function (e) {
+        var btn = e.target.closest('button[data-ecc]');
+        if (!btn) return;
+        ecc = btn.dataset.ecc;
+        paintEccButtons();
+        render();
+    });
+
+    ['payload', 'modulePx', 'quietZone', 'fgColor', 'bgColor'].forEach(function (k) {
+        els[k].addEventListener('input', render);
+    });
+
+    els.btnPng.addEventListener('click', function () {
+        els.canvas.toBlob(function (blob) { saveBlob(blob, 'qr-code.png'); }, 'image/png');
+    });
+
+    els.btnSvg.addEventListener('click', function () {
+        if (!current) return;
+        var svg = toSvgString(current, parseInt(els.quietZone.value, 10), els.fgColor.value, els.bgColor.value);
+        saveBlob(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }), 'qr-code.svg');
+    });
+
+    els.btnReset.addEventListener('click', function () {
+        ecc = DEFAULTS.ecc;
+        els.modulePx.value = DEFAULTS.modulePx;
+        els.quietZone.value = DEFAULTS.quietZone;
+        els.fgColor.value = DEFAULTS.fg;
+        els.bgColor.value = DEFAULTS.bg;
+        paintEccButtons();
+        render();
+    });
+
+    paintEccButtons();
+    render();
+})();
+</script>
+{{ end }}

@@ -4,3 +4,9 @@ command = "hugo"
 
 [context.production.environment]
 HUGO_VERSION = "0.147.8"
+
+[[redirects]]
+  from = "/qr"
+  to = "/tools/qr/"
+  status = 301
+  force = true
