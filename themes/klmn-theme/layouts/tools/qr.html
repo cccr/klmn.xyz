@@ -270,12 +270,6 @@
         if (quiet < 4) {
             els.warning.textContent = 'A quiet zone under 4 modules is below spec — test carefully before printing.';
             els.warning.classList.remove('hidden');
-        } else {
-            var note = qrRender.contrastNote(fg, bg);
-            if (note) {
-                els.warning.textContent = note;
-                els.warning.classList.remove('hidden');
-            }
         }
 
         els.btnPng.disabled = els.btnSvg.disabled = false;

@@ -710,34 +710,8 @@ test('margin and gutter reach the sheet and the grid', () => {
   assert.equal(p.window.massQr.getState().mg, 5);
 });
 
-test('a grid too dense for its paper warns instead of rendering a mess', () => {
-  const p = page();
-  assert.ok(p.$('warn').hidden, 'quiet at the defaults');
-  // 6 columns on 50mm paper: 10mm margin a side leaves 30mm, five 4mm
-  // gutters eat 20mm, so six columns share 10mm — 1.7mm each.
-  p.window.massQr.setState({ paper: 'custom', cw: 50, ch: 50, rows: 6, cols: 6 });
-  assert.ok(!p.$('warn').hidden, 'warns');
-  assert.match(p.$('warn').textContent, /about 2mm here/);
 
-  // Recoverable now that margin and gutter are controls:
-  // (150 - 8 - 10) / 6 = 22mm a cell.
-  p.window.massQr.setState({ cw: 150, ch: 150, mg: 4, gp: 2 });
-  assert.ok(p.$('warn').hidden, 'a bigger sheet with a tighter margin clears it');
-});
 
-test('a sheet with no room left at all says so rather than quoting 0mm', () => {
-  const p = page();
-  // 25mm of margin a side on 50mm paper leaves nothing before the gutters.
-  p.window.massQr.setState({ paper: 'custom', cw: 50, ch: 50, rows: 6, cols: 6, mg: 25 });
-  assert.match(p.$('warn').textContent, /margin and gutter use up the whole sheet at 6×6/i);
-});
-
-test('a sheet just under the scannable floor warns with the measurement', () => {
-  const p = page();
-  // (83 - 10 - 10) / 6 = 10.5mm a cell, just under the 12mm floor.
-  p.window.massQr.setState({ paper: 'custom', cw: 83, ch: 83, rows: 6, cols: 6, mg: 5, gp: 2 });
-  assert.match(p.$('warn').textContent, /about 1[01]mm/);
-});
 
 // ── Zoom ───────────────────────────────────────────────────────────
 
@@ -824,7 +798,7 @@ test('controls are grouped, and every one still resolves by id', () => {
   assert.deepEqual(groups, ['Sheet', 'Codes', 'Preview']);
 
   for (const id of ['cols', 'rows', 'mg', 'gp', 'paper', 'cw', 'ch', 'cu', 'orient',
-                    'ecc', 'qz', 'capPos', 'capSize', 'fg', 'bg', 'zoom', 'btnPrint', 'warn']) {
+                    'ecc', 'qz', 'capPos', 'capSize', 'fg', 'bg', 'zoom', 'btnPrint']) {
     assert.ok($(id), `#${id} still exists`);
   }
 });
@@ -850,37 +824,7 @@ test('a landscape custom sheet says what it will actually print', () => {
   assert.ok(p.$('customNote').hidden, 'portrait needs no note');
 });
 
-// ── Scanning warnings ──────────────────────────────────────────────
 
-test('an inverted sheet warns that scanners will not read it', () => {
-  const p = page();
-  p.setInput(p.$('fg'), '#ffffff');
-  p.setInput(p.$('bg'), '#000000');
-  assert.ok(!p.$('warn').hidden);
-  assert.match(p.$('warn').textContent, /lighter than your background/);
-});
 
-test('a low-contrast sheet warns with the ratio', () => {
-  const p = page();
-  p.setInput(p.$('fg'), '#777777');
-  p.setInput(p.$('bg'), '#999999');
-  assert.match(p.$('warn').textContent, /contrast between the two colors/);
-});
 
-test('a quiet zone below spec warns', () => {
-  const p = page();
-  fireChange(p, p.$('qz'), '1');
-  assert.match(p.$('warn').textContent, /quiet zone under 4 modules/);
-});
 
-test('a grid that does not fit outranks the colour advice', () => {
-  const p = page();
-  p.window.massQr.setState({ paper: 'custom', cw: 50, ch: 50, rows: 6, cols: 6, mg: 25,
-                             fg: '#ffffff', bg: '#000000' });
-  assert.match(p.$('warn').textContent, /use up the whole sheet/,
-    'the sheet being unbuildable matters more than its colours');
-});
-
-test('the default sheet is quiet', () => {
-  assert.ok(page().$('warn').hidden);
-});

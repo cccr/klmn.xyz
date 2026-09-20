@@ -287,7 +287,6 @@
                 <button id="btnPrint" class="px-4 py-2 rounded-xl text-sm bg-slate-900 text-white hover:bg-slate-800">Print</button>
             </fieldset>
         </div>
-        <p id="warn" class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-3 no-print" hidden></p>
         <p class="text-xs text-slate-500 mt-3 no-print">
             In the print dialog pick the same paper size as above, set Margins to
             <strong>None</strong> and Scale to <strong>100%</strong>. Anything else and the
@@ -545,8 +544,8 @@
             var qr = qrcodegen.QrCode.encodeText(tile.u, qrcodegen.QrCode.Ecc[ECC_MAP[state.ecc]]);
             // The quiet zone is the user's call (0-8 modules) and the grid gap
             // cannot substitute for it — the gap is millimetres, the zone is
-            // modules. Anything under 4 is below spec; applyWarning() says so
-            // rather than this code silently overriding the choice.
+            // modules. Anything under 4 is below spec; the preview shows what
+            // that looks like, which is the user's call to make.
             code.innerHTML = qrRender.toSvgString(qr, state.qz, state.fg, state.bg)
                 .replace(/^<\?xml[^>]*\?>\s*/, '');
             var svgEl = code.querySelector('svg');
@@ -818,48 +817,6 @@
         return s.orient === 'l' ? [dims[1], dims[0]] : dims;
     }
 
-    // Margin and gutter are absolute millimetres, so a small sheet and a
-    // dense grid can between them leave nothing for the codes: six columns
-    // on 50mm paper at the defaults leaves 10mm for all six. Nothing caught
-    // that before — the sheet simply rendered unreadable.
-    var MIN_CELL_MM = 12;
-    function cellMm(s) {
-        var dims = paperDims(s);
-        return [
-            (dims[0] - 2 * s.mg - (s.cols - 1) * s.gp) / s.cols,
-            (dims[1] - 2 * s.mg - (s.rows - 1) * s.gp) / s.rows
-        ];
-    }
-
-    function densityNote(s) {
-        var cell = cellMm(s);
-        var side = Math.min(cell[0], cell[1]);
-        if (side <= 0) {
-            return 'The margin and gutter use up the whole sheet at ' + s.cols + '\u00d7' + s.rows +
-                   '. Reduce them, or use fewer rows and columns.';
-        }
-        if (side < MIN_CELL_MM) {
-            return 'Each code gets about ' + Math.round(side) + 'mm here \u2014 under ' +
-                   MIN_CELL_MM + 'mm most phones cannot scan. Use a bigger sheet, fewer cells, ' +
-                   'or a smaller margin.';
-        }
-        return null;
-    }
-
-    var elWarn = document.getElementById('warn');
-    // Precedence: a sheet that cannot be built at all, then a quiet zone
-    // below spec, then colours. Only one line of advice at a time — the first
-    // problem is the one worth fixing.
-    function applyWarning() {
-        var note = densityNote(state);
-        if (!note && state.qz < 4) {
-            note = 'A quiet zone under 4 modules is below spec \u2014 test carefully before printing.';
-        }
-        if (!note) note = qrRender.contrastNote(state.fg, state.bg);
-        elWarn.hidden = !note;
-        if (note) elWarn.textContent = note;
-    }
-
     function applySheetChrome() {
         var sheet = document.getElementById('sheet');
         var dims = paperDims(state);
@@ -870,8 +827,6 @@
         document.getElementById('pageRule').textContent =
             '@page { size: ' + dims[0] + 'mm ' + dims[1] + 'mm; margin: 0; }';
         syncCustomInputs();
-
-        applyWarning();
 
         // Paper/orientation just changed the sheet's real (unscaled) size,
         // which "fit" zoom is computed from — recompute it here rather than

@@ -59,10 +59,3 @@ test('overflow shows an error and disables downloads, then recovers', () => {
   assert.equal(decodeCanvas(canvas), 'https://klmn.xyz');
 });
 
-test('contrast guard warns on inverted colors', () => {
-  const { $, setInput } = page();
-  setInput($('payload'), 'https://klmn.xyz');
-  setInput($('fgColor'), '#ffffff');
-  setInput($('bgColor'), '#000000');
-  assert.match($('qrWarning').textContent, /lighter than your background/);
-});
