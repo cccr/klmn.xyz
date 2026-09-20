@@ -1,15 +1,147 @@
-/* Minimal refinements */
-html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; color: #0f172a; }
-.prose h1, .prose h2 { color: #0f172a; }
+/* ══ Site stylesheet ═══════════════════════════════════════════════════════
+   Chrome (header, nav, main, footer) and the handful of primitives shared
+   across pages. A tool's own styling lives in its own file under
+   /tools/<name>/ — not here.
+
+   This file has to produce the same result with and without Tailwind, because
+   the migration off the CDN is happening a page at a time. Two rules keep it
+   order-insensitive:
+
+     - the reset below mirrors Tailwind's preflight instead of contradicting
+       it, so whichever lands last the outcome is identical;
+     - chrome selectors are two-deep (`body > header`), which outranks
+       preflight's single-element rules regardless of order.
+
+   See docs/superpowers/plans/2026-09-20-tailwind-migration.md.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Reset ─────────────────────────────────────────────────────────────
+   A trimmed preflight. Pages that dropped Tailwind would otherwise fall
+   back to UA defaults — 8px on body, margins on every heading — and would
+   need their own copy of this. */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+}
+
+body { margin: 0; }
+
+h1, h2, h3, h4, h5, h6 { font-size: inherit; font-weight: inherit; margin: 0; }
+p, figure, blockquote, dl, dd, pre { margin: 0; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+fieldset { margin: 0; padding: 0; border: 0; }
+legend { padding: 0; }
+
+a { color: inherit; text-decoration: inherit; }
+
+button, input, optgroup, select, textarea {
+    font-family: inherit;
+    font-size: 100%;
+    font-weight: inherit;
+    line-height: inherit;
+    color: inherit;
+    margin: 0;
+    padding: 0;
+}
+button, select { text-transform: none; }
+button, [type="button"], [type="submit"] { -webkit-appearance: button; background-color: transparent; background-image: none; }
+:-moz-focusring { outline: auto; }
+
+img, svg, video, canvas, iframe, embed, object { display: block; vertical-align: middle; }
+img, video { max-width: 100%; height: auto; }
+
+/* ── Type ──────────────────────────────────────────────────────────────── */
+html, body {
+    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+                 "Apple Color Emoji", "Segoe UI Emoji";
+    color: #0f172a;
+}
+
+/* ── Chrome ────────────────────────────────────────────────────────────
+   Two-deep selectors, so these win over preflight whichever order the
+   stylesheets land in. baseof.html carries no classes at all. */
+body {
+    min-height: 100vh;
+    width: 100%;
+    background: linear-gradient(to bottom, #f8fafc, #f1f5f9);
+    color: #1e293b;
+}
+
+body > header {
+    width: 100%;
+    border-bottom: 1px solid #e2e8f0;
+    background: rgba(255, 255, 255, .7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+body > header > div,
+body > footer > div,
+body > main {
+    max-width: 72rem;
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+}
+
+body > header > div {
+    padding-block: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+/* The site name. `> a` distinguishes it from the nav links beside it. */
+body > header > div > a {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    color: #0f172a;
+}
+
+body > header nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-size: .875rem;
+    line-height: 1.25rem;
+}
+body > header nav a { color: #334155; }
+body > header nav a:hover { color: #0f172a; }
+
+body > main { padding-block: 2rem; }
+
+body > footer {
+    margin-top: 3rem;
+    border-top: 1px solid #e2e8f0;
+    background: rgba(255, 255, 255, .6);
+}
+body > footer > div {
+    padding-block: 1.5rem;
+    font-size: .75rem;
+    line-height: 1rem;
+    color: #64748b;
+}
+
+/* ── Shared primitives ─────────────────────────────────────────────────
+   Used by more than one tool page. Anything used by exactly one belongs in
+   that tool's own stylesheet. */
+.hidden { display: none !important; }
 
 .form-label {
-  font-size: 0.875rem; /* 14px */
-  font-weight: 500;
-  color: #334155; /* slate-700 */
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #334155;
 }
 
 .form-tooltip {
-  font-size: 11px;
-  color: #64748b; /* slate-500 */
-  text-align: right;
+    font-size: 11px;
+    color: #64748b;
+    text-align: right;
 }
+
+.prose h1, .prose h2 { color: #0f172a; }

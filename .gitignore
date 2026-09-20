@@ -104,3 +104,4 @@ hugo.linux
 
 # Node test tooling
 node_modules/
+.DS_Store
