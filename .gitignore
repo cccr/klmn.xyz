@@ -97,3 +97,10 @@ hugo.linux
 /.idea/misc.xml
 /.idea/modules.xml
 /.idea/vcs.xml
+
+# Claude Code worktrees and subagent scratch state
+.claude/worktrees/
+.superpowers/
+
+# Node test tooling
+node_modules/

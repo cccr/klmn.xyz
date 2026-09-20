@@ -10,3 +10,9 @@ HUGO_VERSION = "0.147.8"
   to = "/tools/qr/"
   status = 301
   force = true
+
+[[redirects]]
+  from = "/qrs"
+  to = "/tools/mass-qr/"
+  status = 301
+  force = true

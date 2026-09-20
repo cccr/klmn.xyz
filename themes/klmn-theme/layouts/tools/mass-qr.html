@@ -1,0 +1,679 @@
+{{ define "main" }}
+<style id="pageRule">@page { size: 210mm 297mm; margin: 0; }</style>
+<style>
+    .sheet {
+        width: 210mm; height: 297mm; padding: 10mm;
+        background: #fff; box-shadow: 0 1px 12px rgba(15, 23, 42, .12);
+    }
+    .sheet.landscape { width: 297mm; height: 210mm; }
+    .sheet.letter { width: 215.9mm; height: 279.4mm; }
+    .sheet.letter.landscape { width: 279.4mm; height: 215.9mm; }
+
+    #grid { display: grid; gap: 4mm; width: 100%; height: 100%; }
+
+    .cell {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 1.5mm; min-width: 0; min-height: 0; position: relative;
+    }
+    .cell.cap-below { flex-direction: column-reverse; }
+    .cell.is-empty { outline: 1px dashed #cbd5e1; outline-offset: -1px; cursor: pointer; }
+    .cell.is-empty::after { content: '+'; color: #94a3b8; font-size: 24px; line-height: 1; }
+
+    .cap { text-align: center; max-width: 100%; }
+    .cap .label { font-weight: 600; display: block; }
+    .cap .desc { display: block; opacity: .75; }
+    .code { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+    .code svg { width: 100%; height: 100%; }
+
+    /* The editing cell itself keeps its normal grid-track size (min-width: 0,
+       inherited from .cell) so the grid tracks never reflow. The overlay that
+       actually needs the extra width is `.editor`, an absolutely positioned
+       child that floats above the cell — and above its neighbours, if the
+       track is narrower than 220px — without the cell's own box growing. */
+    .cell.is-editing { z-index: 5; }
+    .cell.is-editing .editor {
+        position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+        min-width: 220px; z-index: 5;
+        outline: 2px solid #0f172a; outline-offset: -2px; background: #fff;
+        display: flex; flex-direction: column;
+        padding: 6px; gap: 4px; justify-content: flex-start;
+    }
+    .cell.is-editing .editor input {
+        width: 100%; font-size: 12px; padding: 4px 6px;
+        border: 1px solid #cbd5e1; border-radius: 6px; font-family: inherit;
+    }
+    .cell.is-editing .editor .f-row { display: flex; gap: 6px; width: 100%; }
+    .cell.is-editing .editor button {
+        flex: 1; font-size: 12px; padding: 4px 8px; border-radius: 6px; cursor: pointer;
+    }
+    .cell.is-editing .editor .f-done { background: #0f172a; color: #fff; border: none; }
+    .cell.is-editing .editor .f-delete { background: #fff; color: #b91c1c; border: 1px solid #fecaca; }
+
+    @media print {
+        /* Site chrome from baseof.html — hidden from here so the theme stays untouched. */
+        body > header, body > footer { display: none !important; }
+        main { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+        .mq-controls, #btnPrint, .no-print { display: none !important; }
+
+        #sheetWrap { overflow: visible !important; padding: 0 !important; }
+        .sheet {
+            box-shadow: none !important;
+            transform: none !important;
+            max-width: none !important;
+            margin: 0 !important;
+            /* Browsers drop CSS backgrounds from print by default; without
+               this a non-white sheet background prints as plain white while
+               the QR panels (an SVG <rect fill>, unaffected) keep their own
+               colour — a visible mismatch with the on-screen preview. */
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
+        }
+        .cell.is-empty { outline: none !important; }
+        .cell.is-empty::after { content: none !important; }
+        /* Belt and suspenders: every code path that can trigger window.print()
+           commits any open editor first (see commitOpen()), so .is-editing
+           should never actually reach print. If it somehow does, hide the
+           overlay rather than emit a hole where the tile should be. */
+        .cell.is-editing { outline: none !important; }
+        .cell.is-editing .editor { display: none !important; }
+    }
+</style>
+
+<div class="max-w-6xl mx-auto px-0 py-0">
+    <header class="mb-6 no-print">
+        <h1 class="text-3xl md:text-4xl font-bold tracking-tight">Mass QR Sheet</h1>
+        <p class="text-slate-600 mt-2 max-w-2xl">
+            Fill a grid with links, print one page, pin it to the board. Codes resize to fill the
+            sheet, so the layout you see is the layout that prints.
+        </p>
+    </header>
+
+    <div id="controls" class="mq-controls bg-white/70 backdrop-blur border border-slate-200 rounded-2xl p-4 shadow-sm mb-6">
+        <div class="flex flex-wrap items-end gap-4">
+            <div>
+                <label class="form-label" for="cols">Columns</label>
+                <select id="cols" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white"></select>
+            </div>
+            <div>
+                <label class="form-label" for="rows">Rows</label>
+                <select id="rows" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white"></select>
+            </div>
+            <div>
+                <label class="form-label" for="paper">Paper</label>
+                <select id="paper" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                    <option value="a4">A4</option>
+                    <option value="letter">Letter</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="orient">Orientation</label>
+                <select id="orient" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                    <option value="p">Portrait</option>
+                    <option value="l">Landscape</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="ecc">Error correction</label>
+                <select id="ecc" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                    <option value="L">L — 7%</option>
+                    <option value="M">M — 15%</option>
+                    <option value="Q">Q — 25%</option>
+                    <option value="H">H — 30%</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="capPos">Caption</label>
+                <select id="capPos" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                    <option value="above">Above code</option>
+                    <option value="below">Below code</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="capSize">Caption size</label>
+                <select id="capSize" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                    <option value="s">Small</option>
+                    <option value="m">Medium</option>
+                    <option value="l">Large</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="fg">Code</label>
+                <input id="fg" type="color" class="block" />
+            </div>
+            <div>
+                <label class="form-label" for="bg">Background</label>
+                <input id="bg" type="color" class="block" />
+            </div>
+            <div>
+                <label class="form-label" for="zoom">Zoom</label>
+                <select id="zoom" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                    <option value="fit">Fit width</option>
+                    <option value="1">100%</option>
+                    <option value="1.5">150%</option>
+                </select>
+            </div>
+            <button id="btnPrint" class="px-4 py-2 rounded-xl text-sm bg-slate-900 text-white hover:bg-slate-800">Print</button>
+        </div>
+    </div>
+
+    <div id="sheetWrap" class="overflow-auto pb-8">
+        <div id="sheet" class="sheet">
+            <div id="grid"></div>
+        </div>
+    </div>
+
+    <p class="text-xs text-slate-500 mt-4 no-print">
+        QR encoding by Project Nayuki&rsquo;s
+        <a class="underline hover:text-slate-700" href="https://www.nayuki.io/page/qr-code-generator-library" rel="noopener">qrcodegen</a>
+        (MIT). QR Code is a registered trademark of Denso Wave.
+    </p>
+</div>
+
+<script src="/tools/qr/qrcodegen.js"></script>
+<script src="/tools/qr/qr-render.js"></script>
+<script>
+(function () {
+    'use strict';
+
+    var grid = document.getElementById('grid');
+
+    var MAX = 6;
+    var ENUMS = {
+        paper: ['a4', 'letter'], orient: ['p', 'l'],
+        ecc: ['L', 'M', 'Q', 'H'],
+        capPos: ['above', 'below'], capSize: ['s', 'm', 'l']
+    };
+
+    function defaultState() {
+        return {
+            v: 1, rows: 2, cols: 2, paper: 'a4', orient: 'p', ecc: 'Q',
+            capPos: 'above', capSize: 'm', fg: '#000000', bg: '#ffffff', tiles: {}
+        };
+    }
+
+    function key(r, c) { return r + ',' + c; }
+
+    function clamp(n, lo, hi, dflt) {
+        n = parseInt(n, 10);
+        if (isNaN(n)) return dflt;
+        return Math.min(hi, Math.max(lo, n));
+    }
+
+    function pickEnum(v, name, dflt) {
+        return ENUMS[name].indexOf(v) === -1 ? dflt : v;
+    }
+
+    function hex(v, dflt) {
+        return /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : dflt;
+    }
+
+    function normalize(obj) {
+        var d = defaultState();
+        if (!obj || typeof obj !== 'object') return d;
+        var s = {
+            v: 1,
+            rows: clamp(obj.rows, 1, MAX, d.rows),
+            cols: clamp(obj.cols, 1, MAX, d.cols),
+            paper: pickEnum(obj.paper, 'paper', d.paper),
+            orient: pickEnum(obj.orient, 'orient', d.orient),
+            ecc: pickEnum(obj.ecc, 'ecc', d.ecc),
+            capPos: pickEnum(obj.capPos, 'capPos', d.capPos),
+            capSize: pickEnum(obj.capSize, 'capSize', d.capSize),
+            fg: hex(obj.fg, d.fg),
+            bg: hex(obj.bg, d.bg),
+            tiles: {}
+        };
+        var tiles = obj.tiles || {};
+        Object.keys(tiles).forEach(function (k) {
+            var parts = k.split(',');
+            if (parts.length !== 2 || !/^\d+$/.test(parts[0]) || !/^\d+$/.test(parts[1])) return;
+            var r = parseInt(parts[0], 10), c = parseInt(parts[1], 10);
+            if (r >= s.rows || c >= s.cols) return;
+            var t = tiles[k] || {};
+            if (!t.u) return;
+            s.tiles[key(r, c)] = { u: String(t.u), l: String(t.l || ''), d: String(t.d || '') };
+        });
+        return s;
+    }
+
+    // btoa throws above U+00FF, so the JSON goes through UTF-8 bytes first.
+    // Built with a loop, not spread — a large sheet would blow the call stack.
+    function encodeState(s) {
+        var bytes = new TextEncoder().encode(JSON.stringify(s));
+        var bin = '';
+        for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function decodeState(str) {
+        if (!str) return null;
+        try {
+            var b64 = String(str).replace(/-/g, '+').replace(/_/g, '/');
+            while (b64.length % 4) b64 += '=';
+            var bin = atob(b64);
+            var bytes = new Uint8Array(bin.length);
+            for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            var obj = JSON.parse(new TextDecoder().decode(bytes));
+            if (!obj || obj.v !== 1) return null;
+            return normalize(obj);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // localStorage.getItem can throw (Safari private mode, restrictive storage
+    // settings), so the startup read is guarded the same way persist() guards
+    // its write.
+    function readStored() {
+        try { return localStorage.getItem('massQr'); } catch (e) { return null; }
+    }
+
+    var state = decodeState((location.hash.match(/[#&]s=([^&]+)/) || [])[1]) ||
+                decodeState(readStored()) ||
+                defaultState();
+
+    var saveTimer = null;
+    function persist() {
+        var enc = encodeState(state);
+        try { localStorage.setItem('massQr', enc); } catch (e) { /* private mode */ }
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(function () {
+            history.replaceState(null, '', '#s=' + enc);
+        }, 300);
+    }
+
+    function getState() { return state; }
+    function setState(patch) {
+        // An open editor's fields live in the DOM only, not in `state`, until
+        // committed. Every state mutation must commit it first, or the patch
+        // below merges onto a `state.tiles` that never saw the edit and the
+        // next render() wipes whatever was typed. See commitOpen().
+        commitOpen();
+        var merged = {};
+        Object.keys(state).forEach(function (k) { merged[k] = state[k]; });
+        Object.keys(patch).forEach(function (k) { merged[k] = patch[k]; });
+        state = normalize(merged);
+        render();
+        persist();
+    }
+
+    function orphansFor(rows, cols) {
+        return Object.keys(state.tiles).filter(function (k) {
+            var p = k.split(',');
+            return parseInt(p[0], 10) >= rows || parseInt(p[1], 10) >= cols;
+        });
+    }
+
+    function resize(rows, cols) {
+        commitOpen();
+        rows = clamp(rows, 1, MAX, state.rows);
+        cols = clamp(cols, 1, MAX, state.cols);
+        var lost = orphansFor(rows, cols);
+        if (lost.length) {
+            var msg = 'This removes ' + lost.length + ' tile' + (lost.length === 1 ? '' : 's') +
+                      ' from the sheet. Continue?';
+            if (!window.confirm(msg)) return false;
+            lost.forEach(function (k) { delete state.tiles[k]; });
+        }
+        state.rows = rows;
+        state.cols = cols;
+        editing = null;
+        render();
+        persist();
+        return true;
+    }
+
+    window.massQr = {
+        defaultState: defaultState, encodeState: encodeState, decodeState: decodeState,
+        normalize: normalize, getState: getState, setState: setState, key: key,
+        resize: resize
+    };
+
+    var ECC_MAP = { L: 'LOW', M: 'MEDIUM', Q: 'QUARTILE', H: 'HIGH' };
+    var CAP_MM = {
+        s: { label: 3, desc: 2.2 },
+        m: { label: 4, desc: 2.8 },
+        l: { label: 5.5, desc: 3.6 }
+    };
+
+    function buildTile(cell, tile) {
+        cell.className = 'cell is-filled' + (state.capPos === 'below' ? ' cap-below' : '');
+        cell.setAttribute('role', 'button');
+        cell.setAttribute('tabindex', '0');
+
+        var cap = document.createElement('div');
+        cap.className = 'cap';
+        var sizes = CAP_MM[state.capSize];
+
+        var label = document.createElement('span');
+        label.className = 'label';
+        label.style.fontSize = sizes.label + 'mm';
+        label.textContent = tile.l;
+        cap.appendChild(label);
+
+        if (tile.d) {
+            var desc = document.createElement('span');
+            desc.className = 'desc';
+            desc.style.fontSize = sizes.desc + 'mm';
+            desc.textContent = tile.d;
+            cap.appendChild(desc);
+        }
+        cell.appendChild(cap);
+
+        var code = document.createElement('div');
+        code.className = 'code';
+        try {
+            var qr = qrcodegen.QrCode.encodeText(tile.u, qrcodegen.QrCode.Ecc[ECC_MAP[state.ecc]]);
+            // The QR spec requires a 4-module quiet zone around every code; the
+            // grid gap is measured in mm and unrelated to module size, so it
+            // cannot substitute. Without this, printed codes won't scan.
+            code.innerHTML = qrRender.toSvgString(qr, 4, state.fg, state.bg)
+                .replace(/^<\?xml[^>]*\?>\s*/, '');
+        } catch (e) {
+            // RangeError is qrcodegen's signal that the payload exceeds
+            // capacity at this ECC level — that's an expected, user-facing
+            // condition. Anything else is a real bug and must not be
+            // relabelled as "Link too long"; log it so it surfaces instead
+            // of hiding behind a plausible-looking UI state.
+            if (e instanceof RangeError) {
+                code.textContent = 'Link too long';
+                code.className = 'code too-long';
+            } else {
+                console.error(e);
+                code.textContent = 'Error';
+                code.className = 'code error';
+            }
+        }
+        cell.appendChild(code);
+    }
+
+    var editing = null; // "r,c" of the cell currently open, or null
+
+    function buildEditor(cell, pos) {
+        var tile = state.tiles[pos] || { u: '', l: '', d: '' };
+        cell.className = 'cell is-editing';
+        cell.innerHTML = '';
+
+        // The fields live in an absolutely positioned `.editor` overlay, not
+        // directly in the cell, so the cell's own box keeps its normal grid-
+        // track size and the sheet underneath never reflows (see the CSS).
+        var editor = document.createElement('div');
+        editor.className = 'editor';
+
+        var fields = [
+            { cls: 'f-url', ph: 'https://…', val: tile.u },
+            { cls: 'f-label', ph: 'Label', val: tile.l },
+            { cls: 'f-desc', ph: 'Description (optional)', val: tile.d }
+        ];
+        fields.forEach(function (f) {
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.className = f.cls;
+            input.placeholder = f.ph;
+            input.value = f.val;
+            editor.appendChild(input);
+        });
+
+        var row = document.createElement('div');
+        row.className = 'f-row';
+        var done = document.createElement('button');
+        done.className = 'f-done';
+        done.textContent = 'Done';
+        var del = document.createElement('button');
+        del.className = 'f-delete';
+        del.textContent = 'Delete';
+        row.appendChild(done);
+        row.appendChild(del);
+        editor.appendChild(row);
+
+        cell.appendChild(editor);
+
+        done.addEventListener('click', function (e) {
+            e.stopPropagation();
+            commitEditor(cell, pos);
+            focusCell(pos);
+        });
+        del.addEventListener('click', function (e) {
+            e.stopPropagation();
+            delete state.tiles[pos];
+            editing = null;
+            render();
+            persist();
+            focusCell(pos);
+        });
+    }
+
+    // `.f-url` etc. are nested one level deeper now (inside `.editor`), but
+    // querySelector searches all descendants, so this needs no change.
+    function commitEditor(cell, pos) {
+        var url = cell.querySelector('.f-url').value.trim();
+        if (url) {
+            state.tiles[pos] = {
+                u: url,
+                l: cell.querySelector('.f-label').value.trim(),
+                d: cell.querySelector('.f-desc').value.trim()
+            };
+        } else {
+            delete state.tiles[pos];
+        }
+        editing = null;
+        render();
+        persist();
+    }
+
+    // Commits whatever editor is currently open, if any. This is the single
+    // path every state-mutating entry point must go through before it reads
+    // or overwrites `state.tiles` — control changes (setState), resize,
+    // print (button click and the native beforeprint event, which also
+    // covers Ctrl-P) and switching to a different cell (openCell). Without
+    // it, each of those reads `state.tiles` while the open editor's fields
+    // still only exist in the DOM, and clobbers or skips them.
+    //
+    // Re-entrancy guard: commitEditor's render()/persist() never call back
+    // into commitOpen() today, but this is the sole choke point for every
+    // mutation path, so it stays defensive against that changing later.
+    var committingOpen = false;
+    function commitOpen() {
+        if (committingOpen || !editing) return;
+        committingOpen = true;
+        var open = grid.querySelector('.cell.is-editing');
+        if (open) commitEditor(open, editing);
+        editing = null;
+        committingOpen = false;
+    }
+
+    function focusCell(pos) {
+        var el = grid.querySelector('[data-pos="' + pos + '"]');
+        if (el) el.focus();
+    }
+
+    function openCell(cell) {
+        commitOpen();
+        editing = cell.dataset.pos;
+        render();
+        // render() rebuilds the grid from scratch, so the cell that had focus
+        // (or was just clicked) no longer exists and focus has dropped to
+        // <body>. The editor is now in the document, so focus its first
+        // field here — once, tied to opening — rather than in buildEditor
+        // (where the cell is still detached and .focus() is a no-op) or in
+        // render() itself (which also runs on unrelated state changes and
+        // would yank focus out of a field the user is mid-typing in).
+        var urlInput = grid.querySelector('.cell.is-editing .f-url');
+        if (urlInput) urlInput.focus();
+    }
+
+    grid.addEventListener('click', function (e) {
+        var cell = e.target.closest ? e.target.closest('.cell') : null;
+        if (!cell || cell.classList.contains('is-editing')) return;
+        openCell(cell);
+    });
+
+    // Enter and Space activate a cell exactly as a click does, so the sheet
+    // is operable without a mouse. Space is prevented so the page doesn't
+    // scroll underneath the newly opened editor.
+    grid.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+        var cell = e.target.closest ? e.target.closest('.cell') : null;
+        if (!cell || cell.classList.contains('is-editing')) return;
+        if (e.key === ' ' || e.key === 'Spacebar') e.preventDefault();
+        openCell(cell);
+    });
+
+    // "Clicking away commits" (spec) for clicks that land outside the grid
+    // entirely — the control strip, a blank margin, anywhere the grid's own
+    // click listener never sees. mousedown, not click, so this fires and
+    // commits before a control's own change/click handling runs on the same
+    // gesture (a <select>, for instance, opens its dropdown on mousedown).
+    //
+    // Deliberately excludes anything inside #grid, including clicks on a
+    // different cell: committing on mousedown there would rebuild the grid
+    // (replacing every cell's DOM node, including the one about to be
+    // clicked) before mouseup/click fire. A real browser drops the click
+    // entirely when its target was detached between mousedown and mouseup —
+    // verified against real Chrome via the CDP Input domain, not just
+    // jsdom's single-event click() helper, which can't see this class of
+    // bug. Clicks inside the grid already commit-then-open correctly as one
+    // atomic click event, via openCell()'s own commitOpen() call.
+    document.addEventListener('mousedown', function (e) {
+        if (!editing) return;
+        if (e.target.closest && e.target.closest('#grid')) return;
+        commitOpen();
+    }, true);
+
+    // Grid track counts are set from JS rather than a CSS custom property:
+    // repeat(var(--n), 1fr) is inconsistently supported and this is unambiguous.
+    function render() {
+        grid.style.gridTemplateColumns = 'repeat(' + state.cols + ', 1fr)';
+        grid.style.gridTemplateRows = 'repeat(' + state.rows + ', 1fr)';
+        grid.innerHTML = '';
+        document.getElementById('sheet').style.background = state.bg;
+        for (var r = 0; r < state.rows; r++) {
+            for (var c = 0; c < state.cols; c++) {
+                var cell = document.createElement('div');
+                cell.dataset.pos = key(r, c);
+                var tile = state.tiles[key(r, c)];
+                if (key(r, c) === editing) {
+                    buildEditor(cell, key(r, c));
+                } else if (tile) {
+                    buildTile(cell, tile);
+                } else {
+                    cell.className = 'cell is-empty';
+                    cell.setAttribute('role', 'button');
+                    cell.setAttribute('tabindex', '0');
+                    cell.setAttribute('aria-label', 'Add link at row ' + (r + 1) + ', column ' + (c + 1));
+                }
+                grid.appendChild(cell);
+            }
+        }
+        applySheetChrome();
+    }
+
+    var PAPER_MM = { a4: [210, 297], letter: [215.9, 279.4] };
+
+    function applySheetChrome() {
+        var sheet = document.getElementById('sheet');
+        sheet.classList.toggle('letter', state.paper === 'letter');
+        sheet.classList.toggle('landscape', state.orient === 'l');
+
+        var dims = PAPER_MM[state.paper].slice();
+        if (state.orient === 'l') dims.reverse();
+        document.getElementById('pageRule').textContent =
+            '@page { size: ' + dims[0] + 'mm ' + dims[1] + 'mm; margin: 0; }';
+
+        // Paper/orientation just changed the sheet's real (unscaled) size,
+        // which "fit" zoom is computed from — recompute it here rather than
+        // leaving a stale scale in place until the next unrelated render().
+        applyZoom();
+    }
+
+    function fillSizeSelect(el, value) {
+        el.innerHTML = '';
+        for (var i = 1; i <= MAX; i++) {
+            var opt = document.createElement('option');
+            opt.value = String(i);
+            opt.textContent = String(i);
+            if (i === value) opt.selected = true;
+            el.appendChild(opt);
+        }
+    }
+
+    var elCols = document.getElementById('cols');
+    var elRows = document.getElementById('rows');
+    fillSizeSelect(elCols, state.cols);
+    fillSizeSelect(elRows, state.rows);
+
+    elCols.addEventListener('change', function () {
+        // Reverting via `.value` (not rebuilding the <option> set) keeps
+        // focus on the select — fillSizeSelect() destroys and recreates
+        // every option, which drops focus to <body> along with them.
+        if (!resize(state.rows, parseInt(elCols.value, 10))) elCols.value = state.cols;
+    });
+    elRows.addEventListener('change', function () {
+        if (!resize(parseInt(elRows.value, 10), state.cols)) elRows.value = state.rows;
+    });
+
+    var SIMPLE = ['paper', 'orient', 'ecc', 'capPos', 'capSize'];
+    SIMPLE.forEach(function (name) {
+        var el = document.getElementById(name);
+        el.value = state[name];
+        el.addEventListener('change', function () {
+            var patch = {};
+            patch[name] = el.value;
+            setState(patch);
+        });
+    });
+
+    ['fg', 'bg'].forEach(function (name) {
+        var el = document.getElementById(name);
+        el.value = state[name];
+        el.addEventListener('input', function () {
+            var patch = {};
+            patch[name] = el.value;
+            setState(patch);
+        });
+    });
+
+    // Zoom is always a `transform: scale()` on the sheet, never `max-width` —
+    // max-width shrinks the box itself, and .sheet has a hard mm height, so
+    // the width shrinks while the height doesn't and every tile distorts.
+    // "Fit" is the same mechanism as 100%/150%, just with a computed scale
+    // instead of a fixed one, so the preview stays proportionally true at
+    // every zoom level. transform-origin is top-left (not top-center): with
+    // overflow: auto, LTR scrollable overflow only extends rightward, so
+    // scaling from the left edge keeps the whole sheet reachable by scroll —
+    // scaling from the center pushes content off the left, unreachably.
+    var elZoom = document.getElementById('zoom');
+    function applyZoom() {
+        var sheet = document.getElementById('sheet');
+        var wrap = document.getElementById('sheetWrap');
+        var scale;
+        if (elZoom.value === 'fit') {
+            var natural = sheet.offsetWidth;
+            scale = natural > 0 ? Math.min(1, wrap.clientWidth / natural) : 1;
+        } else {
+            scale = parseFloat(elZoom.value);
+        }
+        sheet.style.margin = '0'; // centring via margin fights a left-origin scale
+        sheet.style.transformOrigin = 'top left';
+        sheet.style.transform = 'scale(' + scale + ')';
+    }
+    elZoom.addEventListener('change', applyZoom);
+    // The sheet's natural size doesn't change on resize, but the wrap's
+    // available width does, so "fit" must be recomputed.
+    window.addEventListener('resize', applyZoom);
+
+    document.getElementById('btnPrint').addEventListener('click', function () {
+        commitOpen();
+        window.print();
+    });
+    // Ctrl-P (or the browser's own print menu item) fires window.print()
+    // without ever touching #btnPrint, bypassing a commit wired only into
+    // that button's click handler. beforeprint is dispatched by any path
+    // that opens the print dialog, native shortcut included.
+    window.addEventListener('beforeprint', commitOpen);
+
+    render();
+    applyZoom();
+})();
+</script>
+{{ end }}
