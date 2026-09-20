@@ -10,36 +10,33 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 :root {
-    /* Press green-grey. A hue, deliberately — a tinted near-black is the
-       commonest generated-design tell, and this is the colour of machine
-       tooling, which is what the site is about. */
-    --bed:          #2E3A34;
-    --bed-deep:     #253029;
-    --bed-rule:     #3F4E46;
+    /* The bench the work sits on: a cool paper-grey, deliberately held away
+       from the warm cream (#F4F1EA) that every generated page reaches for. */
+    --ground:      #E8E8E2;
+    --ground-sunk: #E1E1DA;
+    --rule:        #CBCBC2;
 
-    --stock:        #FBFAF7;
-    --stock-edge:   #E4E2DA;
+    /* The artifact is pure white, so it reads brighter than the bench it is
+       lying on. That difference is the whole hierarchy — no cards needed. */
+    --paper:       #FFFFFF;
+    --paper-rule:  #E2E0D8;
 
-    --ink:          #14181A;
-    --ink-soft:     #5C6360;
-
-    --on-bed:       #E7E9E4;
-    --on-bed-soft:  #93A099;
+    --ink:         #14181A;
+    --ink-soft:    #62655F;
 
     /* Registration cyan: on a site about black-and-white printed codes it is
-       the one colour that can never be mistaken for the ink. Reserved for
-       the live value and the trim marks. */
-    --reg:          #2FB8BC;
-    --reg-ink:      #0E7C80;
+       the one colour that can never be mistaken for the ink. Reserved for the
+       live value and the trim marks. */
+    --reg:         #0E7C80;
 
-    --alert:        #B23A1F;
+    --alert:       #B23A1F;
 
     --sans: "IBM Plex Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
     --cond: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
     /* A registration mark, drawn once and placed at each corner of a trim. */
-    --regmark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Cg fill='none' stroke='%232FB8BC' stroke-width='1'%3E%3Ccircle cx='7' cy='7' r='3.5'/%3E%3Cpath d='M7 0v14M0 7h14'/%3E%3C/g%3E%3C/svg%3E");
+    --regmark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Cg fill='none' stroke='%230E7C80' stroke-width='1'%3E%3Ccircle cx='7' cy='7' r='3.5'/%3E%3Cpath d='M7 0v14M0 7h14'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 /* ── Reset ─────────────────────────────────────────────────────────────── */
@@ -79,15 +76,15 @@ img, video { max-width: 100%; height: auto; }
 
 body {
     min-height: 100vh;
-    background: var(--bed);
-    color: var(--on-bed);
+    background: var(--ground);
+    color: var(--ink);
     font-family: var(--sans);
     font-size: 15px;
 }
 
 body > header {
-    border-bottom: 1px solid var(--bed-rule);
-    background: var(--bed-deep);
+    border-bottom: 1px solid var(--rule);
+    background: var(--ground-sunk);
 }
 body > header > div,
 body > footer > div,
@@ -103,21 +100,21 @@ body > header > div {
 body > header > div > a {
     font-family: var(--cond);
     font-size: 1.375rem; font-weight: 700; letter-spacing: .04em;
-    color: var(--on-bed);
+    color: var(--ink);
 }
 body > header nav {
     display: flex; align-items: baseline; gap: 1.25rem;
     font-size: .875rem;
 }
-body > header nav a { color: var(--on-bed-soft); transition: color .12s; }
+body > header nav a { color: var(--ink-soft); transition: color .12s; }
 body > header nav a:hover { color: var(--reg); }
 
 body > main { padding-block: 2.5rem; }
 
-body > footer { margin-top: 4rem; border-top: 1px solid var(--bed-rule); }
+body > footer { margin-top: 4rem; border-top: 1px solid var(--rule); }
 body > footer > div {
     padding-block: 1.5rem;
-    font-size: .8125rem; color: var(--on-bed-soft);
+    font-size: .8125rem; color: var(--ink-soft);
 }
 
 /* ── Console and artifact ──────────────────────────────────────────────
@@ -131,7 +128,9 @@ body > footer > div {
     align-items: start;
 }
 @media (min-width: 60rem) {
-    .press { grid-template-columns: 17rem minmax(0, 1fr); gap: 3rem; }
+    .press { grid-template-columns: 18rem minmax(0, 1fr); gap: 0; }
+    .rail { border-right: 1px solid var(--rule); padding-right: 2rem; }
+    .bed { padding-left: 3rem; }
 }
 
 /* ── The rail ──────────────────────────────────────────────────────────── */
@@ -141,12 +140,12 @@ body > footer > div {
     font-family: var(--cond);
     font-size: 2.125rem; line-height: 1.05;
     font-weight: 700; letter-spacing: -.01em;
-    color: var(--on-bed);
+    color: var(--ink);
 }
 .rail > p {
     margin-top: .75rem;
     font-size: .875rem; line-height: 1.55;
-    color: var(--on-bed-soft);
+    color: var(--ink-soft);
     max-width: 34ch;
 }
 
@@ -155,9 +154,9 @@ body > footer > div {
 .rail-group > h2 {
     font-family: var(--cond);
     font-size: 1rem; font-weight: 600; letter-spacing: .01em;
-    color: var(--on-bed);
+    color: var(--ink);
     padding-bottom: .5rem;
-    border-bottom: 1px solid var(--bed-rule);
+    border-bottom: 1px solid var(--rule);
 }
 
 /* A control is a label and its value on one line, the values aligned down
@@ -166,18 +165,18 @@ body > footer > div {
     display: flex; align-items: center; justify-content: space-between;
     gap: 1rem;
     padding-block: .5rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--bed-rule) 55%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--rule) 55%, transparent);
 }
 .field > label, .field > .field-name {
-    font-size: .875rem; color: var(--on-bed-soft);
+    font-size: .875rem; color: var(--ink-soft);
     white-space: nowrap;
 }
 .field-value {
     display: flex; align-items: baseline; gap: .3rem;
     font-family: var(--mono); font-variant-numeric: tabular-nums;
-    font-size: .875rem; color: var(--on-bed);
+    font-size: .875rem; color: var(--ink);
 }
-.field-value .unit { color: var(--on-bed-soft); font-size: .75rem; }
+.field-value .unit { color: var(--ink-soft); font-size: .75rem; }
 
 /* Ruler ticks mark the controls that are a physical measurement. */
 .field-measure { position: relative; }
@@ -185,7 +184,7 @@ body > footer > div {
     content: '';
     position: absolute; left: -1rem; top: .35rem; bottom: .35rem; width: 6px;
     background: repeating-linear-gradient(
-        to bottom, var(--bed-rule) 0 1px, transparent 1px 5px);
+        to bottom, var(--rule) 0 1px, transparent 1px 5px);
 }
 
 /* Inputs on the rail read as values, not as boxes. */
@@ -194,7 +193,7 @@ body > footer > div {
 .rail select {
     font-family: var(--mono); font-variant-numeric: tabular-nums;
     font-size: .875rem;
-    color: var(--on-bed);
+    color: var(--ink);
     background: transparent;
     border: 0; border-bottom: 1px solid transparent;
     padding: .125rem 0;
@@ -207,15 +206,15 @@ body > footer > div {
     -webkit-appearance: none; appearance: none;
     text-align-last: right;
     padding-right: .85rem;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%2393A099'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%2362655F'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right center;
 }
-.rail input:hover, .rail select:hover { border-bottom-color: var(--bed-rule); }
+.rail input:hover, .rail select:hover { border-bottom-color: var(--ink-soft); }
 .rail input:focus, .rail select:focus {
     outline: none; color: var(--reg); border-bottom-color: var(--reg);
 }
-.rail select option { color: var(--ink); background: var(--stock); }
+.rail select option { color: var(--ink); background: var(--paper); }
 
 .rail input[type="range"] { width: 100%; accent-color: var(--reg); }
 
@@ -223,7 +222,7 @@ body > footer > div {
     -webkit-appearance: none; appearance: none;
     width: 1.75rem; height: 1.125rem; padding: 0;
     background: none; cursor: pointer;
-    border: 1px solid var(--bed-rule); border-radius: 2px;
+    border: 1px solid var(--rule); border-radius: 2px;
 }
 .rail input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
 .rail input[type="color"]::-webkit-color-swatch { border: none; }
@@ -236,25 +235,26 @@ body > footer > div {
     padding: .5rem 1rem;
     font-family: var(--cond); font-size: .9375rem; font-weight: 600;
     letter-spacing: .01em;
-    color: var(--on-bed);
+    color: var(--ink);
     background: transparent;
-    border: 1px solid var(--bed-rule);
+    border: 1px solid var(--rule);
     cursor: pointer;
     transition: background-color .12s, border-color .12s, color .12s;
 }
 .btn:hover:not(:disabled) { border-color: var(--reg); color: var(--reg); }
 .btn:disabled { opacity: .35; cursor: not-allowed; }
 
-/* The page's one action. Marked by weight and a solid edge rather than a
-   slab of accent — the artifact stays the brightest thing on the bed. */
+/* The page's one action. Solid ink rather than a slab of accent — cyan stays
+   reserved for live values and trim marks, and the artifact stays the
+   brightest thing on the bench. */
 .btn-go {
-    color: var(--on-bed);
-    border-color: var(--on-bed-soft);
+    color: var(--paper);
+    background: var(--ink);
+    border-color: var(--ink);
 }
 .btn-go:hover:not(:disabled) {
-    color: var(--bed-deep);
-    background: var(--on-bed);
-    border-color: var(--on-bed);
+    background: var(--reg);
+    border-color: var(--reg);
 }
 
 /* ── The artifact ──────────────────────────────────────────────────────
@@ -274,15 +274,15 @@ body > footer > div {
 }
 
 .artifact {
-    background: var(--stock);
+    background: var(--paper);
     color: var(--ink);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, .28), 0 22px 45px -18px rgba(0, 0, 0, .65);
+    box-shadow: 0 0 0 1px var(--rule), 0 14px 30px -18px rgba(20, 24, 26, .45);
 }
 
 /* ── On paper ──────────────────────────────────────────────────────────── */
 
 .on-stock { color: var(--ink); }
-.on-stock a { color: var(--reg-ink); text-decoration: underline; }
+.on-stock a { color: var(--reg); text-decoration: underline; }
 .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
 .hidden { display: none !important; }

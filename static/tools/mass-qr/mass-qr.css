@@ -21,11 +21,11 @@
     column-gap: 1.25rem;
     margin-top: .5rem; margin-bottom: 1rem;
     font-family: var(--mono); font-variant-numeric: tabular-nums;
-    font-size: .75rem; color: var(--on-bed-soft);
+    font-size: .75rem; color: var(--ink-soft);
 }
 .rail-hint {
     margin-top: .5rem; margin-bottom: 1rem;
-    font-size: .75rem; line-height: 1.5; color: var(--on-bed-soft);
+    font-size: .75rem; line-height: 1.5; color: var(--ink-soft);
 }
 
 /* Both inks in one row: they are one decision. */
@@ -33,9 +33,9 @@
 
 .rail-note, .rail-credit {
     margin-top: 1.5rem;
-    font-size: .75rem; line-height: 1.55; color: var(--on-bed-soft);
+    font-size: .75rem; line-height: 1.55; color: var(--ink-soft);
 }
-.rail-credit a { color: var(--on-bed-soft); text-decoration: underline; }
+.rail-credit a { color: var(--ink-soft); text-decoration: underline; }
 .rail-credit a:hover { color: var(--reg); }
 
 /* ── The sheet ─────────────────────────────────────────────────────────
@@ -70,14 +70,14 @@
 .sheet::after {
     content: ''; position: absolute; inset: var(--sheet-pad, 10mm);
     pointer-events: none; opacity: 0; transition: opacity .12s ease;
-    outline: 1px dashed var(--reg-ink);
-    box-shadow: 0 0 0 100vmax color-mix(in srgb, var(--reg-ink) 12%, transparent);
+    outline: 1px dashed var(--reg);
+    box-shadow: 0 0 0 100vmax color-mix(in srgb, var(--reg) 12%, transparent);
 }
 .sheet.show-margin::after { opacity: 1; }
 
 /* Gutter reads as negative space, so tint the tiles rather than the gaps. */
-.sheet.show-gutter .cell { background: color-mix(in srgb, var(--reg-ink) 10%, transparent); }
-.sheet.show-gutter .cell.is-filled { outline: 1px dashed var(--reg-ink); outline-offset: 0; }
+.sheet.show-gutter .cell { background: color-mix(in srgb, var(--reg) 10%, transparent); }
+.sheet.show-gutter .cell.is-filled { outline: 1px dashed var(--reg); outline-offset: 0; }
 
 @media print {
     .sheet::after { display: none !important; }
@@ -127,15 +127,15 @@
 .cell.is-filled.cap-below .code { grid-row: 1; }
 
 .cell.is-empty {
-    outline: 1px dashed var(--stock-edge); outline-offset: -1px; cursor: pointer;
+    outline: 1px dashed var(--paper-rule); outline-offset: -1px; cursor: pointer;
     transition: outline-color .12s;
 }
-.cell.is-empty:hover { outline-color: var(--reg-ink); }
+.cell.is-empty:hover { outline-color: var(--reg); }
 .cell.is-empty::after {
-    content: '+'; color: #B9BDB4; font-size: 22px; line-height: 1;
+    content: '+'; color: #C4C2B8; font-size: 22px; line-height: 1;
     font-family: var(--mono);
 }
-.cell.is-empty:hover::after { color: var(--reg-ink); }
+.cell.is-empty:hover::after { color: var(--reg); }
 
 /* Colour is set inline from `fg` in buildTile: the code colour is the ink
    colour of the sheet. Left to the theme's own text colour, captions were
@@ -184,23 +184,23 @@
 .cell.is-editing .editor {
     position: absolute; top: 0; right: 0; bottom: 0; left: 0;
     min-width: 220px; z-index: 5;
-    outline: 2px solid var(--reg-ink); outline-offset: -2px; background: var(--stock);
+    outline: 2px solid var(--reg); outline-offset: -2px; background: var(--paper);
     display: flex; flex-direction: column;
     padding: 6px; gap: 4px; justify-content: flex-start;
 }
 .cell.is-editing .editor input {
     width: 100%; font-size: 12px; padding: 4px 6px;
-    border: 1px solid var(--stock-edge); color: var(--ink);
+    border: 1px solid var(--paper-rule); color: var(--ink);
     background: #fff; font-family: var(--sans);
 }
-.cell.is-editing .editor input:focus { outline: none; border-color: var(--reg-ink); }
+.cell.is-editing .editor input:focus { outline: none; border-color: var(--reg); }
 .cell.is-editing .editor .f-row { display: flex; gap: 6px; width: 100%; }
 .cell.is-editing .editor button {
     flex: 1; font-size: 12px; padding: 4px 8px; cursor: pointer;
     font-family: var(--cond); font-weight: 600;
-    border: 1px solid var(--stock-edge); background: #fff; color: var(--ink);
+    border: 1px solid var(--paper-rule); background: #fff; color: var(--ink);
 }
-.cell.is-editing .editor .f-done { background: var(--reg-ink); color: #fff; border-color: var(--reg-ink); }
+.cell.is-editing .editor .f-done { background: var(--reg); color: #fff; border-color: var(--reg); }
 .cell.is-editing .editor .f-delete { color: var(--alert); }
 
 /* ── Print ─────────────────────────────────────────────────────────────── */
