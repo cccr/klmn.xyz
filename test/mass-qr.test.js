@@ -738,3 +738,33 @@ test('a sheet just under the scannable floor warns with the measurement', () => 
   p.window.massQr.setState({ paper: 'custom', cw: 83, ch: 83, rows: 6, cols: 6, mg: 5, gp: 2 });
   assert.match(p.$('warn').textContent, /about 1[01]mm/);
 });
+
+// ── Zoom ───────────────────────────────────────────────────────────
+
+test('zoom defaults to fit and round-trips like every other control', () => {
+  const { window } = page();
+  assert.equal(window.massQr.defaultState().zoom, 'fit');
+  const s = window.massQr.defaultState();
+  s.zoom = '1.5';
+  assert.deepEqual(window.massQr.decodeState(window.massQr.encodeState(s)), s);
+  assert.equal(window.massQr.normalize({ v: 1, zoom: 'enormous' }).zoom, 'fit');
+});
+
+test('a shared sheet reopens at the zoom it was saved with', () => {
+  const seed = page();
+  fireChange(seed, seed.$('zoom'), '1.5');
+  assert.equal(seed.window.massQr.getState().zoom, '1.5');
+  const hash = '#s=' + seed.window.massQr.encodeState(seed.window.massQr.getState());
+
+  const p = page({ hash });
+  assert.equal(p.$('zoom').value, '1.5', 'the control shows the saved zoom');
+  assert.match(p.$('sheet').style.transform, /scale\(1\.5\)/);
+});
+
+test('changing zoom does not rebuild the grid', () => {
+  const p = withTiles({ '0,0': { u: 'https://school.edu/x', l: 'X', d: '' } });
+  const before = p.doc.querySelector('.cell[data-pos="0,0"]');
+  fireChange(p, p.$('zoom'), '1');
+  assert.strictEqual(p.doc.querySelector('.cell[data-pos="0,0"]'), before,
+    'a preview-only control must not re-encode every code');
+});

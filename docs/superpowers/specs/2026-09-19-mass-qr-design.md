@@ -76,6 +76,7 @@ A single object, short-keyed to keep URLs short:
   qz: 4,                   // quiet zone, modules, 0-8
   mg: 10,                  // sheet margin, mm, 0-50
   gp: 4,                   // gutter between cells, mm, 0-30
+  zoom: 'fit',             // 'fit' | 'page' | '1' | '1.5' — preview only
   tiles: {                 // sparse — absent key means empty cell
     "0,0": { u: "https://school.edu/schedule", l: "Schedule", d: "Bell times" }
   }
@@ -123,8 +124,10 @@ box the grid gives it and stays square.
 drive screen and paper. This is the property that makes one-page fit reliable instead of
 something to keep patching; preserve it.
 
-Screen zoom (Fit / 100% / 150%) is a `transform: scale()` on a wrapper only. It never touches
-the sheet's real dimensions, so the 100% preview is true-to-scale.
+Screen zoom (Fit width / Fit page / 100% / 150%) is a `transform: scale()` on the sheet, with
+`#sheetBox` sized to the scaled result so layout reserves exactly what is drawn. It never
+touches the sheet's real dimensions, so the 100% preview is true-to-scale. It lives in state
+like every other control, but changing it re-scales without re-rendering.
 
 ### Editing
 

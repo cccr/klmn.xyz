@@ -129,6 +129,7 @@
         .mq-controls, #btnPrint, .no-print { display: none !important; }
 
         #sheetWrap { overflow: visible !important; padding: 0 !important; }
+        #sheetBox { width: auto !important; height: auto !important; }
         .sheet {
             box-shadow: none !important;
             transform: none !important;
@@ -266,6 +267,7 @@
                 <label class="form-label" for="zoom">Zoom</label>
                 <select id="zoom" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
                     <option value="fit">Fit width</option>
+                    <option value="page">Fit page</option>
                     <option value="1">100%</option>
                     <option value="1.5">150%</option>
                 </select>
@@ -281,8 +283,14 @@
     </div>
 
     <div id="sheetWrap" class="overflow-auto pb-8">
-        <div id="sheet" class="sheet">
-            <div id="grid"></div>
+        <!-- #sheetBox exists purely to reserve the sheet's *scaled* size.
+             transform: scale() does not affect layout, so the wrapper used to
+             reserve the sheet's full unscaled height — 363px of blank scroll
+             below a fit-zoomed sheet, plus a phantom horizontal scrollbar. -->
+        <div id="sheetBox">
+            <div id="sheet" class="sheet">
+                <div id="grid"></div>
+            </div>
         </div>
     </div>
 
@@ -305,14 +313,15 @@
     var ENUMS = {
         paper: ['a4', 'letter', 'custom'], orient: ['p', 'l'], cu: ['mm', 'in'],
         ecc: ['L', 'M', 'Q', 'H'],
-        capPos: ['above', 'below'], capSize: ['s', 'm', 'l']
+        capPos: ['above', 'below'], capSize: ['s', 'm', 'l'],
+        zoom: ['fit', 'page', '1', '1.5']
     };
 
     function defaultState() {
         return {
             v: 1, rows: 2, cols: 2, paper: 'a4', orient: 'p', ecc: 'Q',
             capPos: 'above', capSize: 'm', fg: '#000000', bg: '#ffffff',
-            cw: 210, ch: 297, cu: 'mm', qz: 4, mg: 10, gp: 4, tiles: {}
+            cw: 210, ch: 297, cu: 'mm', qz: 4, mg: 10, gp: 4, zoom: 'fit', tiles: {}
         };
     }
 
@@ -376,6 +385,7 @@
             qz: clamp(obj.qz, 0, 8, d.qz),
             mg: clampMm(obj.mg, 0, MG_MAX, d.mg),
             gp: clampMm(obj.gp, 0, GP_MAX, d.gp),
+            zoom: pickEnum(obj.zoom, 'zoom', d.zoom),
             tiles: {}
         };
         var tiles = obj.tiles || {};
@@ -944,23 +954,48 @@
     // scaling from the left edge keeps the whole sheet reachable by scroll —
     // scaling from the center pushes content off the left, unreachably.
     var elZoom = document.getElementById('zoom');
+    var elBox = document.getElementById('sheetBox');
+    elZoom.value = state.zoom;
+
+    function zoomScale(naturalW, naturalH, wrap) {
+        if (state.zoom === 'fit') {
+            return naturalW > 0 ? Math.min(1, wrap.clientWidth / naturalW) : 1;
+        }
+        if (state.zoom === 'page') {
+            // Whatever is left of the viewport below the wrapper's top edge,
+            // minus the wrapper's own bottom padding (pb-8 = 32px).
+            var room = window.innerHeight - wrap.getBoundingClientRect().top - 32;
+            var byW = naturalW > 0 ? wrap.clientWidth / naturalW : 1;
+            var byH = naturalH > 0 && room > 0 ? room / naturalH : 1;
+            return Math.min(1, byW, byH);
+        }
+        return parseFloat(state.zoom);
+    }
+
     function applyZoom() {
         var sheet = document.getElementById('sheet');
         var wrap = document.getElementById('sheetWrap');
-        var scale;
-        if (elZoom.value === 'fit') {
-            var natural = sheet.offsetWidth;
-            scale = natural > 0 ? Math.min(1, wrap.clientWidth / natural) : 1;
-        } else {
-            scale = parseFloat(elZoom.value);
-        }
+        // offsetWidth/Height are untransformed layout pixels, so reading them
+        // while a previous scale is still applied is safe.
+        var naturalW = sheet.offsetWidth, naturalH = sheet.offsetHeight;
+        var scale = zoomScale(naturalW, naturalH, wrap);
         sheet.style.margin = '0'; // centring via margin fights a left-origin scale
         sheet.style.transformOrigin = 'top left';
         sheet.style.transform = 'scale(' + scale + ')';
+        elBox.style.width = (naturalW * scale) + 'px';
+        elBox.style.height = (naturalH * scale) + 'px';
     }
-    elZoom.addEventListener('change', applyZoom);
-    // The sheet's natural size doesn't change on resize, but the wrap's
-    // available width does, so "fit" must be recomputed.
+
+    // Preview-only: it must not go through setState(), which re-renders the
+    // grid and re-encodes every code for a change that moves no ink.
+    elZoom.addEventListener('change', function () {
+        commitOpen();
+        state = normalize(Object.assign({}, state, { zoom: elZoom.value }));
+        applyZoom();
+        persist();
+    });
+    // The sheet's natural size does not change on resize, but the wrap's
+    // available width — and the viewport height "fit page" reads — do.
     window.addEventListener('resize', applyZoom);
 
     document.getElementById('btnPrint').addEventListener('click', function () {
@@ -974,7 +1009,6 @@
     window.addEventListener('beforeprint', commitOpen);
 
     render();
-    applyZoom();
 })();
 </script>
 {{ end }}
