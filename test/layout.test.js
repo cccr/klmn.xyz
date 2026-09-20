@@ -184,3 +184,29 @@ test('fit page brings the whole sheet into view', { skip: !CHROME && 'no Chrome'
   assert.ok(m.top + m.visualH <= m.viewportH + 1,
     `sheet runs past the viewport: ${(m.top + m.visualH).toFixed(0)} > ${m.viewportH}`);
 });
+
+// The regression that started all of this, stated as one property: on a sheet
+// with mixed captions, every code is the same size, every code in a row shares
+// a top edge, and the space left over is split evenly above and below.
+test('a mixed-caption sheet is uniform end to end', { skip: !CHROME && 'no Chrome' }, async () => {
+  const m = await withSheet(MIXED, (p) => p.evalJson(`(function () {
+    var out = [];
+    document.querySelectorAll('#grid .cell.is-filled').forEach(function (cell) {
+      var cr = cell.querySelector('.code').getBoundingClientRect();
+      var sr = cell.querySelector('.code svg').getBoundingClientRect();
+      var side = Math.min(sr.width, sr.height);
+      out.push({ pos: cell.dataset.pos, side: side,
+                 above: sr.top - cr.top + (sr.height - side) / 2,
+                 below: cr.bottom - sr.bottom + (sr.height - side) / 2 });
+    });
+    return out;
+  })()`));
+  assert.equal(m.length, 4);
+  const sides = m.map((c) => c.side);
+  assert.ok(Math.min(...sides) > 100, 'codes actually rendered');
+  assert.ok(Math.max(...sides) - Math.min(...sides) < 0.5, 'codes are one size');
+  m.forEach(function (c) {
+    assert.ok(Math.abs(c.above - c.below) < 0.5,
+      `tile ${c.pos} slack is lopsided: ${c.above.toFixed(1)} above, ${c.below.toFixed(1)} below`);
+  });
+});

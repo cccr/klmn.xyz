@@ -120,3 +120,28 @@ and printing up to 36 codes at once. The comment at `mass-qr.html:431-433` still
 Layout claims cannot be tested in jsdom — it has no layout engine, which is why F1, F2 and
 F7 shipped green. This work adds a CDP-driven Chrome harness (`test/cdp.js`) and asserts on
 real measured boxes. Existing suites must stay green: 66 tests currently pass.
+
+## Verified after implementation
+
+Re-measured on the finished tool, same sheet as F1 (2×2 A4, tiles `0,0` and `1,1` carrying
+descriptions, `0,1` and `1,0` not):
+
+| tile | `.code` height | code size | code top |
+|---|---|---|---|
+| `0,0` Schedule + "Bell times" | 482.9px | 351.5px | 609.8px |
+| `0,1` Lunch | 482.9px | 351.5px | 609.8px |
+| `1,0` Portal | 482.9px | 351.5px | 1140.8px |
+| `1,1` News + "Weekly newsletter" | 482.9px | 351.5px | 1140.8px |
+
+Every code box is one height, every code is one size, and codes in a row share a top edge
+exactly — against 15.8px (4.2mm) of drift before. Slack is split evenly above and below each
+code rather than pooled at the bottom of the cell.
+
+**Suite: 101 tests, 101 pass, 0 fail** (66 before this work). The new `test/layout.test.js`
+carries 10 measured-layout tests that jsdom structurally cannot make; `test/print.test.js`
+gained the Tailwind-blocked one-page case.
+
+One note on method: the first cut of the layout tests passed while the sheet printed blank —
+a grid collapsed to zero satisfies "every code box is the same height" perfectly. Only the
+pre-existing print test caught it. Every sameness assertion now runs `assertSubstantial()`
+first, which requires a real, non-zero code before comparing anything.
