@@ -599,3 +599,48 @@ test('custom paper: a shared custom sheet reopens with its own unit and size', (
   assert.ok(!p.$('customDims').hidden, 'fields visible on load');
   assert.ok(Math.abs(parseFloat(p.$('cw').value) - 8.5) < 0.01, 'shown in inches');
 });
+
+// ── Quiet zone ─────────────────────────────────────────────────────
+
+test('quiet zone: defaults to the 4-module spec minimum', () => {
+  const { window } = page();
+  assert.equal(window.massQr.defaultState().qz, 4);
+});
+
+test('quiet zone: round-trips and clamps to 0-8', () => {
+  const { window } = page();
+  const s = window.massQr.defaultState();
+  s.qz = 0;
+  assert.deepEqual(window.massQr.decodeState(window.massQr.encodeState(s)), s);
+  assert.equal(window.massQr.normalize({ v: 1, qz: 99 }).qz, 8, 'clamps down');
+  assert.equal(window.massQr.normalize({ v: 1, qz: -3 }).qz, 0, 'clamps up');
+  assert.equal(window.massQr.normalize({ v: 1, qz: 'wide' }).qz, 4, 'garbage falls back');
+});
+
+test('quiet zone: changes the margin baked into each tile SVG', () => {
+  const p = page();
+  const tile = { u: 'https://school.edu/x', l: 'X', d: '' };
+  p.window.massQr.setState({ tiles: { '0,0': tile } });
+
+  const vb = () => parseInt(
+    p.doc.querySelector('.cell[data-pos="0,0"] .code svg').getAttribute('viewBox').split(' ')[2], 10);
+
+  const atFour = vb();
+  p.$('qz').value = '0';
+  p.$('qz').dispatchEvent(new p.window.Event('change', { bubbles: true }));
+  const atZero = vb();
+
+  assert.equal(atFour - atZero, 8, 'four modules of margin on each side');
+  assert.equal(p.window.massQr.getState().qz, 0);
+
+  p.$('qz').value = '8';
+  p.$('qz').dispatchEvent(new p.window.Event('change', { bubbles: true }));
+  assert.equal(vb() - atZero, 16, 'eight modules each side');
+});
+
+test('quiet zone: a tile at the default still decodes', () => {
+  const p = page();
+  p.window.massQr.setState({ tiles: { '0,0': { u: 'https://school.edu/x', l: 'X', d: '' } } });
+  const svg = p.doc.querySelector('.cell[data-pos="0,0"] .code svg').outerHTML;
+  assert.equal(decodeSvgString(svg), 'https://school.edu/x');
+});

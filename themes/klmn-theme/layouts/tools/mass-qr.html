@@ -1,6 +1,11 @@
 {{ define "main" }}
 <style id="pageRule">@page { size: 210mm 297mm; margin: 0; }</style>
 <style>
+    /* The `hidden` attribute is only a UA-stylesheet rule, so any author
+       display declaration beats it — including Tailwind's `flex` utility,
+       which left #customDims visible for every paper size. */
+    [hidden] { display: none !important; }
+
     /* Width/height are set inline from paperDims() so the sheet and the @page
        rule cannot disagree, and so custom sizes need no extra rule. */
     .sheet {
@@ -142,6 +147,20 @@
                 </select>
             </div>
             <div>
+                <label class="form-label" for="qz">Quiet zone</label>
+                <select id="qz" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                    <option value="0">0 — none</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4 — spec minimum</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8 — generous</option>
+                </select>
+            </div>
+            <div>
                 <label class="form-label" for="capPos">Caption</label>
                 <select id="capPos" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
                     <option value="above">Above code</option>
@@ -208,7 +227,7 @@
         return {
             v: 1, rows: 2, cols: 2, paper: 'a4', orient: 'p', ecc: 'Q',
             capPos: 'above', capSize: 'm', fg: '#000000', bg: '#ffffff',
-            cw: 210, ch: 297, cu: 'mm', tiles: {}
+            cw: 210, ch: 297, cu: 'mm', qz: 4, tiles: {}
         };
     }
 
@@ -259,6 +278,7 @@
             cw: clampDim(obj.cw, d.cw),
             ch: clampDim(obj.ch, d.ch),
             cu: pickEnum(obj.cu, 'cu', d.cu),
+            qz: clamp(obj.qz, 0, 8, d.qz),
             tiles: {}
         };
         var tiles = obj.tiles || {};
@@ -405,7 +425,7 @@
             // The QR spec requires a 4-module quiet zone around every code; the
             // grid gap is measured in mm and unrelated to module size, so it
             // cannot substitute. Without this, printed codes won't scan.
-            code.innerHTML = qrRender.toSvgString(qr, 4, state.fg, state.bg)
+            code.innerHTML = qrRender.toSvgString(qr, state.qz, state.fg, state.bg)
                 .replace(/^<\?xml[^>]*\?>\s*/, '');
             var svgEl = code.querySelector('svg');
             if (svgEl) {
@@ -710,7 +730,7 @@
     // Changing units re-labels the same sheet; it must not resize it.
     elCu.addEventListener('change', function () { setState({ cu: elCu.value }); });
 
-    var SIMPLE = ['paper', 'orient', 'ecc', 'capPos', 'capSize'];
+    var SIMPLE = ['paper', 'orient', 'ecc', 'qz', 'capPos', 'capSize'];
     SIMPLE.forEach(function (name) {
         var el = document.getElementById(name);
         el.value = state[name];
