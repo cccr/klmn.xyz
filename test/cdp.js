@@ -110,6 +110,10 @@ async function withSheet(state, fn) {
       await c.send('Runtime.evaluate', { expression: "window.dispatchEvent(new Event('resize'))" });
       await new Promise((r) => setTimeout(r, 300));
     },
+    async screenshot() {
+      const r = await c.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
+      return Buffer.from(r.data, 'base64');
+    },
     // Evaluates print-only rules without going through printToPDF, so a test
     // can assert on the styles the printer sees rather than inferring them
     // from a page count. Pass '' to go back to screen.

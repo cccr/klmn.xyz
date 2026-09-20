@@ -815,3 +815,37 @@ test('Enter on the Delete button deletes rather than commits', () => {
   p.click(del); // the browser's own activation, which follows the keydown
   assert.ok(!p.window.massQr.getState().tiles['0,0'], 'the tile is gone');
 });
+
+// ── Control strip ──────────────────────────────────────────────────
+
+test('controls are grouped, and every one still resolves by id', () => {
+  const { doc, $ } = page();
+  const groups = [...doc.querySelectorAll('#controls fieldset legend')].map((l) => l.textContent.trim());
+  assert.deepEqual(groups, ['Sheet', 'Codes', 'Preview']);
+
+  for (const id of ['cols', 'rows', 'mg', 'gp', 'paper', 'cw', 'ch', 'cu', 'orient',
+                    'ecc', 'qz', 'capPos', 'capSize', 'fg', 'bg', 'zoom', 'btnPrint', 'warn']) {
+    assert.ok($(id), `#${id} still exists`);
+  }
+});
+
+test('the colour and caption controls say what they do', () => {
+  const { doc } = page();
+  const label = (id) => doc.querySelector('label[for="' + id + '"]').textContent.trim();
+  assert.equal(label('fg'), 'Code colour');
+  assert.equal(label('bg'), 'Sheet colour');
+  assert.equal(label('capPos'), 'Caption position');
+});
+
+test('a landscape custom sheet says what it will actually print', () => {
+  const p = page();
+  assert.ok(p.$('customNote').hidden, 'nothing to say for A4 portrait');
+  p.window.massQr.setState({ paper: 'custom', cw: 120, ch: 180, orient: 'l' });
+  assert.ok(!p.$('customNote').hidden);
+  // paperDims swaps the pair for landscape, so the fields read 120 x 180
+  // while the paper is 180 x 120 — say so rather than let them contradict.
+  assert.match(p.$('customNote').textContent, /180\s*×\s*120\s*mm/);
+
+  p.window.massQr.setState({ orient: 'p' });
+  assert.ok(p.$('customNote').hidden, 'portrait needs no note');
+});

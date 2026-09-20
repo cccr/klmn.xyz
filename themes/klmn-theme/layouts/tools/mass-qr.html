@@ -163,123 +163,135 @@
     </header>
 
     <div id="controls" class="mq-controls bg-white/70 backdrop-blur border border-slate-200 rounded-2xl p-4 shadow-sm mb-6">
-        <div class="flex flex-wrap items-end gap-4">
-            <div>
-                <label class="form-label" for="cols">Columns</label>
-                <select id="cols" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white"></select>
-            </div>
-            <div>
-                <label class="form-label" for="rows">Rows</label>
-                <select id="rows" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white"></select>
-            </div>
-            <div>
-                <label class="form-label" for="mg">Margin (mm)</label>
-                <input id="mg" type="number" inputmode="decimal" min="0" max="50" step="0.5"
-                       class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
-            </div>
-            <div>
-                <label class="form-label" for="gp">Gutter (mm)</label>
-                <input id="gp" type="number" inputmode="decimal" min="0" max="30" step="0.5"
-                       class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
-            </div>
-            <div>
-                <label class="form-label" for="paper">Paper</label>
-                <select id="paper" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                    <option value="a4">A4</option>
-                    <option value="letter">Letter</option>
-                    <option value="custom">Custom</option>
-                </select>
-            </div>
-            <div id="customDims" class="flex items-end gap-2" hidden>
+        <div class="flex flex-wrap gap-x-8 gap-y-5">
+            <fieldset class="flex flex-wrap items-end gap-3 min-w-max">
+                <legend class="form-label mb-1 w-full">Sheet</legend>
                 <div>
-                    <label class="form-label" for="cw">Width</label>
-                    <input id="cw" type="number" inputmode="decimal"
-                           class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
-                </div>
-                <span class="pb-2.5 text-slate-400">&times;</span>
-                <div>
-                    <label class="form-label" for="ch">Height</label>
-                    <input id="ch" type="number" inputmode="decimal"
-                           class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
-                </div>
-                <div>
-                    <label class="form-label" for="cu">Units</label>
-                    <select id="cu" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                        <option value="mm">mm</option>
-                        <option value="in">inches</option>
+                    <label class="form-label" for="paper">Paper</label>
+                    <select id="paper" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                        <option value="a4">A4</option>
+                        <option value="letter">Letter</option>
+                        <option value="custom">Custom</option>
                     </select>
                 </div>
-            </div>
-            <div>
-                <label class="form-label" for="orient">Orientation</label>
-                <select id="orient" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                    <option value="p">Portrait</option>
-                    <option value="l">Landscape</option>
-                </select>
-            </div>
-            <div>
-                <label class="form-label" for="ecc">Error correction</label>
-                <select id="ecc" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                    <option value="L">L — 7%</option>
-                    <option value="M">M — 15%</option>
-                    <option value="Q">Q — 25%</option>
-                    <option value="H">H — 30%</option>
-                </select>
-            </div>
-            <div>
-                <label class="form-label" for="qz">Quiet zone</label>
-                <select id="qz" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                    <option value="0">0 — none</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4 — spec minimum</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8 — generous</option>
-                </select>
-            </div>
-            <div>
-                <label class="form-label" for="capPos">Caption</label>
-                <select id="capPos" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                    <option value="above">Above code</option>
-                    <option value="below">Below code</option>
-                </select>
-            </div>
-            <div>
-                <label class="form-label" for="capSize">Caption size</label>
-                <select id="capSize" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                    <option value="s">Small</option>
-                    <option value="m">Medium</option>
-                    <option value="l">Large</option>
-                </select>
-            </div>
-            <div>
-                <label class="form-label" for="fg">Code</label>
-                <input id="fg" type="color" class="block" />
-            </div>
-            <div>
-                <label class="form-label" for="bg">Background</label>
-                <input id="bg" type="color" class="block" />
-            </div>
-            <div>
-                <label class="form-label" for="zoom">Zoom</label>
-                <select id="zoom" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                    <option value="fit">Fit width</option>
-                    <option value="page">Fit page</option>
-                    <option value="1">100%</option>
-                    <option value="1.5">150%</option>
-                </select>
-            </div>
-            <button id="btnPrint" class="px-4 py-2 rounded-xl text-sm bg-slate-900 text-white hover:bg-slate-800">Print</button>
-            <p class="basis-full text-xs text-slate-500 no-print">
-                In the print dialog pick the same paper size as above, set Margins to
-                <strong>None</strong> and Scale to <strong>100%</strong>. Anything else and the
-                browser rescales the sheet, so the codes print at the wrong physical size.
-            </p>
+                <div id="customDims" class="flex items-end gap-2" hidden>
+                    <div>
+                        <label class="form-label" for="cw">Width</label>
+                        <input id="cw" type="number" inputmode="decimal"
+                               class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
+                    </div>
+                    <span class="pb-2.5 text-slate-400">&times;</span>
+                    <div>
+                        <label class="form-label" for="ch">Height</label>
+                        <input id="ch" type="number" inputmode="decimal"
+                               class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
+                    </div>
+                    <div>
+                        <label class="form-label" for="cu">Units</label>
+                        <select id="cu" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                            <option value="mm">mm</option>
+                            <option value="in">inches</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label" for="orient">Orientation</label>
+                    <select id="orient" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                        <option value="p">Portrait</option>
+                        <option value="l">Landscape</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label" for="cols">Columns</label>
+                    <select id="cols" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white"></select>
+                </div>
+                <div>
+                    <label class="form-label" for="rows">Rows</label>
+                    <select id="rows" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white"></select>
+                </div>
+                <div>
+                    <label class="form-label" for="mg">Margin (mm)</label>
+                    <input id="mg" type="number" inputmode="decimal" min="0" max="50" step="0.5"
+                           class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
+                </div>
+                <div>
+                    <label class="form-label" for="gp">Gutter (mm)</label>
+                    <input id="gp" type="number" inputmode="decimal" min="0" max="30" step="0.5"
+                           class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
+                </div>
+                <p id="customNote" class="basis-full text-xs text-slate-500" hidden></p>
+            </fieldset>
+
+            <fieldset class="flex flex-wrap items-end gap-3 min-w-max">
+                <legend class="form-label mb-1 w-full">Codes</legend>
+                <div>
+                    <label class="form-label" for="ecc">Error correction</label>
+                    <select id="ecc" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                        <option value="L">L &mdash; 7%</option>
+                        <option value="M">M &mdash; 15%</option>
+                        <option value="Q">Q &mdash; 25%</option>
+                        <option value="H">H &mdash; 30%</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label" for="qz">Quiet zone</label>
+                    <select id="qz" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                        <option value="0">0 &mdash; none</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4 &mdash; spec minimum</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8 &mdash; generous</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label" for="capPos">Caption position</label>
+                    <select id="capPos" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                        <option value="above">Above code</option>
+                        <option value="below">Below code</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label" for="capSize">Caption size</label>
+                    <select id="capSize" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                        <option value="s">Small</option>
+                        <option value="m">Medium</option>
+                        <option value="l">Large</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label" for="fg">Code colour</label>
+                    <input id="fg" type="color" class="block" />
+                </div>
+                <div>
+                    <label class="form-label" for="bg">Sheet colour</label>
+                    <input id="bg" type="color" class="block" />
+                </div>
+            </fieldset>
+
+            <fieldset class="flex flex-wrap items-end gap-3 min-w-max">
+                <legend class="form-label mb-1 w-full">Preview</legend>
+                <div>
+                    <label class="form-label" for="zoom">Zoom</label>
+                    <select id="zoom" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                        <option value="fit">Fit width</option>
+                        <option value="page">Fit page</option>
+                        <option value="1">100%</option>
+                        <option value="1.5">150%</option>
+                    </select>
+                </div>
+                <button id="btnPrint" class="px-4 py-2 rounded-xl text-sm bg-slate-900 text-white hover:bg-slate-800">Print</button>
+            </fieldset>
         </div>
         <p id="warn" class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-3 no-print" hidden></p>
+        <p class="text-xs text-slate-500 mt-3 no-print">
+            In the print dialog pick the same paper size as above, set Margins to
+            <strong>None</strong> and Scale to <strong>100%</strong>. Anything else and the
+            browser rescales the sheet, so the codes print at the wrong physical size.
+        </p>
     </div>
 
     <div id="sheetWrap" class="overflow-auto pb-8">
@@ -908,6 +920,17 @@
         document.getElementById('mg').value = state.mg;
         document.getElementById('gp').value = state.gp;
         elCustom.hidden = state.paper !== 'custom';
+
+        // Width/Height are the sheet as typed; paperDims() swaps them for
+        // landscape, so the fields would otherwise silently contradict the
+        // paper that comes out of the printer.
+        var note = document.getElementById('customNote');
+        note.hidden = state.paper !== 'custom' || state.orient !== 'l';
+        if (!note.hidden) {
+            var d = paperDims(state);
+            note.textContent = 'Prints ' + d[0] + ' \u00d7 ' + d[1] + ' mm (landscape)';
+        }
+
         if (elCustom.hidden) return;
         var inches = state.cu === 'in';
         elCu.value = state.cu;
