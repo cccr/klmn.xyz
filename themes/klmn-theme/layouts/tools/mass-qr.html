@@ -600,6 +600,28 @@
 
         cell.appendChild(editor);
 
+        // Enter commits, Escape discards. Without these the only way out of
+        // an editor was the mouse — Done, or a click somewhere else.
+        editor.addEventListener('keydown', function (e) {
+            // Buttons carry their own activation: a keydown here would commit
+            // and rebuild the grid before the button's click ever fires, so
+            // Enter on Delete would silently become Enter on Done.
+            if (e.target.tagName === 'BUTTON') return;
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                commitEditor(cell, pos);
+                focusCell(pos);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                // Clearing `editing` before render() rebuilds the cell from
+                // the state that was there before the edit — the fields only
+                // ever lived in the DOM, so dropping them discards the edit.
+                editing = null;
+                render();
+                focusCell(pos);
+            }
+        });
+
         done.addEventListener('click', function (e) {
             e.stopPropagation();
             commitEditor(cell, pos);

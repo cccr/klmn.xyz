@@ -768,3 +768,50 @@ test('changing zoom does not rebuild the grid', () => {
   assert.strictEqual(p.doc.querySelector('.cell[data-pos="0,0"]'), before,
     'a preview-only control must not re-encode every code');
 });
+
+// ── Editor keyboard ────────────────────────────────────────────────
+
+function keydown(p, el, key) {
+  el.dispatchEvent(new p.window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+}
+
+test('Enter in the editor commits the tile', () => {
+  const p = page();
+  p.click(p.doc.querySelector('.cell[data-pos="0,0"]'));
+  p.doc.querySelector('.f-url').value = 'https://school.edu/typed';
+  p.doc.querySelector('.f-label').value = 'Typed';
+  keydown(p, p.doc.querySelector('.f-url'), 'Enter');
+
+  assert.equal(p.doc.querySelectorAll('.cell.is-editing').length, 0, 'editor closed');
+  assert.deepEqual(p.window.massQr.getState().tiles['0,0'],
+    { u: 'https://school.edu/typed', l: 'Typed', d: '' });
+});
+
+test('Escape in the editor discards the edit', () => {
+  const p = withTiles({ '0,0': { u: 'https://school.edu/keep', l: 'Keep', d: '' } });
+  p.click(p.doc.querySelector('.cell[data-pos="0,0"]'));
+  p.doc.querySelector('.f-url').value = 'https://school.edu/discard';
+  keydown(p, p.doc.querySelector('.f-url'), 'Escape');
+
+  assert.equal(p.doc.querySelectorAll('.cell.is-editing').length, 0, 'editor closed');
+  assert.equal(p.window.massQr.getState().tiles['0,0'].u, 'https://school.edu/keep',
+    'the typed value was thrown away');
+});
+
+test('Escape on a fresh empty cell leaves it empty', () => {
+  const p = page();
+  p.click(p.doc.querySelector('.cell[data-pos="1,1"]'));
+  p.doc.querySelector('.f-url').value = 'https://school.edu/never';
+  keydown(p, p.doc.querySelector('.f-url'), 'Escape');
+  assert.ok(!p.window.massQr.getState().tiles['1,1']);
+  assert.ok(p.doc.querySelector('.cell[data-pos="1,1"]').classList.contains('is-empty'));
+});
+
+test('Enter on the Delete button deletes rather than commits', () => {
+  const p = withTiles({ '0,0': { u: 'https://school.edu/gone', l: 'Gone', d: '' } });
+  p.click(p.doc.querySelector('.cell[data-pos="0,0"]'));
+  const del = p.doc.querySelector('.f-delete');
+  keydown(p, del, 'Enter');
+  p.click(del); // the browser's own activation, which follows the keydown
+  assert.ok(!p.window.massQr.getState().tiles['0,0'], 'the tile is gone');
+});
