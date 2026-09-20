@@ -152,3 +152,69 @@ test('a custom paper size prints at its real physical size', async (t) => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+// Landscape + a dense grid + large captions is the combination that exposed a
+// broken height chain: in print, #sheetWrap loses `overflow: auto`, the grid's
+// `height: 100%` went indefinite, and each tile's square SVG then sized itself
+// from its intrinsic aspect ratio — pushing the bottom row onto a second page
+// while the sheet box itself still measured correctly. Portrait 1x1 and 2x2
+// sheets did not reproduce it, so this case is kept explicitly.
+const LANDSCAPE_STATE = {
+  v: 1, rows: 2, cols: 2, paper: 'custom', cw: 127, ch: 177.8, cu: 'in',
+  orient: 'l', ecc: 'Q', capPos: 'above', capSize: 'l', qz: 1,
+  fg: '#000000', bg: '#ffffff',
+  tiles: {
+    '0,0': { u: 'https://test.io/a', l: 'test', d: '' },
+    '0,1': { u: 'https://test.io/b', l: 'test.io', d: '' },
+    '1,0': { u: 'https://test.io/c', l: 'test.io', d: '' },
+    '1,1': { u: 'https://test.io/d', l: 'test.io', d: '' }
+  }
+};
+
+test('a landscape custom sheet stays on one page and keeps every code', async (t) => {
+  if (!CHROME) return t.skip('No Chrome/Chromium found; set CHROME=<path to binary> to run this test');
+  buildSite();
+
+  const server = spawn('python3', ['-m', 'http.server', String(PORT + 2)], { cwd: SITE, stdio: 'ignore' });
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'massqr-land-'));
+  try {
+    await new Promise((r) => setTimeout(r, 1500));
+    const pdf = path.join(tmp, 'landscape.pdf');
+    const url = `http://localhost:${PORT + 2}/tools/mass-qr/#s=${hashFor(LANDSCAPE_STATE)}`;
+    execFileSync(CHROME, [
+      '--headless', '--disable-gpu', '--no-sandbox', '--no-pdf-header-footer',
+      '--virtual-time-budget=6000', `--print-to-pdf=${pdf}`, url
+    ], { stdio: 'ignore' });
+
+    const raw = fs.readFileSync(pdf);
+    const counts = [...raw.toString('latin1').matchAll(/\/Count\s+(\d+)/g)].map((m) => +m[1]);
+    assert.equal(Math.max(...counts), 1, 'one page — a broken height chain spills the bottom row');
+
+    // 5x7in rotated to landscape is 7x5, ratio 0.714.
+    const png = path.join(tmp, 'landscape.png');
+    execFileSync('sips', ['-s', 'format', 'png', pdf, '--out', png], { stdio: 'ignore' });
+    const img = PNG.sync.read(fs.readFileSync(png));
+    const ratio = img.height / img.width;
+    assert.ok(Math.abs(ratio - 5 / 7) < 0.02, `landscape 7x5 aspect, got ${ratio.toFixed(3)}`);
+
+    // All four must be on this page: the bug put the bottom row on page two,
+    // so a quadrant decode is what proves the whole grid actually fits.
+    const found = [];
+    for (const [qx, qy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+      const w = Math.floor(img.width / 2), h = Math.floor(img.height / 2);
+      const buf = new Uint8ClampedArray(w * h * 4);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const si = ((y + qy * h) * img.width + (x + qx * w)) * 4;
+        const di = (y * w + x) * 4;
+        buf[di] = img.data[si]; buf[di + 1] = img.data[si + 1];
+        buf[di + 2] = img.data[si + 2]; buf[di + 3] = 255;
+      }
+      const res = jsQR(buf, w, h);
+      if (res) found.push(res.data);
+    }
+    assert.deepEqual(found.sort(), Object.values(LANDSCAPE_STATE.tiles).map((x) => x.u).sort());
+  } finally {
+    server.kill();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
