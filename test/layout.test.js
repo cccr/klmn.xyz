@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { buildSite } = require('./harness');
-const { withSheet, closeAll, CHROME } = require('./cdp');
+const { withPage, withSheet, closeAll, CHROME } = require('./cdp');
 
 buildSite();
 
@@ -169,4 +169,20 @@ test('a mixed-caption sheet is uniform end to end', { skip: !CHROME && 'no Chrom
   const gaps = m.map((c) => c.capToCode);
   assert.ok(Math.max(...gaps) - Math.min(...gaps) < 0.5,
     `caption-to-code gap differs across tiles: ${gaps.map((g) => g.toFixed(1)).join(', ')}`);
+});
+
+// The controls group each fieldset onto one line with `min-width: max-content`
+// so a group reads as a unit. Uncapped, the widest group — Codes, six
+// controls — is wider than a phone, and instead of wrapping it dragged the
+// whole document sideways: the header clipped, the sheet ran off the right
+// edge, and the page scrolled horizontally.
+test('the page never scrolls sideways, down to a phone',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  for (const w of [1400, 900, 760, 390]) {
+    const [scroll, inner] = await withPage('/tools/mass-qr/', async (p) => {
+      await p.setViewport(w, 900);
+      return p.evalJson('[document.documentElement.scrollWidth, window.innerWidth]');
+    });
+    assert.ok(scroll <= inner, `at ${w}px the document is ${scroll}px wide`);
+  }
 });

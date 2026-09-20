@@ -140,19 +140,30 @@ const LANDSCAPE_STATE = {
   }
 };
 
-// Body margin comes only from Tailwind's CDN preflight. Block that script —
-// offline, corporate proxy, a slow CDN on the day someone hits Ctrl-P — and
-// body keeps its 8px UA margin while the sheet exactly fills the page.
-test('the sheet still prints on one page without the Tailwind CDN',
-  { skip: !CDP_CHROME && 'no Chrome' }, async () => {
+// The page used to get its body-margin reset from Tailwind's CDN preflight.
+// Block that CDN — offline, a corporate proxy, a slow day — and the sheet
+// started 8px down a page it exactly fills, 8px from a second blank one.
+// Two halves to the claim that this is over: the page pulls in no external
+// script at all, and blocking every third-party host it still does reference
+// (the webfont) changes neither the screen reset nor the print output.
+test('the sheet needs nothing from a CDN', { skip: !CDP_CHROME && 'no Chrome' }, async () => {
+  const html = fs.readFileSync(path.join(SITE, 'tools/mass-qr/index.html'), 'utf8');
+  const remoteScripts = [...html.matchAll(/<script[^>]*\ssrc="(?:https?:)?\/\/[^"]*"/g)].map((m) => m[0]);
+  assert.deepEqual(remoteScripts, [], 'no third-party script on the page');
+
+  // Derived from the page rather than hardcoded, so anything third-party
+  // added later is blocked by this test without anyone remembering to.
+  const hosts = [...new Set(
+    [...html.matchAll(/(?:src|href)="(?:https?:)?\/\/([^/"]+)/g)].map((m) => m[1]))];
+
   const pdf = await withSheet(STATE, async (p) => {
-    await p.blockUrls(['*cdn.tailwindcss.com*']);
-    assert.equal(await p.evalJson("getComputedStyle(document.body).margin"), '8px',
-      'precondition: with no preflight, the UA margin is live on screen');
+    await p.blockUrls(hosts.map((h) => `*${h}*`));
+    assert.equal(await p.evalJson("getComputedStyle(document.body).margin"), '0px',
+      'the screen reset is same-origin');
 
     await p.emulateMedia('print');
     assert.equal(await p.evalJson("getComputedStyle(document.body).margin"), '0px',
-      'the print reset does not depend on the CDN');
+      'so is the print reset');
     await p.emulateMedia('');
     return p.printToPDF();
   });

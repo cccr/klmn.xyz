@@ -84,19 +84,41 @@ function connect(url) {
   };
 }
 
-async function withSheet(state, fn) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Polls a page expression until it is true, or gives up after ~5s. Evaluating
+// across a navigation can throw; that just means "not yet".
+async function until(page, expr) {
+  for (let i = 0; i < 100; i++) {
+    try { if (await page.evalJson(expr)) return true; } catch (e) { /* mid-navigation */ }
+    await sleep(50);
+  }
+  return false;
+}
+
+// Waits for the page to be measurable. Pages that still load the Tailwind CDN
+// also need a beat for the runtime compiler to rewrite styles; pages that have
+// dropped it do not, and used to pay that 2s on every single load.
+async function settle(page) {
+  await until(page, 'document.readyState === "complete"');
+  // The sheet renders from the hash after load, so measuring at readyState
+  // catches an empty grid. Pages without a grid skip this.
+  await until(page, "!document.getElementById('grid') || !!document.querySelector('#grid .cell')");
+  if (await page.evalJson('!!document.querySelector(\'script[src*="tailwindcss"]\')')) {
+    await sleep(2000);
+  }
+}
+
+// Opens one tab on a path under the built site and hands back a page handle.
+async function withPage(relUrl, fn) {
   await boot();
-  const url = `http://localhost:${SITE_PORT}/tools/mass-qr/#s=${hashFor(state)}`;
+  const url = `http://localhost:${SITE_PORT}/${relUrl.replace(/^\//, '')}`;
   const tab = await (await fetch(
     `http://127.0.0.1:${PORT}/json/new?${encodeURIComponent(url)}`, { method: 'PUT' })).json();
   const c = connect(tab.webSocketDebuggerUrl);
   await c.ready;
   await c.send('Page.enable');
   await c.send('Network.enable');
-  // Tailwind's CDN script rewrites styles after load; 2s is comfortably past
-  // it on this machine and in CI, and the alternative (polling for a sentinel)
-  // would need a hook in the page that exists only for tests.
-  await new Promise((r) => setTimeout(r, 2000));
   const page = {
     async evalJson(expr) {
       const r = await c.send('Runtime.evaluate',
@@ -108,7 +130,7 @@ async function withSheet(state, fn) {
       await c.send('Emulation.setDeviceMetricsOverride',
         { width, height, deviceScaleFactor: 1, mobile: false });
       await c.send('Runtime.evaluate', { expression: "window.dispatchEvent(new Event('resize'))" });
-      await new Promise((r) => setTimeout(r, 300));
+      await sleep(300);
     },
     async screenshot() {
       const r = await c.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
@@ -122,8 +144,13 @@ async function withSheet(state, fn) {
     },
     async blockUrls(urls) {
       await c.send('Network.setBlockedURLs', { urls });
+      // Marking the live document first makes the wait below observe the new
+      // one; readyState alone is already 'complete' on the document being
+      // replaced, so polling it would sail straight through the reload.
+      await c.send('Runtime.evaluate', { expression: 'window.__preReload = true' });
       await c.send('Page.reload');
-      await new Promise((r) => setTimeout(r, 2000));
+      await until(page, '!window.__preReload');
+      await settle(page);
     },
     async printToPDF(opts) {
       const r = await c.send('Page.printToPDF', Object.assign(
@@ -132,12 +159,18 @@ async function withSheet(state, fn) {
       return Buffer.from(r.data, 'base64');
     }
   };
+  await settle(page);
   try {
     return await fn(page);
   } finally {
     c.close();
     await fetch(`http://127.0.0.1:${PORT}/json/close/${tab.id}`);
   }
+}
+
+// The sheet, pre-loaded from the #s= hash the app itself writes.
+function withSheet(state, fn) {
+  return withPage(`tools/mass-qr/#s=${hashFor(state)}`, fn);
 }
 
 async function closeAll() {
@@ -155,4 +188,4 @@ async function closeAll() {
   try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e) { /* best effort */ }
 }
 
-module.exports = { withSheet, hashFor, closeAll, CHROME };
+module.exports = { withPage, withSheet, hashFor, closeAll, CHROME };
