@@ -7,9 +7,6 @@
    into place; the design pass changed their colours, not their geometry.
    ═══════════════════════════════════════════════════════════════════════ */
 
-/* Both inks are one decision, so they share a row. */
-.ink-pair { display: flex; align-items: center; gap: .5rem; }
-
 /* ── The sheet ─────────────────────────────────────────────────────────
    No physical size of its own. On screen it is a preview at a conventional
    paper ratio; in print it fills whatever the browser gives it, the way any
