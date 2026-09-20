@@ -642,3 +642,71 @@ test('the colour and caption controls say what they do', () => {
 
 
 
+
+// ── Margin and gutter ──────────────────────────────────────────────
+
+test('margin and gutter default to 10mm and 4mm and round-trip', () => {
+  const { window } = page();
+  const d = window.massQr.defaultState();
+  assert.equal(d.mg, 10);
+  assert.equal(d.gp, 4);
+  const s = window.massQr.defaultState();
+  s.mg = 0; s.gp = 12.5;
+  assert.deepEqual(window.massQr.decodeState(window.massQr.encodeState(s)), s);
+  assert.equal(window.massQr.normalize({ v: 1, mg: 999 }).mg, 50, 'margin clamps down');
+  assert.equal(window.massQr.normalize({ v: 1, mg: -5 }).mg, 0, 'margin clamps up');
+  assert.equal(window.massQr.normalize({ v: 1, gp: 999 }).gp, 30, 'gutter clamps down');
+  assert.equal(window.massQr.normalize({ v: 1, gp: 'wide' }).gp, 4, 'garbage falls back');
+});
+
+test('margin drives both the preview padding and the real @page margin', () => {
+  const p = page();
+  assert.match(p.$('pageRule').textContent, /@page \{ margin: 10mm; \}/);
+  assert.equal(p.$('sheet').style.getPropertyValue('--sheet-pad'), '10mm');
+
+  p.setInput(p.$('mg'), '4.5');
+  assert.equal(p.window.massQr.getState().mg, 4.5);
+  assert.equal(p.$('sheet').style.getPropertyValue('--sheet-pad'), '4.5mm');
+  assert.match(p.$('pageRule').textContent, /@page \{ margin: 4\.5mm; \}/,
+    'the preview and the printer must be asked for the same margin');
+});
+
+test('gutter reaches the grid', () => {
+  const p = page();
+  assert.equal(p.$('sheet').style.getPropertyValue('--gutter'), '4mm');
+  p.setInput(p.$('gp'), '1.5');
+  assert.equal(p.window.massQr.getState().gp, 1.5);
+  assert.equal(p.$('sheet').style.getPropertyValue('--gutter'), '1.5mm');
+});
+
+test('@page never declares a paper size', () => {
+  // WebKit ignores the size descriptor; declaring one is what broke Safari.
+  const p = page();
+  p.setInput(p.$('mg'), '25');
+  assert.doesNotMatch(p.$('pageRule').textContent, /size/);
+});
+
+test('focusing margin or gutter marks the sheet, and blurring clears it', () => {
+  const p = page();
+  const sheet = p.$('sheet');
+  const fire = (el, type) => el.dispatchEvent(new p.window.Event(type, { bubbles: false }));
+
+  fire(p.$('mg'), 'focus');
+  assert.ok(sheet.classList.contains('show-margin'));
+  assert.ok(!sheet.classList.contains('show-gutter'), 'only the focused control guides');
+  fire(p.$('mg'), 'blur');
+  assert.ok(!sheet.classList.contains('show-margin'));
+
+  fire(p.$('gp'), 'focus');
+  assert.ok(sheet.classList.contains('show-gutter'));
+  fire(p.$('gp'), 'blur');
+  assert.ok(!sheet.classList.contains('show-gutter'));
+});
+
+test('the guide survives the re-render that typing a new value triggers', () => {
+  const p = page();
+  p.$('mg').dispatchEvent(new p.window.Event('focus', { bubbles: false }));
+  p.setInput(p.$('mg'), '20');
+  assert.ok(p.$('sheet').classList.contains('show-margin'),
+    'render() rebuilds the sheet; the guide must still be on while the field has focus');
+});

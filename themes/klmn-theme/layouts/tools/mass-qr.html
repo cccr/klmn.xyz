@@ -1,4 +1,8 @@
 {{ define "main" }}
+<!-- Margin only, rewritten from state.mg. `size` is deliberately never set:
+     WebKit ignores the size descriptor, which is what broke printing in
+     Safari. `margin` is well supported everywhere. -->
+<style id="pageRule">@page { margin: 10mm; }</style>
 <style>
     /* The sheet has no physical size of its own. On screen it is a preview
        at a conventional paper ratio; in print it simply fills whatever the
@@ -17,6 +21,31 @@
         padding: var(--sheet-pad, 10mm);
         background: #fff; box-shadow: 0 1px 12px rgba(15, 23, 42, .12);
         display: flex; flex-direction: column; overflow: hidden;
+        position: relative;
+    }
+
+    /* ── Margin and gutter guides ──────────────────────────────────
+       Shown only while the matching control has focus, and never printed.
+       An absolutely positioned child is laid out against the sheet's padding
+       box, so `inset: var(--sheet-pad)` lands exactly on the content edge —
+       the line the margin actually produces. The huge spread shadow tints
+       everything outside it; the sheet's own `overflow: hidden` clips it to
+       the margin band. */
+    .sheet::after {
+        content: ''; position: absolute; inset: var(--sheet-pad, 10mm);
+        pointer-events: none; opacity: 0; transition: opacity .12s ease;
+        outline: 1px dashed #0284c7;
+        box-shadow: 0 0 0 100vmax rgba(2, 132, 199, .10);
+    }
+    .sheet.show-margin::after { opacity: 1; }
+
+    /* Gutter reads as negative space, so tint the tiles rather than the gaps. */
+    .sheet.show-gutter .cell { background: rgba(2, 132, 199, .10); }
+    .sheet.show-gutter .cell.is-filled { outline: 1px dashed #0284c7; outline-offset: 0; }
+
+    @media print {
+        .sheet::after { display: none !important; }
+        .sheet .cell { background: none !important; }
     }
 
     #grid { display: grid; gap: var(--gutter, 4mm); width: 100%; flex: 1 1 auto; min-height: 0; }
@@ -109,11 +138,6 @@
     .cell.is-editing .editor .f-done { background: #0f172a; color: #fff; border: none; }
     .cell.is-editing .editor .f-delete { background: #fff; color: #b91c1c; border: 1px solid #fecaca; }
 
-    /* Margin only — never `size`. The paper is the printer's business, and
-       the one engine-specific thing we relied on before was exactly the size
-       descriptor Safari ignores. */
-    @page { margin: 10mm; }
-
     @media print {
         /* Site chrome from baseof.html — hidden from here so the theme stays untouched. */
         body > header, body > footer { display: none !important; }
@@ -145,6 +169,8 @@
         .sheet {
             width: 100% !important; height: 100% !important;
             max-width: none !important; aspect-ratio: auto !important;
+            /* @page already carries state.mg, so the sheet must not add it
+               a second time. */
             padding: 0 !important; margin: 0 !important;
             box-shadow: none !important; transform: none !important;
             print-color-adjust: exact;
@@ -173,6 +199,16 @@
         <div class="flex flex-wrap gap-x-8 gap-y-5">
             <fieldset class="flex flex-wrap items-end gap-3 min-w-max">
                 <legend class="form-label mb-1 w-full">Sheet</legend>
+                <div>
+                    <label class="form-label" for="mg">Margin (mm)</label>
+                    <input id="mg" type="number" inputmode="decimal" min="0" max="50" step="0.5"
+                           class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
+                </div>
+                <div>
+                    <label class="form-label" for="gp">Gutter (mm)</label>
+                    <input id="gp" type="number" inputmode="decimal" min="0" max="30" step="0.5"
+                           class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
+                </div>
                 <div>
                     <label class="form-label" for="cols">Columns</label>
                     <select id="cols" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white"></select>
@@ -274,7 +310,7 @@
 
     function defaultState() {
         return {
-            v: 1, rows: 2, cols: 2, ecc: 'Q',
+            v: 1, rows: 2, cols: 2, ecc: 'Q', mg: 10, gp: 4,
             capPos: 'above', capSize: 'm', fg: '#000000', bg: '#ffffff',
             qz: 4, tiles: {}
         };
@@ -286,6 +322,15 @@
         n = parseInt(n, 10);
         if (isNaN(n)) return dflt;
         return Math.min(hi, Math.max(lo, n));
+    }
+
+    // Margin and gutter are fractional millimetres, so they need a float
+    // clamp rounded to 0.1mm — finer than any printer resolves.
+    var MG_MAX = 50, GP_MAX = 30;
+    function clampMm(n, lo, hi, dflt) {
+        n = parseFloat(n);
+        if (!isFinite(n)) return dflt;
+        return Math.round(Math.min(hi, Math.max(lo, n)) * 10) / 10;
     }
 
     function pickEnum(v, name, dflt) {
@@ -309,6 +354,8 @@
             fg: hex(obj.fg, d.fg),
             bg: hex(obj.bg, d.bg),
             qz: clamp(obj.qz, 0, 8, d.qz),
+            mg: clampMm(obj.mg, 0, MG_MAX, d.mg),
+            gp: clampMm(obj.gp, 0, GP_MAX, d.gp),
             tiles: {}
         };
         var tiles = obj.tiles || {};
@@ -666,6 +713,18 @@
     // offsetHeight, not getBoundingClientRect(): the former is untransformed
     // layout pixels, so the band stays correct even if something scales the
     // sheet.
+    // Margin drives both the preview's padding and the real @page margin, so
+    // what you see is what the printer is asked for. Gutter is grid gap only.
+    function applyPageSetup() {
+        var sheet = document.getElementById('sheet');
+        sheet.style.setProperty('--sheet-pad', state.mg + 'mm');
+        sheet.style.setProperty('--gutter', state.gp + 'mm');
+        document.getElementById('pageRule').textContent =
+            '@page { margin: ' + state.mg + 'mm; }';
+        elMg.value = state.mg;
+        elGp.value = state.gp;
+    }
+
     var CAP_LINE = 1.3; // line-height, matching the .cap rules
     function applyCaptionBand() {
         grid.style.setProperty('--cap-h', 'auto');
@@ -710,6 +769,7 @@
                 grid.appendChild(cell);
             }
         }
+        applyPageSetup();
         applyCaptionBand();
     }
 
@@ -737,6 +797,30 @@
     });
     elRows.addEventListener('change', function () {
         if (!resize(parseInt(elRows.value, 10), state.cols)) elRows.value = state.rows;
+    });
+
+    // ── Margin and gutter ──────────────────────────────────────
+    var elMg = document.getElementById('mg');
+    var elGp = document.getElementById('gp');
+
+    // Focusing a field draws the thing it controls onto the preview: the
+    // margin field outlines the content edge and tints the band outside it,
+    // the gutter field tints the tiles so the gaps between them read as the
+    // negative space being adjusted.
+    [[elMg, 'show-margin'], [elGp, 'show-gutter']].forEach(function (pair) {
+        var input = pair[0], cls = pair[1];
+        var sheet = function () { return document.getElementById('sheet'); };
+        input.addEventListener('focus', function () { sheet().classList.add(cls); });
+        input.addEventListener('blur', function () { sheet().classList.remove(cls); });
+        // `input`, not `change`: the guide should track the number as it is
+        // typed or stepped, while the field still has focus.
+        input.addEventListener('input', function () {
+            var patch = {};
+            patch[input.id] = input.value;
+            setState(patch);
+            sheet().classList.add(cls);
+            input.focus();
+        });
     });
 
     var SIMPLE = ['ecc', 'qz', 'capPos', 'capSize'];
