@@ -619,22 +619,34 @@ test('Enter on the Delete button deletes rather than commits', () => {
 
 // ── Control strip ──────────────────────────────────────────────────
 
-test('controls are grouped, and every one still resolves by id', () => {
+test('the rail is grouped, and every control still resolves by id', () => {
   const { doc, $ } = page();
-  const groups = [...doc.querySelectorAll('#controls fieldset legend')].map((l) => l.textContent.trim());
-  assert.deepEqual(groups, ['Sheet', 'Codes', 'Output']);
+  const groups = [...doc.querySelectorAll('.rail .rail-group > h2')].map((h) => h.textContent.trim());
+  assert.deepEqual(groups, ['Sheet', 'Codes']);
 
-  for (const id of ['cols', 'rows', 'ecc', 'qz', 'capPos', 'capSize', 'fg', 'bg', 'btnPrint']) {
+  for (const id of ['mg', 'gp', 'cols', 'rows', 'ecc', 'qz', 'capPos', 'capSize', 'fg', 'bg', 'btnPrint']) {
     assert.ok($(id), `#${id} still exists`);
   }
 });
 
-test('the colour and caption controls say what they do', () => {
+// The rail shortens visible labels to keep the value column aligned, so the
+// full name has to survive somewhere a screen reader will read it.
+test('every control announces what it does', () => {
   const { doc } = page();
-  const label = (id) => doc.querySelector('label[for="' + id + '"]').textContent.trim();
-  assert.equal(label('fg'), 'Code colour');
-  assert.equal(label('bg'), 'Sheet colour');
-  assert.equal(label('capPos'), 'Caption position');
+  const name = (id) => {
+    const el = doc.getElementById(id);
+    const aria = el.getAttribute('aria-label');
+    if (aria) return aria;
+    return doc.querySelector('label[for="' + id + '"]').textContent.trim();
+  };
+  assert.equal(name('fg'), 'Code colour');
+  assert.equal(name('bg'), 'Sheet colour');
+  assert.equal(name('capPos'), 'Caption position');
+  assert.equal(name('capSize'), 'Caption size');
+  assert.equal(name('mg'), 'Margin in millimetres');
+  assert.equal(name('gp'), 'Gutter in millimetres');
+  assert.equal(name('ecc'), 'Error correction level');
+  assert.equal(name('qz'), 'Quiet zone in modules');
 });
 
 

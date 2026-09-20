@@ -1,130 +1,83 @@
 /* ══ Mass QR Sheet ═════════════════════════════════════════════════════════
-   Everything this page looks like. No framework: /css/style.css supplies the
-   reset, the site chrome and .form-label, and the rest is here.
+   The console lives on the rail; the sheet is the artifact. style.css owns
+   the reset, the chrome, the rail primitives and the trim marks — this file
+   is the sheet itself and the few rail controls only this page has.
 
-   This file was 200 lines wedged inside a <style> block in the layout, where
-   an unbalanced comment marker silently ate the next rule and nothing
-   noticed — which is most of why it is a file now.
+   The sheet, tile and print rules below are load-bearing and were measured
+   into place; the design pass changed their colours, not their geometry.
    ═══════════════════════════════════════════════════════════════════════ */
 
-/* ── Page furniture ───────────────────────────────────────────────────── */
+/* ── Rail ──────────────────────────────────────────────────────────────── */
 
-.mq-intro { margin-bottom: 1.5rem; }
-.mq-intro h1 {
-    font-size: 1.875rem; line-height: 2.25rem;
-    font-weight: 700; letter-spacing: -.025em;
+.rail-actions { margin-top: 1.75rem; }
+.rail-actions .btn { width: 100%; }
+
+/* The scale a value is drawn from, as a small aligned table rather than a
+   run-on meta string. Keeps "Q" in the control and "25%" out of it. */
+.rail-legend {
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    justify-content: start;
+    column-gap: 1.25rem;
+    margin-top: .5rem; margin-bottom: 1rem;
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+    font-size: .75rem; color: var(--on-bed-soft);
 }
-@media (min-width: 768px) {
-    .mq-intro h1 { font-size: 2.25rem; line-height: 2.5rem; }
-}
-.mq-intro p { margin-top: .5rem; max-width: 42rem; color: #475569; }
-
-.mq-note, .mq-credit { font-size: .75rem; line-height: 1rem; color: #64748b; }
-.mq-note { margin-top: .75rem; }
-.mq-credit { margin-top: 1rem; }
-.mq-credit a { text-decoration: underline; }
-.mq-credit a:hover { color: #334155; }
-
-/* ── Controls ─────────────────────────────────────────────────────────── */
-
-.mq-controls {
-    margin-bottom: 1.5rem;
-    padding: 1rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 1rem;
-    background: rgba(255, 255, 255, .7);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    box-shadow: 0 1px 2px 0 rgba(15, 23, 42, .05);
+.rail-hint {
+    margin-top: .5rem; margin-bottom: 1rem;
+    font-size: .75rem; line-height: 1.5; color: var(--on-bed-soft);
 }
 
-/* Three groups — Sheet, Codes, Output — that wrap as a unit rather than
-   letting individual controls stray into a neighbouring group. */
-.mq-groups { display: flex; flex-wrap: wrap; column-gap: 2rem; row-gap: 1.25rem; }
-.mq-controls fieldset {
-    display: flex; flex-wrap: wrap; align-items: flex-end;
-    gap: .75rem;
-    /* max-content keeps a group on one line so it reads as a unit; the 100%
-       ceiling stops the widest group (Codes, six controls) from forcing the
-       whole page wider than the viewport on a phone, which is what the bare
-       max-content version did. */
-    min-width: min(max-content, 100%);
+/* Both inks in one row: they are one decision. */
+.ink-pair { display: flex; align-items: center; gap: .5rem; }
+
+.rail-note, .rail-credit {
+    margin-top: 1.5rem;
+    font-size: .75rem; line-height: 1.55; color: var(--on-bed-soft);
 }
-.mq-controls legend { width: 100%; margin-bottom: .25rem; }
+.rail-credit a { color: var(--on-bed-soft); text-decoration: underline; }
+.rail-credit a:hover { color: var(--reg); }
 
-.mq-controls select,
-.mq-controls input[type="number"] {
-    display: block;
-    padding: .5rem .75rem;
-    border: 1px solid #cbd5e1;
-    border-radius: .75rem;
-    background: #fff;
-}
-.mq-controls input[type="number"] { width: 6rem; }
-
-/* Native colour inputs are a head shorter than the selects beside them and
-   carry a platform chrome that matches nothing else on the page. */
-.mq-controls input[type="color"] {
-    display: block;
-    -webkit-appearance: none; appearance: none;
-    width: 2.75rem; height: 2.625rem;
-    padding: 0; background: none; cursor: pointer;
-    border: 1px solid #cbd5e1; border-radius: .75rem;
-}
-.mq-controls input[type="color"]::-webkit-color-swatch-wrapper { padding: 4px; }
-.mq-controls input[type="color"]::-webkit-color-swatch { border: none; border-radius: .45rem; }
-.mq-controls input[type="color"]::-moz-color-swatch { border: none; border-radius: .45rem; }
-
-#btnPrint {
-    padding: .5rem 1rem;
-    border: none; border-radius: .75rem;
-    font-size: .875rem; line-height: 1.25rem;
-    background: #0f172a; color: #fff; cursor: pointer;
-}
-#btnPrint:hover { background: #1e293b; }
-
-#sheetWrap { overflow: auto; padding-bottom: 2rem; }
-
-/* ── The sheet ────────────────────────────────────────────────────────── */
-
-/* The sheet has no physical size of its own. On screen it is a preview
-   at a conventional paper ratio; in print it simply fills whatever the
-   browser gives it, the way any other web page does.
+/* ── The sheet ─────────────────────────────────────────────────────────
+   No physical size of its own. On screen it is a preview at a conventional
+   paper ratio; in print it fills whatever the browser gives it, the way any
+   other web page does.
 
    It used to be a rigid 210x297mm box with a JS-rewritten @page { size }
-   behind it. That is the arrangement that broke in Safari: WebKit does
-   not honour the size descriptor, so the page box was whatever the print
-   dialog said while the sheet stayed rigidly 297mm — and the overflow had
-   to go somewhere. Nothing here asserts a millimetre any more. */
+   behind it. That is the arrangement that broke in Safari: WebKit does not
+   honour the size descriptor, so the page box was whatever the print dialog
+   said while the sheet stayed rigidly 297mm — and the overflow had to go
+   somewhere. Nothing here asserts a millimetre any more. */
+.bed { --trim-width: calc(46rem + 2.5rem); }
+
 .sheet {
     width: 100%;
-    max-width: 48rem;
+    max-width: 46rem;
     aspect-ratio: var(--preview-ratio, 210 / 297);
     margin-inline: auto;
     padding: var(--sheet-pad, 10mm);
-    background: #fff; box-shadow: 0 1px 12px rgba(15, 23, 42, .12);
     display: flex; flex-direction: column; overflow: hidden;
     position: relative;
 }
 
-/* ── Margin and gutter guides ──────────────────────────────────
-   Shown only while the matching control has focus, and never printed.
-   An absolutely positioned child is laid out against the sheet's padding
-   box, so `inset: var(--sheet-pad)` lands exactly on the content edge —
-   the line the margin actually produces. The huge spread shadow tints
-   everything outside it; the sheet's own `overflow: hidden` clips it to
-   the margin band. */
+/* ── Margin and gutter guides ──────────────────────────────────────────
+   Shown only while the matching control has focus, and never printed. An
+   absolutely positioned child is laid out against the sheet's padding box,
+   so `inset: var(--sheet-pad)` lands exactly on the content edge — the line
+   the margin actually produces. The huge spread shadow tints everything
+   outside it; the sheet's own `overflow: hidden` clips it to the margin
+   band. Registration cyan, because this is a live value being adjusted. */
 .sheet::after {
     content: ''; position: absolute; inset: var(--sheet-pad, 10mm);
     pointer-events: none; opacity: 0; transition: opacity .12s ease;
-    outline: 1px dashed #0284c7;
-    box-shadow: 0 0 0 100vmax rgba(2, 132, 199, .10);
+    outline: 1px dashed var(--reg-ink);
+    box-shadow: 0 0 0 100vmax color-mix(in srgb, var(--reg-ink) 12%, transparent);
 }
 .sheet.show-margin::after { opacity: 1; }
 
 /* Gutter reads as negative space, so tint the tiles rather than the gaps. */
-.sheet.show-gutter .cell { background: rgba(2, 132, 199, .10); }
-.sheet.show-gutter .cell.is-filled { outline: 1px dashed #0284c7; outline-offset: 0; }
+.sheet.show-gutter .cell { background: color-mix(in srgb, var(--reg-ink) 10%, transparent); }
+.sheet.show-gutter .cell.is-filled { outline: 1px dashed var(--reg-ink); outline-offset: 0; }
 
 @media print {
     .sheet::after { display: none !important; }
@@ -138,32 +91,31 @@
     gap: 0; min-width: 0; min-height: 0; position: relative;
 }
 
-/* A filled tile is a two-row grid, not a flex column. The caption row is
-   one height for the whole sheet (--cap-h, measured per render from the
-   tallest caption), so every .code box comes out identical and the codes
-   line up across a row. As a flex column the code box shrank by exactly
-   its own caption's height, so a tile carrying a description produced a
-   code 15.8px (4.2mm) lower than its neighbour's.
+/* A filled tile is a two-row grid, not a flex column. The caption row is one
+   height for the whole sheet (--cap-h, measured per render from the tallest
+   caption), so every .code box comes out identical and the codes line up
+   across a row. As a flex column the code box shrank by exactly its own
+   caption's height, so a tile carrying a description produced a code 15.8px
+   (4.2mm) lower than its neighbour's.
 
-   `align-items` and `justify-content` have to be reset explicitly: they
-   are set on .cell for the flex case and mean something entirely
-   different under grid — centred items do not stretch, so the code box
-   collapsed to the height of its absolutely positioned SVG (zero) and
-   the column shrink-wrapped to the caption's width. */
+   `align-items` and `justify-content` have to be reset explicitly: they are
+   set on .cell for the flex case and mean something entirely different under
+   grid — centred items do not stretch, so the code box collapsed to the
+   height of its absolutely positioned SVG (zero) and the column shrink-wrapped
+   to the caption's width. */
 .cell.is-filled {
-    /* `container-type: size` lets .code bound itself against the cell's
-       own height in cqh units — the one thing plain percentages cannot
-       do, because a percentage max-height inside an auto-sized row is
-       indefinite and gets dropped. The cell's size comes from the grid
-       track, so making it a size container costs nothing. */
+    /* `container-type: size` lets .code bound itself against the cell's own
+       height in cqh units — the one thing plain percentages cannot do,
+       because a percentage max-height inside an auto-sized row is indefinite
+       and gets dropped. The cell's size comes from the grid track, so making
+       it a size container costs nothing. */
     container-type: size;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: var(--cap-h, auto) auto;
-    /* Rows are content-sized now, so this centres the caption-plus-code
-       pair as a group. Previously the code row was 1fr and the code
-       centred inside it, which parked half the cell's leftover space
-       between the label and the code. */
+    /* Rows are content-sized, so this centres the caption-plus-code pair as a
+       group. With the code row at 1fr the code centred inside it, which parked
+       half the cell's leftover space between the label and the code. */
     align-content: center;
     row-gap: var(--cap-gap, 1.5mm);
     justify-items: stretch;
@@ -174,18 +126,26 @@
 .cell.is-filled.cap-below .cap  { grid-row: 2; align-self: start; }
 .cell.is-filled.cap-below .code { grid-row: 1; }
 
-.cell.is-empty { outline: 1px dashed #cbd5e1; outline-offset: -1px; cursor: pointer; }
-.cell.is-empty::after { content: '+'; color: #94a3b8; font-size: 24px; line-height: 1; }
+.cell.is-empty {
+    outline: 1px dashed var(--stock-edge); outline-offset: -1px; cursor: pointer;
+    transition: outline-color .12s;
+}
+.cell.is-empty:hover { outline-color: var(--reg-ink); }
+.cell.is-empty::after {
+    content: '+'; color: #B9BDB4; font-size: 22px; line-height: 1;
+    font-family: var(--mono);
+}
+.cell.is-empty:hover::after { color: var(--reg-ink); }
 
-/* Colour is set inline from `fg` in buildTile: the code colour is the
-   ink colour of the sheet. Left to the theme's slate, captions were
+/* Colour is set inline from `fg` in buildTile: the code colour is the ink
+   colour of the sheet. Left to the theme's own text colour, captions were
    invisible on any dark background — on screen and on paper. */
-.cap { text-align: center; max-width: 100%; min-width: 0; }
+.cap { text-align: center; max-width: 100%; min-width: 0; font-family: var(--sans); }
 .cap .label, .cap .desc {
-    /* A long unbroken label used to render wider than its column and
-       bleed into the gutter; .cell has no overflow of its own, so from
-       three columns up it overlapped the neighbouring caption. The clamp
-       also keeps the measured caption band bounded. */
+    /* A long unbroken label used to render wider than its column and bleed
+       into the gutter; .cell has no overflow of its own, so from three columns
+       up it overlapped the neighbouring caption. The clamp also keeps the
+       measured caption band bounded. */
     display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
     overflow-wrap: anywhere; line-height: 1.3;
 }
@@ -194,8 +154,8 @@
 
 /* The code is a square sized by width, then clamped so the whole tile —
    caption band, gap and code — still fits the cell's height. Clamping
-   max-WIDTH rather than max-height lets aspect-ratio derive the height,
-   which keeps it square in both directions. */
+   max-WIDTH rather than max-height lets aspect-ratio derive the height, which
+   keeps it square in both directions. */
 .code {
     aspect-ratio: 1;
     width: 100%;
@@ -206,73 +166,81 @@
 .code svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 /* A tile whose payload will not fit still prints — a visibly broken tile
-   beats a silently blank one. Unstyled it came out as 16px left-aligned
-   body text hanging out of the cell, reading like a typo. */
+   beats a silently blank one. Unstyled it came out as 16px left-aligned body
+   text hanging out of the cell, reading like a typo. */
 .code.too-long, .code.error {
     display: flex; align-items: center; justify-content: center;
     text-align: center; overflow-wrap: anywhere; padding: 2mm;
-    color: #b91c1c; font-size: 3mm; font-weight: 600; line-height: 1.3;
-    outline: 1px dashed #b91c1c; outline-offset: -1px;
+    color: var(--alert); font-size: 3mm; font-weight: 600; line-height: 1.3;
+    outline: 1px dashed var(--alert); outline-offset: -1px;
 }
 
-/* The editing cell itself keeps its normal grid-track size (min-width: 0,
-   inherited from .cell) so the grid tracks never reflow. The overlay that
-   actually needs the extra width is `.editor`, an absolutely positioned
-   child that floats above the cell — and above its neighbours, if the
-   track is narrower than 220px — without the cell's own box growing. */
+/* The editing cell keeps its normal grid-track size (min-width: 0, inherited
+   from .cell) so the grid tracks never reflow. The overlay that needs the
+   extra width is `.editor`, an absolutely positioned child floating above the
+   cell — and above its neighbours, if the track is narrower than 220px —
+   without the cell's own box growing. */
 .cell.is-editing { z-index: 5; }
 .cell.is-editing .editor {
     position: absolute; top: 0; right: 0; bottom: 0; left: 0;
     min-width: 220px; z-index: 5;
-    outline: 2px solid #0f172a; outline-offset: -2px; background: #fff;
+    outline: 2px solid var(--reg-ink); outline-offset: -2px; background: var(--stock);
     display: flex; flex-direction: column;
     padding: 6px; gap: 4px; justify-content: flex-start;
 }
 .cell.is-editing .editor input {
     width: 100%; font-size: 12px; padding: 4px 6px;
-    border: 1px solid #cbd5e1; border-radius: 6px; font-family: inherit;
+    border: 1px solid var(--stock-edge); color: var(--ink);
+    background: #fff; font-family: var(--sans);
 }
+.cell.is-editing .editor input:focus { outline: none; border-color: var(--reg-ink); }
 .cell.is-editing .editor .f-row { display: flex; gap: 6px; width: 100%; }
 .cell.is-editing .editor button {
-    flex: 1; font-size: 12px; padding: 4px 8px; border-radius: 6px; cursor: pointer;
+    flex: 1; font-size: 12px; padding: 4px 8px; cursor: pointer;
+    font-family: var(--cond); font-weight: 600;
+    border: 1px solid var(--stock-edge); background: #fff; color: var(--ink);
 }
-.cell.is-editing .editor .f-done { background: #0f172a; color: #fff; border: none; }
-.cell.is-editing .editor .f-delete { background: #fff; color: #b91c1c; border: 1px solid #fecaca; }
+.cell.is-editing .editor .f-done { background: var(--reg-ink); color: #fff; border-color: var(--reg-ink); }
+.cell.is-editing .editor .f-delete { color: var(--alert); }
+
+/* ── Print ─────────────────────────────────────────────────────────────── */
 
 @media print {
-    /* Site chrome from baseof.html — hidden from here so the theme stays untouched. */
+    /* Site chrome from baseof.html — hidden from here so the theme stays
+       untouched. */
     body > header, body > footer { display: none !important; }
 
-    /* Body's margin used to be zeroed only by Tailwind's CDN preflight, so
-       a blocked or slow CDN on the day someone hit Ctrl-P started the sheet
-       8px down a page it exactly fills — 8px from a second, blank page, on
-       a dependency this site does not control. /css/style.css owns that
-       reset now and ships from the same origin as the page; this stays
-       because print still has to undo body's min-height, which resolves
-       against the page box. */
+    /* Body's margin used to be zeroed only by Tailwind's CDN preflight, so a
+       blocked or slow CDN on the day someone hit Ctrl-P started the sheet 8px
+       down a page it exactly fills — 8px from a second, blank page, on a
+       dependency this site does not control. style.css owns that reset now
+       and ships from the same origin; this stays because print still has to
+       undo body's min-height, which resolves against the page box. */
     html, body {
         margin: 0 !important; padding: 0 !important;
         min-height: 0 !important; background: #fff !important;
     }
     main { height: 100% !important; padding: 0 !important; margin: 0 !important; max-width: none !important; }
-    .mq-controls, #btnPrint, .no-print { display: none !important; }
+    .rail, #btnPrint, .no-print { display: none !important; }
 
-    #sheetWrap { overflow: visible !important; padding: 0 !important; }
-    /* Percentage heights chain from the page box, which is better
-       supported across engines than `vh` in print. The sheet fills the
-       printable area exactly, so the grid still gets a definite height
-       and the result is still one page — without anyone declaring how
-       big the paper is. */
-    /* `height: 100%` needs an unbroken chain of definite heights, so
-       every ancestor from <html> down to the sheet gets one. Without the
-       chain the sheet collapsed to its content height — 81px — and the
-       grid rows had nothing to divide. */
-    html, body, #page, #sheetWrap { height: 100% !important; }
+    /* The rail is gone, so the press grid has nothing left to lay out. */
+    #page { display: block !important; }
+    #sheetWrap {
+        overflow: visible !important; padding: 0 !important;
+        background-image: none !important;
+    }
+
+    /* `height: 100%` needs an unbroken chain of definite heights, so every
+       ancestor from <html> down to the sheet gets one. Without the chain the
+       sheet collapsed to its content height — 81px — and the grid rows had
+       nothing to divide. Percentages chain from the page box, which is better
+       supported across engines than `vh` in print. */
+    html, body, #page, .bed, #sheetWrap { height: 100% !important; }
     .sheet {
         width: 100% !important; height: 100% !important;
         max-width: none !important; aspect-ratio: auto !important;
-        /* @page already carries state.mg, so the sheet must not add it
-           a second time. */
+        /* @page already carries state.mg, so the sheet must not add it a
+           second time. */
         padding: 0 !important; margin: 0 !important;
         box-shadow: none !important; transform: none !important;
         print-color-adjust: exact;
@@ -281,9 +249,9 @@
     .cell.is-empty { outline: none !important; }
     .cell.is-empty::after { content: none !important; }
     /* Belt and suspenders: every code path that can trigger window.print()
-       commits any open editor first (see commitOpen()), so .is-editing
-       should never actually reach print. If it somehow does, hide the
-       overlay rather than emit a hole where the tile should be. */
+       commits any open editor first (see commitOpen()), so .is-editing should
+       never actually reach print. If it somehow does, hide the overlay rather
+       than emit a hole where the tile should be. */
     .cell.is-editing { outline: none !important; }
     .cell.is-editing .editor { display: none !important; }
 }

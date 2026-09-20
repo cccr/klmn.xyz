@@ -118,17 +118,27 @@ test('an over-capacity tile renders a centred, coloured error',
   const state = Object.assign({}, BASE, { ecc: 'H', tiles: {
     '0,0': { u: 'https://example.com/' + 'x'.repeat(3200), l: 'Too long', d: '' }
   } });
+  // Resolve the palette from the page rather than hardcoding a hex: the claim
+  // is that the tile reads as an error and not as body text, and a repaint
+  // should not be able to fail this test without breaking that claim.
   const probe = `(function () {
     var el = document.querySelector('.code.too-long');
     if (!el) return null;
+    var swatch = document.createElement('span');
+    document.body.appendChild(swatch);
+    var resolve = function (v) { swatch.style.color = v; return getComputedStyle(swatch).color; };
     var cs = getComputedStyle(el);
-    return { text: el.textContent, color: cs.color,
-             align: cs.alignItems, justify: cs.justifyContent };
+    var out = { text: el.textContent, color: cs.color,
+                align: cs.alignItems, justify: cs.justifyContent,
+                alert: resolve('var(--alert)'), ink: resolve('var(--ink)') };
+    swatch.remove();
+    return out;
   })()`;
   const m = await withSheet(state, (p) => p.evalJson(probe));
   assert.ok(m, 'the tile reports its failure');
   assert.equal(m.text, 'Link too long');
-  assert.equal(m.color, 'rgb(185, 28, 28)', 'reads as an error, not as body text');
+  assert.equal(m.color, m.alert, 'painted with the alert colour');
+  assert.notEqual(m.color, m.ink, 'and so not mistakable for body text');
   assert.equal(m.align, 'center');
   assert.equal(m.justify, 'center');
 });

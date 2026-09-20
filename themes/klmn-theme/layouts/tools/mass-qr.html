@@ -9,110 +9,108 @@
      supported everywhere. -->
 <style id="pageRule">@page { margin: 10mm; }</style>
 
-<div id="page">
-    <header class="mq-intro no-print">
+<div id="page" class="press">
+    <div class="rail no-print">
         <h1>Mass QR Sheet</h1>
-        <p>
-            Fill a grid with links, print one page, pin it to the board. Every code comes out the
-            same size, and the sheet fits itself to whatever paper your printer is set to.
-        </p>
-    </header>
+        <p>Fill a grid with links, print one page, pin it to the board. Every code comes out the
+           same size, on whatever paper your printer is set to.</p>
 
-    <div id="controls" class="mq-controls">
-        <div class="mq-groups">
-            <fieldset>
-                <legend class="form-label">Sheet</legend>
-                <div>
-                    <label class="form-label" for="mg">Margin (mm)</label>
-                    <input id="mg" type="number" inputmode="decimal" min="0" max="50" step="0.5" />
-                </div>
-                <div>
-                    <label class="form-label" for="gp">Gutter (mm)</label>
-                    <input id="gp" type="number" inputmode="decimal" min="0" max="30" step="0.5" />
-                </div>
-                <div>
-                    <label class="form-label" for="cols">Columns</label>
-                    <select id="cols"></select>
-                </div>
-                <div>
-                    <label class="form-label" for="rows">Rows</label>
-                    <select id="rows"></select>
-                </div>
-            </fieldset>
-
-            <fieldset>
-                <legend class="form-label">Codes</legend>
-                <div>
-                    <label class="form-label" for="ecc">Error correction</label>
-                    <select id="ecc">
-                        <option value="L">L &mdash; 7%</option>
-                        <option value="M">M &mdash; 15%</option>
-                        <option value="Q">Q &mdash; 25%</option>
-                        <option value="H">H &mdash; 30%</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="form-label" for="qz">Quiet zone</label>
-                    <select id="qz">
-                        <option value="0">0 &mdash; none</option>
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4 &mdash; spec minimum</option>
-                        <option value="5">5</option>
-                        <option value="6">6</option>
-                        <option value="7">7</option>
-                        <option value="8">8 &mdash; generous</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="form-label" for="capPos">Caption position</label>
-                    <select id="capPos">
-                        <option value="above">Above code</option>
-                        <option value="below">Below code</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="form-label" for="capSize">Caption size</label>
-                    <select id="capSize">
-                        <option value="s">Small</option>
-                        <option value="m">Medium</option>
-                        <option value="l">Large</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="form-label" for="fg">Code colour</label>
-                    <input id="fg" type="color" />
-                </div>
-                <div>
-                    <label class="form-label" for="bg">Sheet colour</label>
-                    <input id="bg" type="color" />
-                </div>
-            </fieldset>
-
-            <fieldset>
-                <legend class="form-label">Output</legend>
-                <button id="btnPrint">Print</button>
-            </fieldset>
+        <div class="rail-group">
+            <h2>Sheet</h2>
+            <div class="field field-measure">
+                <label for="mg">Margin</label>
+                <span class="field-value"><input id="mg" aria-label="Margin in millimetres" type="number" inputmode="decimal" min="0" max="50" step="0.5" /><span class="unit">mm</span></span>
+            </div>
+            <div class="field field-measure">
+                <label for="gp">Gutter</label>
+                <span class="field-value"><input id="gp" aria-label="Gutter in millimetres" type="number" inputmode="decimal" min="0" max="30" step="0.5" /><span class="unit">mm</span></span>
+            </div>
+            <div class="field">
+                <label for="cols">Columns</label>
+                <span class="field-value"><select id="cols"></select></span>
+            </div>
+            <div class="field">
+                <label for="rows">Rows</label>
+                <span class="field-value"><select id="rows"></select></span>
+            </div>
         </div>
-        <p class="mq-note no-print">
-            Paper size, orientation and margins all come from your print dialog &mdash; the sheet
-            fits the page it is given. The preview is A4-proportioned; on other paper the codes
-            stay square and the spacing adjusts.
+
+        <div class="rail-group">
+            <h2>Codes</h2>
+            <div class="field">
+                <label for="ecc">Correction</label>
+                <span class="field-value"><select id="ecc" aria-label="Error correction level">
+                    <option value="L">L</option>
+                    <option value="M">M</option>
+                    <option value="Q">Q</option>
+                    <option value="H">H</option>
+                </select></span>
+            </div>
+            <div class="rail-legend" aria-hidden="true">
+                <span>L 7%</span><span>M 15%</span><span>Q 25%</span><span>H 30%</span>
+            </div>
+            <div class="field">
+                <label for="qz">Quiet zone</label>
+                <span class="field-value"><select id="qz" aria-label="Quiet zone in modules">
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                </select></span>
+            </div>
+            <p class="rail-hint">Four modules is the spec minimum. Below that, many scanners refuse to lock on.</p>
+            <div class="field">
+                <label for="capPos">Caption</label>
+                <span class="field-value"><select id="capPos" aria-label="Caption position">
+                    <option value="above">Above</option>
+                    <option value="below">Below</option>
+                </select></span>
+            </div>
+            <div class="field">
+                <label for="capSize">Caption size</label>
+                <span class="field-value"><select id="capSize" aria-label="Caption size">
+                    <option value="s">Small</option>
+                    <option value="m">Medium</option>
+                    <option value="l">Large</option>
+                </select></span>
+            </div>
+            <div class="field">
+                <span class="field-name">Ink</span>
+                <span class="field-value ink-pair">
+                    <input id="fg" aria-label="Code colour" type="color" />
+                    <input id="bg" aria-label="Sheet colour" type="color" />
+                </span>
+            </div>
+        </div>
+
+        <div class="rail-actions">
+            <button id="btnPrint" class="btn btn-go">Print sheet</button>
+        </div>
+
+        <p class="rail-note">
+            Paper size, orientation and margins come from your print dialog. The preview is
+            A4-proportioned; on other paper the codes stay square and the spacing adjusts.
+        </p>
+
+        <p class="rail-credit">
+            QR encoding by Project Nayuki&rsquo;s
+            <a href="https://www.nayuki.io/page/qr-code-generator-library" rel="noopener">qrcodegen</a>
+            (MIT). QR Code is a registered trademark of Denso Wave.
         </p>
     </div>
 
-    <div id="sheetWrap">
-        <div id="sheet" class="sheet">
-            <div id="grid"></div>
+    <div class="bed">
+        <div class="trim" id="sheetWrap">
+            <div id="sheet" class="sheet artifact">
+                <div id="grid"></div>
+            </div>
         </div>
     </div>
-
-    <p class="mq-credit no-print">
-        QR encoding by Project Nayuki&rsquo;s
-        <a href="https://www.nayuki.io/page/qr-code-generator-library" rel="noopener">qrcodegen</a>
-        (MIT). QR Code is a registered trademark of Denso Wave.
-    </p>
 </div>
 
 <script src="/tools/qr/qrcodegen.js"></script>
