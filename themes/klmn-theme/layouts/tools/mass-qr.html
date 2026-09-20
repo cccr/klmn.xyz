@@ -542,9 +542,10 @@
         code.className = 'code';
         try {
             var qr = qrcodegen.QrCode.encodeText(tile.u, qrcodegen.QrCode.Ecc[ECC_MAP[state.ecc]]);
-            // The QR spec requires a 4-module quiet zone around every code; the
-            // grid gap is measured in mm and unrelated to module size, so it
-            // cannot substitute. Without this, printed codes won't scan.
+            // The quiet zone is the user's call (0-8 modules) and the grid gap
+            // cannot substitute for it — the gap is millimetres, the zone is
+            // modules. Anything under 4 is below spec; applyWarning() says so
+            // rather than this code silently overriding the choice.
             code.innerHTML = qrRender.toSvgString(qr, state.qz, state.fg, state.bg)
                 .replace(/^<\?xml[^>]*\?>\s*/, '');
             var svgEl = code.querySelector('svg');
@@ -845,8 +846,15 @@
     }
 
     var elWarn = document.getElementById('warn');
+    // Precedence: a sheet that cannot be built at all, then a quiet zone
+    // below spec, then colours. Only one line of advice at a time — the first
+    // problem is the one worth fixing.
     function applyWarning() {
         var note = densityNote(state);
+        if (!note && state.qz < 4) {
+            note = 'A quiet zone under 4 modules is below spec \u2014 test carefully before printing.';
+        }
+        if (!note) note = qrRender.contrastNote(state.fg, state.bg);
         elWarn.hidden = !note;
         if (note) elWarn.textContent = note;
     }

@@ -849,3 +849,38 @@ test('a landscape custom sheet says what it will actually print', () => {
   p.window.massQr.setState({ orient: 'p' });
   assert.ok(p.$('customNote').hidden, 'portrait needs no note');
 });
+
+// ── Scanning warnings ──────────────────────────────────────────────
+
+test('an inverted sheet warns that scanners will not read it', () => {
+  const p = page();
+  p.setInput(p.$('fg'), '#ffffff');
+  p.setInput(p.$('bg'), '#000000');
+  assert.ok(!p.$('warn').hidden);
+  assert.match(p.$('warn').textContent, /lighter than your background/);
+});
+
+test('a low-contrast sheet warns with the ratio', () => {
+  const p = page();
+  p.setInput(p.$('fg'), '#777777');
+  p.setInput(p.$('bg'), '#999999');
+  assert.match(p.$('warn').textContent, /contrast between the two colors/);
+});
+
+test('a quiet zone below spec warns', () => {
+  const p = page();
+  fireChange(p, p.$('qz'), '1');
+  assert.match(p.$('warn').textContent, /quiet zone under 4 modules/);
+});
+
+test('a grid that does not fit outranks the colour advice', () => {
+  const p = page();
+  p.window.massQr.setState({ paper: 'custom', cw: 50, ch: 50, rows: 6, cols: 6, mg: 25,
+                             fg: '#ffffff', bg: '#000000' });
+  assert.match(p.$('warn').textContent, /use up the whole sheet/,
+    'the sheet being unbuildable matters more than its colours');
+});
+
+test('the default sheet is quiet', () => {
+  assert.ok(page().$('warn').hidden);
+});

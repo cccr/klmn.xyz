@@ -212,30 +212,6 @@
         return dim;
     }
 
-    /* ── Contrast guard ────────────────────────────────────────── */
-
-    function luminance(hex) {
-        var c = [1, 3, 5].map(function (i) {
-            var v = parseInt(hex.substr(i, 2), 16) / 255;
-            return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-        });
-        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-    }
-
-    function contrastNote(fg, bg) {
-        var lf = luminance(fg), lb = luminance(bg);
-        var ratio = (Math.max(lf, lb) + 0.05) / (Math.min(lf, lb) + 0.05);
-        if (lf > lb) {
-            return 'Your foreground is lighter than your background. Most scanners expect a dark code ' +
-                   'on a light field and will not read an inverted one.';
-        }
-        if (ratio < 3) {
-            return 'Only ' + ratio.toFixed(1) + ':1 contrast between the two colors. Aim for 3:1 or ' +
-                   'more, or scanners will struggle.';
-        }
-        return null;
-    }
-
     /* ── Main ──────────────────────────────────────────────────── */
 
     function render() {
@@ -295,7 +271,7 @@
             els.warning.textContent = 'A quiet zone under 4 modules is below spec — test carefully before printing.';
             els.warning.classList.remove('hidden');
         } else {
-            var note = contrastNote(fg, bg);
+            var note = qrRender.contrastNote(fg, bg);
             if (note) {
                 els.warning.textContent = note;
                 els.warning.classList.remove('hidden');
