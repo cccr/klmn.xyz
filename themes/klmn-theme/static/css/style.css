@@ -124,6 +124,7 @@ body > footer > div {
 
 .press {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 2.5rem;
     align-items: start;
 }
@@ -135,7 +136,7 @@ body > footer > div {
 
 /* ── The rail ──────────────────────────────────────────────────────────── */
 
-.rail { min-width: 0; max-width: 26rem; }
+.rail { min-width: 0; max-width: min(26rem, 100%); }
 .rail > h1 {
     font-family: var(--cond);
     font-size: 2.125rem; line-height: 1.05;
@@ -341,6 +342,9 @@ body > footer > div {
 
 .btn {
     display: inline-flex; align-items: center; justify-content: center;
+    /* wiggler's script swaps Run/Stop with display:inline-block, which drops
+       the flex centring — so the label is centred both ways. */
+    text-align: center;
     padding: .5rem 1rem;
     font-family: var(--cond); font-size: .9375rem; font-weight: 600;
     letter-spacing: .01em;

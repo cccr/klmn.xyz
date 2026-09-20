@@ -77,7 +77,7 @@ test('the page loads no third-party script', () => {
 test('the active ECC button is the one marked on', () => {
   const { doc, click } = page();
   click(doc.querySelector('button[data-ecc="HIGH"]'));
-  const on = [...doc.querySelectorAll('.qr-seg button')]
+  const on = [...doc.querySelectorAll('.seg button')]
     .filter((b) => b.classList.contains('is-on'));
   assert.deepEqual(on.map((b) => b.dataset.ecc), ['HIGH']);
   assert.equal(on[0].getAttribute('aria-pressed'), 'true');
