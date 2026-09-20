@@ -1,7 +1,9 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { buildSite, loadPage, decodeCanvas, decodeSvgString } = require('./harness');
+const fs = require('fs');
+const path = require('path');
+const { buildSite, loadPage, decodeCanvas, decodeSvgString, SITE } = require('./harness');
 
 buildSite();
 
@@ -59,3 +61,24 @@ test('overflow shows an error and disables downloads, then recovers', () => {
   assert.equal(decodeCanvas(canvas), 'https://klmn.xyz');
 });
 
+
+// The page's styling used to come from a runtime JIT compiler on a CDN. It is
+// plain CSS from this origin now, and nothing should quietly put a third-party
+// script back — the tests load pages with remote scripts skipped, so one
+// creeping back in would be invisible here otherwise.
+test('the page loads no third-party script', () => {
+  const html = fs.readFileSync(path.join(SITE, 'tools/qr/index.html'), 'utf8');
+  const remote = [...html.matchAll(/<script[^>]*\ssrc="(?:https?:)?\/\/[^"]*"/g)].map((m) => m[0]);
+  assert.deepEqual(remote, []);
+});
+
+// The ECC buttons used to carry their entire appearance in a JS-rewritten
+// Tailwind class list. The script now only marks which one is on.
+test('the active ECC button is the one marked on', () => {
+  const { doc, click } = page();
+  click(doc.querySelector('button[data-ecc="HIGH"]'));
+  const on = [...doc.querySelectorAll('.qr-seg button')]
+    .filter((b) => b.classList.contains('is-on'));
+  assert.deepEqual(on.map((b) => b.dataset.ecc), ['HIGH']);
+  assert.equal(on[0].getAttribute('aria-pressed'), 'true');
+});

@@ -1,0 +1,161 @@
+/* ══ QR Code Generator ═════════════════════════════════════════════════════
+   Everything this page looks like. /css/style.css supplies the reset, the
+   site chrome, .form-label/.form-tooltip and .hidden; the rest is here.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Intro ─────────────────────────────────────────────────────────────── */
+
+.qr-intro {
+    margin-bottom: 2rem;
+    display: flex; flex-wrap: wrap;
+    align-items: flex-start; justify-content: space-between; gap: 1rem;
+}
+.qr-intro h1 {
+    font-size: 1.875rem; line-height: 2.25rem;
+    font-weight: 700; letter-spacing: -.025em;
+}
+@media (min-width: 768px) {
+    .qr-intro h1 { font-size: 2.25rem; line-height: 2.5rem; }
+}
+.qr-intro p { margin-top: .5rem; max-width: 42rem; color: #475569; }
+
+#btnReset {
+    flex: none;
+    padding: .375rem .75rem;
+    font-size: .875rem; line-height: 1.25rem;
+    background: #fff; color: #334155;
+    border: 1px solid #cbd5e1; border-radius: 9999px;
+    cursor: pointer;
+}
+#btnReset:hover { background: #f8fafc; }
+
+/* ── Layout ────────────────────────────────────────────────────────────
+   One column on a phone, two equal ones from 1024px — where the preview
+   also starts following the scroll, so a tall control column never leaves
+   the code off-screen. */
+.qr-cols { display: grid; gap: 1.5rem; }
+.qr-controls { display: grid; gap: 1.5rem; align-content: start; }
+
+@media (min-width: 1024px) {
+    .qr-cols { grid-template-columns: 1fr 1fr; }
+    .qr-preview > .qr-card { position: sticky; top: 1.5rem; }
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────────── */
+
+.qr-card {
+    padding: 1.25rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, .7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 1px 2px 0 rgba(15, 23, 42, .05);
+}
+.qr-card > header { margin-bottom: .75rem; }
+.qr-card h2 { font-size: 1.25rem; line-height: 1.75rem; font-weight: 600; color: #1e293b; }
+.qr-card > header p { font-size: .875rem; line-height: 1.625; color: #64748b; }
+
+/* A label and its live read-out, on one line. */
+.qr-field-head { display: flex; align-items: center; justify-content: space-between; }
+
+/* ── Controls ──────────────────────────────────────────────────────────── */
+
+#payload {
+    width: 100%;
+    padding: .5rem .75rem;
+    border: 1px solid #cbd5e1; border-radius: .75rem;
+    background: #fff;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .875rem; line-height: 1.25rem;
+    resize: vertical;
+}
+
+/* Segmented control. The active button is marked with .is-on rather than a
+   rewritten class list, so the styling lives here and the script only says
+   which one is on. */
+.qr-seg {
+    display: inline-flex; margin-top: .25rem;
+    border: 1px solid #cbd5e1; border-radius: .75rem; overflow: hidden;
+}
+.qr-seg button {
+    padding: .375rem .75rem;
+    font-size: .875rem; line-height: 1.25rem;
+    background: #fff; color: #334155;
+    border: 0; border-right: 1px solid #cbd5e1;
+    cursor: pointer;
+    transition: background-color .15s, color .15s;
+}
+.qr-seg button:last-child { border-right: 0; }
+.qr-seg button:hover { background: #f8fafc; }
+.qr-seg button.is-on { background: #0f172a; color: #fff; }
+.qr-seg button span { font-size: .75rem; opacity: .6; }
+
+.qr-fields { display: grid; gap: 1rem; }
+@media (min-width: 768px) { .qr-fields { grid-template-columns: 1fr 1fr; } }
+
+.qr-fields input[type="range"] { width: 100%; accent-color: #1e293b; }
+
+.qr-swatch { display: flex; align-items: center; gap: .5rem; margin-top: .25rem; }
+.qr-swatch code { font-size: .75rem; color: #64748b; }
+
+.qr-page input[type="color"] {
+    -webkit-appearance: none; appearance: none;
+    width: 2.75rem; height: 2.25rem;
+    padding: 0; background: none; cursor: pointer;
+    border: 1px solid #cbd5e1; border-radius: .5rem;
+}
+.qr-page input[type="color"]::-webkit-color-swatch-wrapper { padding: 3px; }
+.qr-page input[type="color"]::-webkit-color-swatch { border: none; border-radius: .3rem; }
+.qr-page input[type="color"]::-moz-color-swatch { border: none; border-radius: .3rem; }
+
+/* ── Preview ───────────────────────────────────────────────────────────── */
+
+.qr-canvas-wrap {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 280px; padding: 1rem;
+    border: 1px solid #e2e8f0; border-radius: .75rem;
+    background: #f8fafc;
+}
+#qrCanvas {
+    display: block;
+    max-width: 100%; height: auto;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+#emptyHint { padding-inline: 1.5rem; font-size: .875rem; color: #94a3b8; text-align: center; }
+
+#qrStatus { margin-top: .75rem; font-size: .875rem; color: #475569; text-align: center; }
+
+.qr-alert {
+    margin-top: .75rem;
+    padding: .5rem .75rem;
+    border-radius: .75rem;
+    font-size: .875rem;
+}
+#qrWarning { background: #fffbeb; border: 1px solid #fde68a; color: #b45309; }
+#qrError   { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+
+.qr-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.qr-actions button {
+    padding: .5rem 1rem;
+    font-size: .875rem; line-height: 1.25rem;
+    border-radius: .75rem; border: 1px solid transparent;
+    cursor: pointer;
+}
+.qr-actions button:disabled { opacity: .4; cursor: not-allowed; }
+#btnPng { background: #0f172a; color: #fff; }
+#btnPng:hover:not(:disabled) { background: #1e293b; }
+#btnSvg { background: #fff; color: #334155; border-color: #cbd5e1; }
+#btnSvg:hover:not(:disabled) { background: #f8fafc; }
+
+/* ── Small print ───────────────────────────────────────────────────────── */
+
+.qr-note { margin-top: 1rem; font-size: .75rem; line-height: 1rem; color: #64748b; }
+.qr-credit {
+    margin-top: 1.25rem; padding-top: 1rem;
+    border-top: 1px solid #e2e8f0;
+    font-size: .75rem; line-height: 1rem; color: #64748b;
+}
+.qr-credit a { text-decoration: underline; }
+.qr-credit a:hover { color: #334155; }
