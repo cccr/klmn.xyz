@@ -644,3 +644,25 @@ test('quiet zone: a tile at the default still decodes', () => {
   const svg = p.doc.querySelector('.cell[data-pos="0,0"] .code svg').outerHTML;
   assert.equal(decodeSvgString(svg), 'https://school.edu/x');
 });
+
+// ── Tile layout ────────────────────────────────────────────────────
+
+test('codes are centred in their box regardless of caption position', () => {
+  const p = withTiles({ '0,0': { u: 'https://school.edu/x', l: 'X', d: 'desc' } });
+  const par = () => p.doc.querySelector('.cell[data-pos="0,0"] .code svg')
+    .getAttribute('preserveAspectRatio');
+  assert.equal(par(), 'xMidYMid meet');
+  fireChange(p, p.$('capPos'), 'below');
+  assert.equal(par(), 'xMidYMid meet', 'still centred with the caption below');
+});
+
+test('the caption band falls back to millimetres when nothing can be measured', () => {
+  // jsdom reports offsetHeight 0, which is exactly the fallback path: medium
+  // captions are 4mm label + 2.8mm description at line-height 1.3.
+  const p = withTiles({ '0,0': { u: 'https://school.edu/x', l: 'X', d: 'desc' } });
+  assert.equal(p.$('grid').style.getPropertyValue('--cap-h'), '8.84mm');
+
+  const noDesc = withTiles({ '0,0': { u: 'https://school.edu/x', l: 'X', d: '' } });
+  assert.equal(noDesc.$('grid').style.getPropertyValue('--cap-h'), '5.2mm',
+    'a sheet with no descriptions reserves only the label line');
+});

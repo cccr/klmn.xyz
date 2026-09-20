@@ -25,14 +25,42 @@
         display: flex; flex-direction: column; align-items: center; justify-content: center;
         gap: 0; min-width: 0; min-height: 0; position: relative;
     }
-    .cell.cap-below { flex-direction: column-reverse; }
+
+    /* A filled tile is a two-row grid, not a flex column. The caption row is
+       one height for the whole sheet (--cap-h, measured per render from the
+       tallest caption), so every .code box comes out identical and the codes
+       line up across a row. As a flex column the code box shrank by exactly
+       its own caption's height, so a tile carrying a description produced a
+       code 15.8px (4.2mm) lower than its neighbour's.
+
+       `align-items` and `justify-content` have to be reset explicitly: they
+       are set on .cell for the flex case and mean something entirely
+       different under grid — centred items do not stretch, so the code box
+       collapsed to the height of its absolutely positioned SVG (zero) and
+       the column shrink-wrapped to the caption's width. */
+    .cell.is-filled {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: var(--cap-h, auto) minmax(0, 1fr);
+        align-items: stretch; justify-items: stretch;
+        align-content: stretch; justify-content: stretch;
+    }
+    /* The caption hugs its code — bottom-aligned in the band when it sits
+       above, top-aligned when below — so extra description lines grow away
+       from the code rather than shifting it. */
+    .cell.is-filled .cap  { grid-row: 1; align-self: end; }
+    .cell.is-filled .code { grid-row: 2; }
+    .cell.is-filled.cap-below { grid-template-rows: minmax(0, 1fr) var(--cap-h, auto); }
+    .cell.is-filled.cap-below .cap  { grid-row: 2; align-self: start; }
+    .cell.is-filled.cap-below .code { grid-row: 1; }
+
     .cell.is-empty { outline: 1px dashed #cbd5e1; outline-offset: -1px; cursor: pointer; }
     .cell.is-empty::after { content: '+'; color: #94a3b8; font-size: 24px; line-height: 1; }
 
     .cap { text-align: center; max-width: 100%; }
     .cap .label { font-weight: 600; display: block; }
     .cap .desc { display: block; opacity: .75; }
-    .code { flex: 1 1 auto; min-height: 0; width: 100%; position: relative; }
+    .code { min-height: 0; width: 100%; position: relative; }
     .code svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 
     /* The editing cell itself keeps its normal grid-track size (min-width: 0,
@@ -434,10 +462,11 @@
             code.innerHTML = qrRender.toSvgString(qr, state.qz, state.fg, state.bg)
                 .replace(/^<\?xml[^>]*\?>\s*/, '');
             var svgEl = code.querySelector('svg');
-            if (svgEl) {
-                svgEl.setAttribute('preserveAspectRatio',
-                    state.capPos === 'below' ? 'xMidYMax meet' : 'xMidYMin meet');
-            }
+            // Centred, not pinned to the caption edge: every .code box is now
+            // the same size, so centring splits the leftover space evenly
+            // above and below each code instead of pooling ~43mm of it at the
+            // bottom of every cell.
+            if (svgEl) svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
         } catch (e) {
             // RangeError is qrcodegen's signal that the payload exceeds
             // capacity at this ECC level — that's an expected, user-facing
@@ -609,6 +638,33 @@
         commitOpen();
     }, true);
 
+    // The caption band is one height for the whole sheet. It has to be
+    // measured rather than computed, because a caption's height depends on
+    // how its text wraps and only layout knows that. Two passes: let the row
+    // size to content, read the tallest caption, then write the band back.
+    //
+    // offsetHeight, not getBoundingClientRect(): the sheet carries a zoom
+    // transform, and a transformed rect would report 0.7x the real height at
+    // "fit" zoom and under-size the band.
+    var CAP_LINE = 1.3; // line-height, matching the .cap rules
+    function applyCaptionBand() {
+        grid.style.setProperty('--cap-h', 'auto');
+        var tallest = 0;
+        grid.querySelectorAll('.cell.is-filled .cap').forEach(function (cap) {
+            if (cap.offsetHeight > tallest) tallest = cap.offsetHeight;
+        });
+        if (tallest > 0) {
+            grid.style.setProperty('--cap-h', tallest + 'px');
+            return;
+        }
+        // No layout engine (jsdom) or a sheet that is not displayed: fall
+        // back to the nominal single-line heights the sizes are defined in.
+        var sizes = CAP_MM[state.capSize];
+        var anyDesc = Object.keys(state.tiles).some(function (k) { return !!state.tiles[k].d; });
+        grid.style.setProperty('--cap-h',
+            (Math.round((sizes.label + (anyDesc ? sizes.desc : 0)) * CAP_LINE * 100) / 100) + 'mm');
+    }
+
     // Grid track counts are set from JS rather than a CSS custom property:
     // repeat(var(--n), 1fr) is inconsistently supported and this is unambiguous.
     function render() {
@@ -634,7 +690,11 @@
                 grid.appendChild(cell);
             }
         }
+        // Sheet dimensions first: the caption's wrapping width comes from the
+        // cell, which comes from the sheet, so measuring before the sheet is
+        // sized would band the captions against the previous paper size.
         applySheetChrome();
+        applyCaptionBand();
     }
 
     var PAPER_MM = { a4: [210, 297], letter: [215.9, 279.4] };
