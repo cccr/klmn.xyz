@@ -1,42 +1,14 @@
 /* ══ Mass QR Sheet ═════════════════════════════════════════════════════════
    The console lives on the rail; the sheet is the artifact. style.css owns
    the reset, the chrome, the rail primitives and the trim marks — this file
-   is the sheet itself and the few rail controls only this page has.
+   is the sheet itself.
 
    The sheet, tile and print rules below are load-bearing and were measured
    into place; the design pass changed their colours, not their geometry.
    ═══════════════════════════════════════════════════════════════════════ */
 
-/* ── Rail ──────────────────────────────────────────────────────────────── */
-
-.rail-actions { margin-top: 1.75rem; }
-.rail-actions .btn { width: 100%; }
-
-/* The scale a value is drawn from, as a small aligned table rather than a
-   run-on meta string. Keeps "Q" in the control and "25%" out of it. */
-.rail-legend {
-    display: grid;
-    grid-template-columns: repeat(4, auto);
-    justify-content: start;
-    column-gap: 1.25rem;
-    margin-top: .5rem; margin-bottom: 1rem;
-    font-family: var(--mono); font-variant-numeric: tabular-nums;
-    font-size: .75rem; color: var(--ink-soft);
-}
-.rail-hint {
-    margin-top: .5rem; margin-bottom: 1rem;
-    font-size: .75rem; line-height: 1.5; color: var(--ink-soft);
-}
-
-/* Both inks in one row: they are one decision. */
+/* Both inks are one decision, so they share a row. */
 .ink-pair { display: flex; align-items: center; gap: .5rem; }
-
-.rail-note, .rail-credit {
-    margin-top: 1.5rem;
-    font-size: .75rem; line-height: 1.55; color: var(--ink-soft);
-}
-.rail-credit a { color: var(--ink-soft); text-decoration: underline; }
-.rail-credit a:hover { color: var(--reg); }
 
 /* ── The sheet ─────────────────────────────────────────────────────────
    No physical size of its own. On screen it is a preview at a conventional

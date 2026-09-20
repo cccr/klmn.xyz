@@ -228,6 +228,75 @@ body > footer > div {
 .rail input[type="color"]::-webkit-color-swatch { border: none; }
 .rail input[type="color"]::-moz-color-swatch { border: none; }
 
+/* ── Rail furniture ────────────────────────────────────────────────────── */
+
+/* The scale a value is drawn from, as a small aligned table rather than a
+   run-on meta string. Keeps "Q" in the control and "25%" out of it. */
+.rail-legend {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, max-content));
+    justify-content: start;
+    column-gap: 1.25rem;
+    margin: .5rem 0 1rem;
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+    font-size: .75rem; color: var(--ink-soft);
+}
+.rail-hint {
+    margin: .5rem 0 1rem;
+    font-size: .75rem; line-height: 1.5; color: var(--ink-soft);
+}
+
+/* A slider is too wide for the label/value row, so it sits under its own
+   field and the field drops its divider — the two are one control. */
+.field-tight { border-bottom: 0; padding-bottom: .125rem; }
+.rail-range { display: block; width: 100%; margin: 0 0 .75rem; }
+
+.rail-actions {
+    margin-top: 1.75rem;
+    display: flex; flex-wrap: wrap; gap: .5rem;
+}
+.rail-actions .btn { flex: 1 1 auto; }
+
+.rail-note, .rail-credit {
+    margin-top: 1.5rem;
+    font-size: .75rem; line-height: 1.55; color: var(--ink-soft);
+}
+.rail-credit a { text-decoration: underline; }
+.rail-credit a:hover { color: var(--reg); }
+
+/* Anything else on the bed lines up with the artifact above it. */
+.bed > .spec, .bed > .notice {
+    width: 100%;
+    max-width: var(--trim-width, none);
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+}
+
+/* ── Spec and notices ──────────────────────────────────────────────────
+   What the artifact turned out to be, as an aligned table. This replaces the
+   `A · B · C` meta string it used to be rendered as: middle-dot runs read as
+   decoration and nothing in them lines up. */
+.spec {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: .25rem 1.25rem;
+    margin-top: 1.25rem;
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+    font-size: .8125rem;
+}
+.spec dt { color: var(--ink-soft); }
+.spec dd { margin: 0; color: var(--ink); }
+
+.notice {
+    margin-top: 1rem;
+    padding: .625rem .875rem;
+    font-size: .8125rem; line-height: 1.5;
+    border-left: 2px solid var(--ink-soft);
+    background: var(--ground-sunk);
+    color: var(--ink);
+}
+.notice-alert { border-left-color: var(--alert); color: var(--alert); }
+
 /* ── Buttons ───────────────────────────────────────────────────────────── */
 
 .btn {

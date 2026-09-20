@@ -3,126 +3,100 @@
 {{ end }}
 
 {{ define "main" }}
-<div class="qr-page">
-    <header class="qr-intro">
-        <div>
-            <h1>QR Code Generator</h1>
-            <p>
-                Paste a link or any text and get a scannable QR code instantly. Tune error correction,
-                module size, quiet zone, and colors, then download a crisp PNG or a lossless SVG.
-                Everything runs in your browser &mdash; nothing is uploaded.
+<div class="press">
+    <div class="rail">
+        <h1>QR Code Generator</h1>
+        <p>Paste a link or any text and get a scannable code. Everything runs in your browser —
+           nothing is uploaded.</p>
+
+        <div class="rail-group">
+            <h2>Content</h2>
+            <label class="sr-only" for="payload">Text or URL</label>
+            <textarea id="payload" rows="4" spellcheck="false" placeholder="https://klmn.xyz"></textarea>
+            <p class="rail-hint" id="charCount">0 characters</p>
+        </div>
+
+        <div class="rail-group">
+            <h2>Encoding</h2>
+            <div class="field field-tight">
+                <span class="field-name">Correction</span>
+            </div>
+            <div class="qr-seg" role="group" aria-label="Error correction" id="eccGroup">
+                <button type="button" data-ecc="LOW"      title="Smallest code">L</button>
+                <button type="button" data-ecc="MEDIUM"   title="A good default">M</button>
+                <button type="button" data-ecc="QUARTILE" title="For print and stickers">Q</button>
+                <button type="button" data-ecc="HIGH"     title="Rough conditions or a centre logo">H</button>
+            </div>
+            <div class="rail-legend" aria-hidden="true">
+                <span>L 7%</span><span>M 15%</span><span>Q 25%</span><span>H 30%</span>
+            </div>
+            <p class="rail-hint">Higher correction survives scuffs and print bleed, at the cost of a
+               denser code.</p>
+        </div>
+
+        <div class="rail-group">
+            <h2>Appearance</h2>
+            <div class="field field-tight">
+                <label for="modulePx">Module size</label>
+                <span class="field-value"><span id="moduleOut">8</span><span class="unit">px</span></span>
+            </div>
+            <input id="modulePx" class="rail-range" type="range" min="2" max="20" step="1" value="8"
+                   aria-label="Module size in pixels" />
+
+            <div class="field field-tight">
+                <label for="quietZone">Quiet zone</label>
+                <span class="field-value"><span id="quietOut">4</span><span class="unit">mod</span></span>
+            </div>
+            <input id="quietZone" class="rail-range" type="range" min="0" max="8" step="1" value="4"
+                   aria-label="Quiet zone in modules" />
+
+            <div class="field">
+                <span class="field-name">Ink</span>
+                <span class="field-value ink-pair">
+                    <input id="fgColor" type="color" value="#0f172a" aria-label="Foreground, the dark modules" />
+                    <input id="bgColor" type="color" value="#ffffff" aria-label="Background, the light modules and quiet zone" />
+                </span>
+            </div>
+            <p class="rail-hint">
+                Module size sets the exported PNG resolution; the SVG is resolution-independent
+                either way. Four modules of quiet zone is the spec minimum.
             </p>
         </div>
-        <button id="btnReset" title="Restore all controls to their defaults">Reset</button>
-    </header>
 
-    <div class="qr-cols">
-        <div class="qr-controls">
-            <section class="qr-card">
-                <header>
-                    <h2>Content</h2>
-                    <p>A URL, a wifi password, a note &mdash; anything that fits. The code updates as you type.</p>
-                </header>
-                <div class="qr-field-head">
-                    <label class="form-label" for="payload">Text or URL</label>
-                    <span class="form-tooltip" id="charCount">0 characters</span>
-                </div>
-                <textarea id="payload" rows="4" spellcheck="false" placeholder="https://klmn.xyz"></textarea>
-            </section>
-
-            <section class="qr-card">
-                <header>
-                    <h2>Encoding</h2>
-                    <p>Higher error correction survives scuffs, print bleed, and logos &mdash; at the cost of a denser code.</p>
-                </header>
-                <div class="qr-field-head">
-                    <span class="form-label">Error correction</span>
-                    <span class="form-tooltip">Recoverable damage</span>
-                </div>
-                <div class="qr-seg" role="group" aria-label="Error correction" id="eccGroup">
-                    <button type="button" data-ecc="LOW"      title="~7% recoverable &mdash; smallest code">L <span>7%</span></button>
-                    <button type="button" data-ecc="MEDIUM"   title="~15% recoverable &mdash; a good default">M <span>15%</span></button>
-                    <button type="button" data-ecc="QUARTILE" title="~25% recoverable &mdash; for print and stickers">Q <span>25%</span></button>
-                    <button type="button" data-ecc="HIGH"     title="~30% recoverable &mdash; rough conditions or a center logo">H <span>30%</span></button>
-                </div>
-            </section>
-
-            <section class="qr-card">
-                <header>
-                    <h2>Appearance</h2>
-                    <p>Module size sets the exported PNG resolution. The SVG is resolution-independent either way.</p>
-                </header>
-                <div class="qr-fields">
-                    <div>
-                        <div class="qr-field-head">
-                            <label class="form-label" for="modulePx">Module size</label>
-                            <span class="form-tooltip" id="moduleOut">8 px</span>
-                        </div>
-                        <input id="modulePx" type="range" min="2" max="20" step="1" value="8" />
-                    </div>
-                    <div>
-                        <div class="qr-field-head">
-                            <label class="form-label" for="quietZone">Quiet zone</label>
-                            <span class="form-tooltip" id="quietOut">4 modules</span>
-                        </div>
-                        <input id="quietZone" type="range" min="0" max="8" step="1" value="4" />
-                    </div>
-                    <div>
-                        <div class="qr-field-head">
-                            <label class="form-label" for="fgColor">Foreground</label>
-                            <span class="form-tooltip">Dark modules</span>
-                        </div>
-                        <div class="qr-swatch">
-                            <input id="fgColor" type="color" value="#0f172a" />
-                            <code id="fgHex">#0f172a</code>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="qr-field-head">
-                            <label class="form-label" for="bgColor">Background</label>
-                            <span class="form-tooltip">Light modules &amp; quiet zone</span>
-                        </div>
-                        <div class="qr-swatch">
-                            <input id="bgColor" type="color" value="#ffffff" />
-                            <code id="bgHex">#ffffff</code>
-                        </div>
-                    </div>
-                </div>
-                <p class="qr-note">
-                    The spec calls for a quiet zone of at least 4 modules. Below that, many scanners
-                    will refuse to lock on.
-                </p>
-            </section>
+        <div class="rail-actions">
+            <button id="btnPng" class="btn btn-go" disabled
+                    title="Download the bitmap at the current module size">Download PNG</button>
+            <button id="btnSvg" class="btn" disabled
+                    title="Download a vector copy that scales to any size">Download SVG</button>
+        </div>
+        <div class="rail-actions">
+            <button id="btnReset" class="btn" title="Restore all controls to their defaults">Reset</button>
         </div>
 
-        <div class="qr-preview">
-            <section class="qr-card">
-                <header>
-                    <h2>Preview</h2>
-                    <p>Scan it with your phone before you print a thousand of them.</p>
-                </header>
+        <p class="rail-credit">
+            QR encoding by Project Nayuki&rsquo;s
+            <a href="https://www.nayuki.io/page/qr-code-generator-library" rel="noopener">qrcodegen</a>
+            (MIT). QR Code is a registered trademark of Denso Wave.
+        </p>
+    </div>
 
-                <div class="qr-canvas-wrap">
-                    <canvas id="qrCanvas" width="0" height="0"></canvas>
-                    <p id="emptyHint">Type something on the left and your QR code appears here.</p>
-                </div>
-
-                <p id="qrStatus"></p>
-                <p id="qrWarning" class="qr-alert hidden"></p>
-                <p id="qrError" class="qr-alert hidden"></p>
-
-                <div class="qr-actions">
-                    <button id="btnPng" disabled title="Download the bitmap at the current module size">Download PNG</button>
-                    <button id="btnSvg" disabled title="Download a vector copy that scales to any size">Download SVG</button>
-                </div>
-
-                <p class="qr-credit">
-                    QR encoding by Project Nayuki&rsquo;s
-                    <a href="https://www.nayuki.io/page/qr-code-generator-library" rel="noopener">qrcodegen</a>
-                    (MIT). QR Code is a registered trademark of Denso Wave.
-                </p>
-            </section>
+    <div class="bed">
+        <div class="trim">
+            <div class="artifact qr-paper">
+                <canvas id="qrCanvas" width="0" height="0"></canvas>
+                <p id="emptyHint">Type something on the rail and your code appears here.</p>
+            </div>
         </div>
+
+        <dl class="spec" id="qrSpec" hidden>
+            <dt>version</dt><dd id="specVersion">—</dd>
+            <dt>modules</dt><dd id="specModules">—</dd>
+            <dt>correction</dt><dd id="specEcc">—</dd>
+            <dt>export</dt><dd id="specSize">—</dd>
+        </dl>
+
+        <p id="qrWarning" class="notice hidden"></p>
+        <p id="qrError" class="notice notice-alert hidden"></p>
     </div>
 </div>
 

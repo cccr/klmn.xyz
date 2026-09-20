@@ -15,11 +15,13 @@
         quietOut:   document.getElementById('quietOut'),
         fgColor:    document.getElementById('fgColor'),
         bgColor:    document.getElementById('bgColor'),
-        fgHex:      document.getElementById('fgHex'),
-        bgHex:      document.getElementById('bgHex'),
         canvas:     document.getElementById('qrCanvas'),
         emptyHint:  document.getElementById('emptyHint'),
-        status:     document.getElementById('qrStatus'),
+        spec:       document.getElementById('qrSpec'),
+        specVersion: document.getElementById('specVersion'),
+        specModules: document.getElementById('specModules'),
+        specEcc:     document.getElementById('specEcc'),
+        specSize:    document.getElementById('specSize'),
         warning:    document.getElementById('qrWarning'),
         error:      document.getElementById('qrError'),
         btnPng:     document.getElementById('btnPng'),
@@ -61,10 +63,9 @@
         var bg = els.bgColor.value;
 
         els.charCount.textContent = text.length + (text.length === 1 ? ' character' : ' characters');
-        els.moduleOut.textContent = px + ' px';
-        els.quietOut.textContent = quiet + (quiet === 1 ? ' module' : ' modules');
-        els.fgHex.textContent = fg;
-        els.bgHex.textContent = bg;
+        // The unit lives beside the number in the markup, so these are bare.
+        els.moduleOut.textContent = px;
+        els.quietOut.textContent = quiet;
         els.error.classList.add('hidden');
         els.warning.classList.add('hidden');
 
@@ -73,7 +74,7 @@
             els.canvas.width = els.canvas.height = 0;
             els.canvas.style.display = 'none';
             els.emptyHint.style.display = '';
-            els.status.textContent = '';
+            els.spec.hidden = true;
             els.btnPng.disabled = els.btnSvg.disabled = true;
             return;
         }
@@ -98,16 +99,19 @@
         els.canvas.style.display = '';
         var dim = drawCanvas(qr, quiet, px, fg, bg);
 
+        // What the code turned out to be, as an aligned table. It used to be a
+        // single middle-dot-joined string, where nothing lined up and the
+        // interesting number was wherever it happened to land.
         var effective = ECC_BY_ORDINAL[qr.errorCorrectionLevel.ordinal];
-        var eccText = 'ECC ' + effective;
-        if (effective !== ECC_LABEL[ecc]) {
-            eccText += ' (' + ECC_LABEL[ecc] + ' requested, upgraded for free)';
-        }
-        els.status.textContent = 'Version ' + qr.version + ' · ' + qr.size + '×' + qr.size +
-            ' modules · ' + eccText + ' · ' + dim + '×' + dim + ' px';
+        els.specVersion.textContent = qr.version;
+        els.specModules.textContent = qr.size + ' \u00d7 ' + qr.size;
+        els.specEcc.textContent = effective +
+            (effective !== ECC_LABEL[ecc] ? ' (' + ECC_LABEL[ecc] + ' requested)' : '');
+        els.specSize.textContent = dim + ' \u00d7 ' + dim + ' px';
+        els.spec.hidden = false;
 
         if (quiet < 4) {
-            els.warning.textContent = 'A quiet zone under 4 modules is below spec — test carefully before printing.';
+            els.warning.textContent = 'A quiet zone under 4 modules is below spec. Test it before printing a batch.';
             els.warning.classList.remove('hidden');
         }
 
