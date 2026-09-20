@@ -96,17 +96,13 @@ async function until(page, expr) {
   return false;
 }
 
-// Waits for the page to be measurable. Pages that still load the Tailwind CDN
-// also need a beat for the runtime compiler to rewrite styles; pages that have
-// dropped it do not, and used to pay that 2s on every single load.
+// Waits for the page to be measurable. This used to also sleep 2s waiting for
+// Tailwind's runtime compiler to rewrite styles; nothing loads it now.
 async function settle(page) {
   await until(page, 'document.readyState === "complete"');
   // The sheet renders from the hash after load, so measuring at readyState
   // catches an empty grid. Pages without a grid skip this.
   await until(page, "!document.getElementById('grid') || !!document.querySelector('#grid .cell')");
-  if (await page.evalJson('!!document.querySelector(\'script[src*="tailwindcss"]\')')) {
-    await sleep(2000);
-  }
 }
 
 // Opens one tab on a path under the built site and hands back a page handle.

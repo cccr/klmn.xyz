@@ -1,13 +1,24 @@
 {{ define "main" }}
-<h1 class="text-3xl font-bold tracking-tight mb-6">{{ .Title }}</h1>
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    {{ range .Pages.ByTitle }}
-    <article class="bg-white/70 border border-slate-200 rounded-2xl p-5">
-        <h2 class="text-xl font-semibold mb-2">
-            <a class="hover:underline" href="{{ .RelPermalink }}">{{ .LinkTitle }}</a>
-        </h2>
-        <p class="text-slate-600 text-sm">{{ .Params.description }}</p>
-    </article>
-    {{ end }}
+{{- /* The home page lists the tools themselves rather than the one section
+       that contains them; /tools/ lists its own children. */ -}}
+{{ $items := .Pages.ByTitle }}
+{{ if .IsHome }}{{ $items = (where site.RegularPages "Section" "tools").ByTitle }}{{ end }}
+
+<div class="index">
+    <header class="index-head">
+        <h1>{{ .Title }}</h1>
+        {{ with .Content }}<div class="index-lede">{{ . }}</div>{{ end }}
+    </header>
+
+    <div class="trim">
+        <div class="artifact specimen">
+            {{ range $items }}
+            <a class="specimen-row" href="{{ .RelPermalink }}">
+                <h2>{{ .LinkTitle }}</h2>
+                <p>{{ .Params.description }}</p>
+            </a>
+            {{ end }}
+        </div>
+    </div>
 </div>
 {{ end }}

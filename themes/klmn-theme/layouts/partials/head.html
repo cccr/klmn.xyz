@@ -1,11 +1,7 @@
-{{- /* Head partial: fonts, site CSS, and Tailwind for the pages still on it.
-
-       Tailwind is a runtime JIT compiler loaded from a CDN. Pages that have
-       been converted to plain CSS opt out with `tailwind: false` in their
-       front matter; when every page carries the flag, this block and the
-       `if` around it both go away. */ -}}
+{{- /* Head partial: fonts and the site stylesheet. Nothing else — no CDN,
+       no runtime CSS compiler. See docs/superpowers/plans/2026-09-20-tailwind-migration.md
+       for what used to be here and why it went. */ -}}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-{{ if ne .Params.tailwind false }}<script src="https://cdn.tailwindcss.com"></script>{{ end }}
 <link rel="stylesheet" href="/css/style.css">

@@ -1,8 +1,9 @@
 # Dropping Tailwind — migration reference
 
-**Status:** in progress. `qr` and `mass-qr` are off it; `milling`, `wiggler`,
-`list.html` and `single.html` still load it.
-**Purpose:** reference doc. Pick this up in any future session to convert the next page.
+**Status: done, 2026-09-20.** No page loads Tailwind. The gate, the script and
+the test workarounds are all gone.
+**Purpose:** the record of why it went and what replaced it. The visual
+direction that landed on top of it is in `docs/design/2026-09-20-press-bed.md`.
 
 ## Why
 
@@ -20,100 +21,75 @@ Tailwind is loaded from `cdn.tailwindcss.com` as a runtime JIT compiler. On a si
 - **Nothing load-bearing.** The parts that matter — the QR sheet grid, the print rules — were
   always hand-written plain CSS.
 
-## Mechanism
+## What replaced it
 
-Four moving parts, all already in place:
-
-1. **`themes/klmn-theme/layouts/_default/baseof.html` is class-free.** The header, nav, `main`
-   and footer carry no utility classes. Their styling comes from plain CSS. This is shared by
-   every page, so it only had to happen once.
-2. **`themes/klmn-theme/static/css/style.css` is the site stylesheet.** Already loaded
-   site-wide by `head.html`. It holds a trimmed preflight, the chrome, and the few primitives
-   more than one page uses (`.hidden`, `.form-label`, `.form-tooltip`).
-3. **`themes/klmn-theme/layouts/partials/head.html` gates the Tailwind script** on
-   `tailwind: false` in a page's front matter. A page opts out; everything else keeps it.
-4. **`baseof.html` exposes a `head` block.** A tool layout opens with
+1. **`_default/baseof.html` is class-free.** The chrome is styled by
+   `style.css` with element selectors.
+2. **`style.css` is the site stylesheet** — a trimmed reset, the design
+   tokens, the chrome, and the primitives more than one page uses: `.press`,
+   `.rail`, `.field`, `.trim`, `.artifact`, `.btn`, `.seg`, `.spec`,
+   `.notice`, `.prose`.
+3. **`baseof.html` exposes a `head` block**, so each tool links its own
+   stylesheet into `<head>`:
 
    ```
    {{ define "head" }}
    <link rel="stylesheet" href="/tools/<name>/<name>.css">
    {{ end }}
    ```
+4. **Every tool's CSS and JS are files** under `static/tools/<name>/`. The
+   layouts are markup and link/script tags, nothing else.
 
-   so a page's stylesheet lands in `<head>`, after `style.css`, rather than in the body.
+During the migration `style.css` had to render identically with and without
+Tailwind, since pages converted one at a time and the chrome is shared. That
+constraint is retired — nothing loads the CDN any more — but it is why the
+reset mirrors preflight rather than contradicting it.
 
-### The one real constraint
+## What it cost, and what it bought
 
-`style.css` has to render identically with and without Tailwind, because the migration is
-happening a page at a time and the chrome is shared. Two things keep it order-insensitive —
-the CDN script injects its styles at runtime, so you cannot rely on being last:
+Removed: a runtime JIT compiler on the critical path of every page; a
+`[hidden] { display: none !important }` in `mass-qr.html` that existed purely
+to beat a `flex` utility; a 2s settle per page load in `test/cdp.js`; and a
+branch in `test/harness.js` that silently skipped remote scripts, which is now
+a loud error instead, since a remote script would be a mistake.
 
-- **The reset mirrors preflight rather than contradicting it.** Same declarations, same values.
-  Whichever lands last, the outcome is the same.
-- **Chrome selectors are two-deep** (`body > header`, `body > header nav a`), which outranks
-  preflight's single-element rules regardless of order.
+The suite went from 32s to 13s when the settle went. Body's margin reset no
+longer depends on a third-party host being reachable at the moment someone
+hits Ctrl-P, which was one blank second page away from mattering.
 
-Verify this after touching `style.css`: measure the chrome on the pages still on Tailwind
-(`/`, `/tools/`, `/tools/milling/`, `/tools/wiggler/`) before and after. Every box, colour and
-font size should be identical. `test/cdp.js`'s `withPage` + `evalJson` is enough to do it.
+## Lessons worth keeping
 
-## Converting the next page
-
-For `<name>` in `milling`, `wiggler` (and `list.html` / `single.html`, which cover the home
-page, the tools index and the markdown pages):
-
-1. Inventory what it uses:
-   ```
-   grep -o 'class="[^"]*"' themes/klmn-theme/layouts/tools/<name>.html \
-     | sed 's/class="//;s/"//' | tr ' ' '\n' | sort -u
-   ```
-2. Screenshot before, at 1400px and 760px, so the diff is checkable. `test/cdp.js` exports
-   `withPage(url, fn)`; the page handle has `setViewport(w, h)` and `screenshot()`.
-3. Move the page's CSS into `static/tools/<name>/<name>.css` and its JS into
-   `static/tools/<name>/<name>.js`, and link both from the layout — the CSS through the
-   `head` block, the JS as a `<script src>` where the inline block was. Do **not** add page
-   CSS to `style.css`; that file is chrome and shared primitives only.
-4. Replace the utility classes with semantic ones, prefixed `<name>-`.
-5. Anything the JS writes as a class list (`el.className = 'px-3 py-1.5 bg-slate-900 …'`)
-   becomes a state class the stylesheet interprets — `classList.toggle('is-on', …)`. Keep any
-   class name the tests assert on; `.hidden` in particular is now defined in `style.css`.
-6. Add `tailwind: false` to the page's front matter.
-7. Screenshot after and compare, at both widths. Check the document does not scroll sideways:
-   `document.documentElement.scrollWidth <= window.innerWidth` at 1400/900/760/390.
-   `min-width: max-content` on a wide flex group is the usual culprit; cap it with
-   `min(max-content, 100%)`.
-8. Run the suite.
-
-### Done when
-
-Every page carries `tailwind: false`. At that point delete the gate and the script from
-`head.html`:
-
-```html
-<script src="https://cdn.tailwindcss.com"></script>
-```
-
-then drop the CDN-skipping branch in `test/harness.js` and the Tailwind detection in
-`test/cdp.js`'s `settle()`.
+- **A `<style>` block in a layout hides broken CSS.** An unbalanced comment
+  marker eats the next rule and nothing anywhere complains. This happened
+  twice — once in the original `mass-qr.html`, once while writing the file
+  that replaced it. The file caught it in one measurement.
+- **The stylesheet owns appearance; the script owns state.** Three tools were
+  assembling utility class strings in JS on every repaint. They toggle a state
+  class now, which is also how two of them ended up reporting `aria-pressed`
+  for the first time.
+- **Check every page for sideways scroll, not the one that last broke.** An
+  implicit `auto` grid column cannot shrink below its content's minimum, so
+  one wide control drags the whole document sideways. It happened on mass-qr
+  (a `max-content` fieldset), got a test pinned to that page, then happened
+  again on wiggler for a different reason.
 
 ## Status
 
 | Page | Layout | Converted |
 |---|---|---|
-| `/tools/qr/` | `tools/qr.html` | ✅ 2026-09-20 |
-| `/tools/mass-qr/` | `tools/mass-qr.html` | ✅ 2026-09-20 |
-| `/tools/milling/` | `tools/milling.html` | ❌ 327 lines |
-| `/tools/wiggler/` | `tools/wiggler.html` | ❌ 1735 lines — split the CSS/JS out while you're in there |
-| `/` and `/tools/` | `_default/list.html` | ❌ 6 class attributes, small job |
-| single pages | `_default/single.html` | ❌ 1 class attribute, plus `.prose` needs real styles |
+| `/tools/qr/` | `tools/qr.html` | ✅ |
+| `/tools/mass-qr/` | `tools/mass-qr.html` | ✅ |
+| `/tools/milling/` | `tools/milling.html` | ✅ |
+| `/tools/wiggler/` | `tools/wiggler.html` | ✅ |
+| `/` and `/tools/` | `_default/list.html` | ✅ |
+| single pages | `_default/single.html` | ✅ |
 
 ## Conventions settled here
 
 - **Chrome CSS uses semantic selectors**, no invented class names, so it survives the migration
   unchanged.
 - **A tool's own CSS and JS live in their own files**, not in `style.css`, and not inline in the
-  layout. `mass-qr.html` reached 1068 lines inline before this; don't let that happen again.
-  The concrete failure mode: an unbalanced comment marker in a `<style>` block silently eats the
-  next rule and nothing anywhere complains.
+  layout. `mass-qr.html` reached 1068 lines inline and `wiggler.html` 1735; don't let that
+  happen again.
 - **The stylesheet owns appearance, the script owns state.** No class lists built in JS.
 - **No CSS framework replaces Tailwind.** Plain CSS, custom properties for the few shared values.

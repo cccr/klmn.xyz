@@ -110,7 +110,12 @@ function loadPage(relPath, opts) {
   const EXPOSE = ';if(typeof qrcodegen!=="undefined"){window.qrcodegen=qrcodegen;}';
   doc.querySelectorAll('script[src]').forEach((s) => {
     const src = s.getAttribute('src');
-    if (/^(?:[a-z]+:)?\/\//i.test(src)) return; // skip CDN scripts (e.g. Tailwind) — irrelevant to page logic
+    // This used to silently skip remote scripts, because every page loaded
+    // Tailwind from a CDN. None do now, so a remote script is a mistake —
+    // and one that would otherwise disappear from every test in this file.
+    if (/^(?:[a-z]+:)?\/\//i.test(src)) {
+      throw new Error(`${relPath} loads a remote script (${src}); pages are meant to be self-contained`);
+    }
     window.eval(fs.readFileSync(path.join(SITE, src.replace(/^\//, '')), 'utf8') + EXPOSE);
   });
   doc.querySelectorAll('script:not([src])').forEach((s) => window.eval(s.textContent));
