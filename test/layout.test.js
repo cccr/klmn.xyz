@@ -136,19 +136,20 @@ test('an over-capacity tile renders a centred, coloured error',
 
 
 
-// The regression that started all of this, stated as one property: on a sheet
-// with mixed captions, every code is the same size, every code in a row shares
-// a top edge, and the space left over is split evenly above and below.
+// The regression that started all of this, restated for the current design:
+// every code the same size, aligned across a row, and sitting directly under
+// its caption rather than floating in the middle of a tall box.
 test('a mixed-caption sheet is uniform end to end', { skip: !CHROME && 'no Chrome' }, async () => {
   const m = await withSheet(MIXED, (p) => p.evalJson(`(function () {
     var out = [];
     document.querySelectorAll('#grid .cell.is-filled').forEach(function (cell) {
-      var cr = cell.querySelector('.code').getBoundingClientRect();
-      var sr = cell.querySelector('.code svg').getBoundingClientRect();
-      var side = Math.min(sr.width, sr.height);
-      out.push({ pos: cell.dataset.pos, side: side,
-                 above: sr.top - cr.top + (sr.height - side) / 2,
-                 below: cr.bottom - sr.bottom + (sr.height - side) / 2 });
+      var cr = cell.getBoundingClientRect();
+      var cap = cell.querySelector('.cap').getBoundingClientRect();
+      var svg = cell.querySelector('.code svg').getBoundingClientRect();
+      out.push({ pos: cell.dataset.pos,
+                 side: Math.min(svg.width, svg.height),
+                 capToCode: svg.top - cap.bottom,
+                 overflow: svg.bottom - cr.bottom });
     });
     return out;
   })()`));
@@ -156,8 +157,16 @@ test('a mixed-caption sheet is uniform end to end', { skip: !CHROME && 'no Chrom
   const sides = m.map((c) => c.side);
   assert.ok(Math.min(...sides) > 100, 'codes actually rendered');
   assert.ok(Math.max(...sides) - Math.min(...sides) < 0.5, 'codes are one size');
+
+  // The complaint this replaced: with the code centred in a 1fr row, half the
+  // cell's leftover height sat between the label and the code — tens of
+  // millimetres on a sparse grid. It is now just the deliberate --cap-gap.
   m.forEach(function (c) {
-    assert.ok(Math.abs(c.above - c.below) < 0.5,
-      `tile ${c.pos} slack is lopsided: ${c.above.toFixed(1)} above, ${c.below.toFixed(1)} below`);
+    assert.ok(c.capToCode >= 0 && c.capToCode < 12,
+      `tile ${c.pos}: ${c.capToCode.toFixed(1)}px between caption and code`);
+    assert.ok(c.overflow <= 0.5, `tile ${c.pos} overflows its cell by ${c.overflow.toFixed(1)}px`);
   });
+  const gaps = m.map((c) => c.capToCode);
+  assert.ok(Math.max(...gaps) - Math.min(...gaps) < 0.5,
+    `caption-to-code gap differs across tiles: ${gaps.map((g) => g.toFixed(1)).join(', ')}`);
 });

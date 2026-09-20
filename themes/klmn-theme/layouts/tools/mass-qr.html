@@ -68,18 +68,26 @@
        collapsed to the height of its absolutely positioned SVG (zero) and
        the column shrink-wrapped to the caption's width. */
     .cell.is-filled {
+        /* `container-type: size` lets .code bound itself against the cell's
+           own height in cqh units — the one thing plain percentages cannot
+           do, because a percentage max-height inside an auto-sized row is
+           indefinite and gets dropped. The cell's size comes from the grid
+           track, so making it a size container costs nothing. */
+        container-type: size;
         display: grid;
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: var(--cap-h, auto) minmax(0, 1fr);
-        align-items: stretch; justify-items: stretch;
-        align-content: stretch; justify-content: stretch;
+        grid-template-rows: var(--cap-h, auto) auto;
+        /* Rows are content-sized now, so this centres the caption-plus-code
+           pair as a group. Previously the code row was 1fr and the code
+           centred inside it, which parked half the cell's leftover space
+           between the label and the code. */
+        align-content: center;
+        row-gap: var(--cap-gap, 1.5mm);
+        justify-items: stretch;
     }
-    /* The caption hugs its code — bottom-aligned in the band when it sits
-       above, top-aligned when below — so extra description lines grow away
-       from the code rather than shifting it. */
     .cell.is-filled .cap  { grid-row: 1; align-self: end; }
     .cell.is-filled .code { grid-row: 2; }
-    .cell.is-filled.cap-below { grid-template-rows: minmax(0, 1fr) var(--cap-h, auto); }
+    .cell.is-filled.cap-below { grid-template-rows: auto var(--cap-h, auto); }
     .cell.is-filled.cap-below .cap  { grid-row: 2; align-self: start; }
     .cell.is-filled.cap-below .code { grid-row: 1; }
 
@@ -101,7 +109,17 @@
     .cap .label { font-weight: 600; -webkit-line-clamp: 2; line-clamp: 2; }
     .cap .desc { opacity: .75; -webkit-line-clamp: 1; line-clamp: 1; }
 
-    .code { min-height: 0; width: 100%; position: relative; }
+    /* The code is a square sized by width, then clamped so the whole tile —
+       caption band, gap and code — still fits the cell's height. Clamping
+       max-WIDTH rather than max-height lets aspect-ratio derive the height,
+       which keeps it square in both directions. */
+    .code {
+        aspect-ratio: 1;
+        width: 100%;
+        max-width: calc(100cqh - var(--cap-h, 0px) - var(--cap-gap, 1.5mm));
+        margin-inline: auto;
+        position: relative;
+    }
     .code svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 
     /* A tile whose payload will not fit still prints — a visibly broken tile
