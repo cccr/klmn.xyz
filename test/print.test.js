@@ -218,3 +218,26 @@ test('a landscape custom sheet stays on one page and keeps every code', async (t
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+const { withSheet, closeAll, CHROME: CDP_CHROME } = require('./cdp');
+test.after(closeAll);
+
+// Body margin comes only from Tailwind's CDN preflight. Block that script —
+// offline, corporate proxy, a slow CDN on the day someone hits Ctrl-P — and
+// body keeps its 8px UA margin while the sheet exactly fills the page.
+test('the sheet still prints on one page without the Tailwind CDN',
+  { skip: !CDP_CHROME && 'no Chrome' }, async () => {
+  const pdf = await withSheet(STATE, async (p) => {
+    await p.blockUrls(['*cdn.tailwindcss.com*']);
+    assert.equal(await p.evalJson("getComputedStyle(document.body).margin"), '8px',
+      'precondition: with no preflight, the UA margin is live on screen');
+
+    await p.emulateMedia('print');
+    assert.equal(await p.evalJson("getComputedStyle(document.body).margin"), '0px',
+      'the print reset does not depend on the CDN');
+    await p.emulateMedia('');
+    return p.printToPDF();
+  });
+  const counts = [...pdf.toString('latin1').matchAll(/\/Count\s+(\d+)/g)].map((m) => +m[1]);
+  assert.equal(Math.max(...counts), 1, 'exactly one page');
+});

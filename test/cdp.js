@@ -110,6 +110,12 @@ async function withSheet(state, fn) {
       await c.send('Runtime.evaluate', { expression: "window.dispatchEvent(new Event('resize'))" });
       await new Promise((r) => setTimeout(r, 300));
     },
+    // Evaluates print-only rules without going through printToPDF, so a test
+    // can assert on the styles the printer sees rather than inferring them
+    // from a page count. Pass '' to go back to screen.
+    async emulateMedia(media) {
+      await c.send('Emulation.setEmulatedMedia', { media: media });
+    },
     async blockUrls(urls) {
       await c.send('Network.setBlockedURLs', { urls });
       await c.send('Page.reload');

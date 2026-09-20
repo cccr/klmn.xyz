@@ -112,6 +112,17 @@
     @media print {
         /* Site chrome from baseof.html — hidden from here so the theme stays untouched. */
         body > header, body > footer { display: none !important; }
+
+        /* The only thing keeping body off its 8px UA margin is Tailwind's
+           CDN preflight. Block that script — offline, a corporate proxy, a
+           slow CDN on the day someone hits Ctrl-P — and the sheet starts 8px
+           down a page it exactly fills, 8px from a second, blank page, on a
+           dependency this site does not control. min-height goes too:
+           `min-h-screen` resolves against the page box in print. */
+        html, body {
+            margin: 0 !important; padding: 0 !important;
+            min-height: 0 !important; background: #fff !important;
+        }
         main { padding: 0 !important; margin: 0 !important; max-width: none !important; }
         .mq-controls, #btnPrint, .no-print { display: none !important; }
 
@@ -248,6 +259,11 @@
                 </select>
             </div>
             <button id="btnPrint" class="px-4 py-2 rounded-xl text-sm bg-slate-900 text-white hover:bg-slate-800">Print</button>
+            <p class="basis-full text-xs text-slate-500 no-print">
+                In the print dialog pick the same paper size as above, set Margins to
+                <strong>None</strong> and Scale to <strong>100%</strong>. Anything else and the
+                browser rescales the sheet, so the codes print at the wrong physical size.
+            </p>
         </div>
     </div>
 
