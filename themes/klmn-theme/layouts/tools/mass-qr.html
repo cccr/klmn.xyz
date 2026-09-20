@@ -1,13 +1,12 @@
 {{ define "main" }}
 <style id="pageRule">@page { size: 210mm 297mm; margin: 0; }</style>
 <style>
+    /* Width/height are set inline from paperDims() so the sheet and the @page
+       rule cannot disagree, and so custom sizes need no extra rule. */
     .sheet {
         width: 210mm; height: 297mm; padding: 10mm;
         background: #fff; box-shadow: 0 1px 12px rgba(15, 23, 42, .12);
     }
-    .sheet.landscape { width: 297mm; height: 210mm; }
-    .sheet.letter { width: 215.9mm; height: 279.4mm; }
-    .sheet.letter.landscape { width: 279.4mm; height: 215.9mm; }
 
     #grid { display: grid; gap: 4mm; width: 100%; height: 100%; }
 
@@ -103,7 +102,28 @@
                 <select id="paper" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
                     <option value="a4">A4</option>
                     <option value="letter">Letter</option>
+                    <option value="custom">Custom</option>
                 </select>
+            </div>
+            <div id="customDims" class="flex items-end gap-2" hidden>
+                <div>
+                    <label class="form-label" for="cw">Width</label>
+                    <input id="cw" type="number" inputmode="decimal"
+                           class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
+                </div>
+                <span class="pb-2.5 text-slate-400">&times;</span>
+                <div>
+                    <label class="form-label" for="ch">Height</label>
+                    <input id="ch" type="number" inputmode="decimal"
+                           class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
+                </div>
+                <div>
+                    <label class="form-label" for="cu">Units</label>
+                    <select id="cu" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
+                        <option value="mm">mm</option>
+                        <option value="in">inches</option>
+                    </select>
+                </div>
             </div>
             <div>
                 <label class="form-label" for="orient">Orientation</label>
@@ -179,7 +199,7 @@
 
     var MAX = 6;
     var ENUMS = {
-        paper: ['a4', 'letter'], orient: ['p', 'l'],
+        paper: ['a4', 'letter', 'custom'], orient: ['p', 'l'], cu: ['mm', 'in'],
         ecc: ['L', 'M', 'Q', 'H'],
         capPos: ['above', 'below'], capSize: ['s', 'm', 'l']
     };
@@ -187,7 +207,8 @@
     function defaultState() {
         return {
             v: 1, rows: 2, cols: 2, paper: 'a4', orient: 'p', ecc: 'Q',
-            capPos: 'above', capSize: 'm', fg: '#000000', bg: '#ffffff', tiles: {}
+            capPos: 'above', capSize: 'm', fg: '#000000', bg: '#ffffff',
+            cw: 210, ch: 297, cu: 'mm', tiles: {}
         };
     }
 
@@ -197,6 +218,20 @@
         n = parseInt(n, 10);
         if (isNaN(n)) return dflt;
         return Math.min(hi, Math.max(lo, n));
+    }
+
+    // Custom paper dimensions are fractional, so they need a float clamp —
+    // clamp() above parses integers and would truncate 215.9 to 215.
+    var DIM_MIN = 50, DIM_MAX = 1200;
+
+    // Rounded to 0.01mm: inch conversion lands on values like 215.89999999999998,
+    // which would otherwise be written verbatim into the sheet's width and the
+    // @page rule. Ten microns is far below anything a printer can resolve.
+    function clampDim(n, dflt) {
+        n = parseFloat(n);
+        if (!isFinite(n)) return dflt;
+        n = Math.min(DIM_MAX, Math.max(DIM_MIN, n));
+        return Math.round(n * 100) / 100;
     }
 
     function pickEnum(v, name, dflt) {
@@ -221,6 +256,9 @@
             capSize: pickEnum(obj.capSize, 'capSize', d.capSize),
             fg: hex(obj.fg, d.fg),
             bg: hex(obj.bg, d.bg),
+            cw: clampDim(obj.cw, d.cw),
+            ch: clampDim(obj.ch, d.ch),
+            cu: pickEnum(obj.cu, 'cu', d.cu),
             tiles: {}
         };
         var tiles = obj.tiles || {};
@@ -569,16 +607,24 @@
     }
 
     var PAPER_MM = { a4: [210, 297], letter: [215.9, 279.4] };
+    var MM_PER_IN = 25.4;
+
+    // The one place a sheet's physical size is decided. Everything that needs
+    // millimetres — the sheet box, the @page rule — reads it from here, so the
+    // preview and the printed page cannot drift apart.
+    function paperDims(s) {
+        var dims = s.paper === 'custom' ? [s.cw, s.ch] : PAPER_MM[s.paper].slice();
+        return s.orient === 'l' ? [dims[1], dims[0]] : dims;
+    }
 
     function applySheetChrome() {
         var sheet = document.getElementById('sheet');
-        sheet.classList.toggle('letter', state.paper === 'letter');
-        sheet.classList.toggle('landscape', state.orient === 'l');
-
-        var dims = PAPER_MM[state.paper].slice();
-        if (state.orient === 'l') dims.reverse();
+        var dims = paperDims(state);
+        sheet.style.width = dims[0] + 'mm';
+        sheet.style.height = dims[1] + 'mm';
         document.getElementById('pageRule').textContent =
             '@page { size: ' + dims[0] + 'mm ' + dims[1] + 'mm; margin: 0; }';
+        syncCustomInputs();
 
         // Paper/orientation just changed the sheet's real (unscaled) size,
         // which "fit" zoom is computed from — recompute it here rather than
@@ -611,6 +657,53 @@
     elRows.addEventListener('change', function () {
         if (!resize(parseInt(elRows.value, 10), state.cols)) elRows.value = state.rows;
     });
+
+    // ── Custom paper dimensions ────────────────────────────────
+    // State stores millimetres always; `cu` is only how the numbers are shown.
+    // Rendering the fields never writes back to state, so switching units
+    // cannot drift the real size through display rounding.
+    var elCustom = document.getElementById('customDims');
+    var elCw = document.getElementById('cw');
+    var elCh = document.getElementById('ch');
+    var elCu = document.getElementById('cu');
+
+    function toDisplay(mm, unit) {
+        var n = unit === 'in' ? mm / MM_PER_IN : mm;
+        return Math.round(n * 100) / 100;
+    }
+
+    function toMm(value, unit) {
+        var n = parseFloat(value);
+        if (!isFinite(n)) return null;
+        return unit === 'in' ? n * MM_PER_IN : n;
+    }
+
+    function syncCustomInputs() {
+        elCustom.hidden = state.paper !== 'custom';
+        if (elCustom.hidden) return;
+        var inches = state.cu === 'in';
+        elCu.value = state.cu;
+        [elCw, elCh].forEach(function (el) {
+            el.step = inches ? '0.125' : '0.1';
+            el.min = toDisplay(DIM_MIN, state.cu);
+            el.max = toDisplay(DIM_MAX, state.cu);
+        });
+        elCw.value = toDisplay(state.cw, state.cu);
+        elCh.value = toDisplay(state.ch, state.cu);
+    }
+
+    [['cw', elCw], ['ch', elCh]].forEach(function (pair) {
+        pair[1].addEventListener('change', function () {
+            var mm = toMm(pair[1].value, state.cu);
+            if (mm === null) { syncCustomInputs(); return; }  // put the old value back
+            var patch = {};
+            patch[pair[0]] = mm;
+            setState(patch);
+        });
+    });
+
+    // Changing units re-labels the same sheet; it must not resize it.
+    elCu.addEventListener('change', function () { setState({ cu: elCu.value }); });
 
     var SIMPLE = ['paper', 'orient', 'ecc', 'capPos', 'capSize'];
     SIMPLE.forEach(function (name) {

@@ -295,19 +295,20 @@ test('declining a resize triggered via the column select reverts the select itse
   assert.equal(p.doc.querySelectorAll('#grid .cell').length, 9);
 });
 
-test('paper and orientation drive the sheet class and @page rule', () => {
-  const { doc, $, window } = page();
+test('paper and orientation drive the sheet size and @page rule', () => {
+  const { $, window } = page();
   const fire = (el, v) => { el.value = v; el.dispatchEvent(new window.Event('change', { bubbles: true })); };
 
   fire($('paper'), 'letter');
-  assert.ok($('sheet').classList.contains('letter'));
+  assert.equal($('sheet').style.width, '215.9mm');
+  assert.equal($('sheet').style.height, '279.4mm');
   fire($('orient'), 'l');
-  assert.ok($('sheet').classList.contains('landscape'));
+  assert.equal($('sheet').style.width, '279.4mm');
   assert.match($('pageRule').textContent, /279\.4mm 215\.9mm/);
 
   fire($('paper'), 'a4');
   fire($('orient'), 'p');
-  assert.ok(!$('sheet').classList.contains('letter'));
+  assert.equal($('sheet').style.width, '210mm');
   assert.match($('pageRule').textContent, /210mm 297mm/);
 });
 
@@ -479,4 +480,122 @@ test('journey: fill two cells, resize, recolour and reorient without losing tile
   assert.equal(s.orient, 'l');
   assert.equal(p.doc.querySelectorAll('.cell.is-editing').length, 0, 'no cell should be left mid-edit');
   assert.equal(p.doc.querySelectorAll('#grid .cell.is-filled .code svg').length, 2);
+});
+
+// ── Custom paper size ──────────────────────────────────────────────
+
+function fireChange(p, el, v) {
+  el.value = v;
+  el.dispatchEvent(new p.window.Event('change', { bubbles: true }));
+}
+
+test('custom paper: defaults are A4 dimensions in mm', () => {
+  const { window } = page();
+  const s = window.massQr.defaultState();
+  assert.equal(s.cw, 210);
+  assert.equal(s.ch, 297);
+  assert.equal(s.cu, 'mm');
+});
+
+test('custom paper: dimensions round-trip through the URL hash', () => {
+  const { window } = page();
+  const s = window.massQr.defaultState();
+  s.paper = 'custom';
+  s.cw = 215.9;
+  s.ch = 279.4;
+  s.cu = 'in';
+  assert.deepEqual(window.massQr.decodeState(window.massQr.encodeState(s)), s);
+});
+
+test('custom paper: dimensions are clamped and garbage falls back to A4 size', () => {
+  const { window } = page();
+  const tiny = window.massQr.normalize({ v: 1, paper: 'custom', cw: 1, ch: 99999 });
+  assert.equal(tiny.cw, 50, 'below the floor clamps up');
+  assert.equal(tiny.ch, 1200, 'above the ceiling clamps down');
+
+  const junk = window.massQr.normalize({ v: 1, paper: 'custom', cw: 'abc', ch: null });
+  assert.equal(junk.paper, 'custom', 'paper choice survives');
+  assert.equal(junk.cw, 210, 'unparseable width falls back to A4 width');
+  assert.equal(junk.ch, 297);
+
+  assert.equal(window.massQr.normalize({ v: 1, cu: 'furlongs' }).cu, 'mm', 'bad unit falls back');
+});
+
+test('custom paper: fractional decimals survive normalization', () => {
+  const { window } = page();
+  const s = window.massQr.normalize({ v: 1, paper: 'custom', cw: 215.9, ch: 279.4 });
+  assert.equal(s.cw, 215.9);
+  assert.equal(s.ch, 279.4);
+});
+
+test('custom paper: drives the sheet size and the @page rule', () => {
+  const p = page();
+  p.window.massQr.setState({ paper: 'custom', cw: 100, ch: 150 });
+  const sheet = p.$('sheet');
+  assert.equal(sheet.style.width, '100mm');
+  assert.equal(sheet.style.height, '150mm');
+  assert.match(p.$('pageRule').textContent, /100mm 150mm/);
+});
+
+test('custom paper: orientation swaps the custom dimensions', () => {
+  const p = page();
+  p.window.massQr.setState({ paper: 'custom', cw: 100, ch: 150, orient: 'l' });
+  assert.equal(p.$('sheet').style.width, '150mm');
+  assert.equal(p.$('sheet').style.height, '100mm');
+  assert.match(p.$('pageRule').textContent, /150mm 100mm/);
+});
+
+test('custom paper: preset sizes still drive the sheet inline, not via CSS classes', () => {
+  const p = page();
+  fireChange(p, p.$('paper'), 'letter');
+  assert.equal(p.$('sheet').style.width, '215.9mm');
+  assert.equal(p.$('sheet').style.height, '279.4mm');
+  fireChange(p, p.$('orient'), 'l');
+  assert.equal(p.$('sheet').style.width, '279.4mm');
+});
+
+test('custom paper: the dimension fields show only when Custom is selected', () => {
+  const p = page();
+  assert.ok(p.$('customDims').hidden, 'hidden for A4');
+  fireChange(p, p.$('paper'), 'custom');
+  assert.ok(!p.$('customDims').hidden, 'shown for custom');
+  fireChange(p, p.$('paper'), 'a4');
+  assert.ok(p.$('customDims').hidden, 'hidden again');
+});
+
+test('custom paper: typing inches stores millimetres', () => {
+  const p = page();
+  fireChange(p, p.$('paper'), 'custom');
+  fireChange(p, p.$('cu'), 'in');
+  fireChange(p, p.$('cw'), '8.5');
+  fireChange(p, p.$('ch'), '11');
+  const s = p.window.massQr.getState();
+  assert.ok(Math.abs(s.cw - 215.9) < 0.01, `8.5in -> ${s.cw}mm`);
+  assert.ok(Math.abs(s.ch - 279.4) < 0.01, `11in -> ${s.ch}mm`);
+  assert.equal(p.$('sheet').style.width, '215.9mm');
+});
+
+test('custom paper: switching unit converts the display, not the sheet', () => {
+  const p = page();
+  p.window.massQr.setState({ paper: 'custom', cw: 210, ch: 297 });
+  fireChange(p, p.$('cu'), 'in');
+  assert.ok(Math.abs(parseFloat(p.$('cw').value) - 8.27) < 0.01, `210mm -> ${p.$('cw').value}in`);
+  assert.equal(p.$('sheet').style.width, '210mm', 'physical size unchanged');
+  fireChange(p, p.$('cu'), 'mm');
+  assert.ok(Math.abs(parseFloat(p.$('cw').value) - 210) < 0.01, 'and back again');
+  assert.equal(p.$('sheet').style.width, '210mm');
+});
+
+test('custom paper: a shared custom sheet reopens with its own unit and size', () => {
+  const seed = page();
+  seed.window.massQr.setState({ paper: 'custom', cw: 215.9, ch: 279.4, cu: 'in' });
+  const hash = '#s=' + seed.window.massQr.encodeState(seed.window.massQr.getState());
+
+  const p = page({ hash });
+  const s = p.window.massQr.getState();
+  assert.equal(s.paper, 'custom');
+  assert.equal(s.cu, 'in');
+  assert.equal(p.$('sheet').style.width, '215.9mm');
+  assert.ok(!p.$('customDims').hidden, 'fields visible on load');
+  assert.ok(Math.abs(parseFloat(p.$('cw').value) - 8.5) < 0.01, 'shown in inches');
 });

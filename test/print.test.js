@@ -103,3 +103,52 @@ test('the printed PDF is one A4 page with four scannable codes', async (t) => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+// A custom size is the one paper option with no @page keyword behind it — the
+// millimetres come straight from state — so prove the printer honours them.
+// 120x180mm at 72dpi is 340.2x510.2pt, a ratio of 1.5 that no preset shares
+// (A4 is 1.414, Letter 1.294), so a silent fallback to a preset fails here.
+const CUSTOM_STATE = {
+  v: 1, rows: 1, cols: 1, paper: 'custom', cw: 120, ch: 180, cu: 'mm',
+  orient: 'p', ecc: 'Q', capPos: 'above', capSize: 'm',
+  fg: '#000000', bg: '#ffffff',
+  tiles: { '0,0': { u: 'https://school.edu/custom', l: 'Custom', d: '' } }
+};
+
+test('a custom paper size prints at its real physical size', async (t) => {
+  if (!CHROME) return t.skip('No Chrome/Chromium found; set CHROME=<path to binary> to run this test');
+  buildSite();
+
+  const server = spawn('python3', ['-m', 'http.server', String(PORT + 1)], { cwd: SITE, stdio: 'ignore' });
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'massqr-custom-'));
+  try {
+    await new Promise((r) => setTimeout(r, 1500));
+    const pdf = path.join(tmp, 'custom.pdf');
+    const url = `http://localhost:${PORT + 1}/tools/mass-qr/#s=${hashFor(CUSTOM_STATE)}`;
+    execFileSync(CHROME, [
+      '--headless', '--disable-gpu', '--no-sandbox', '--no-pdf-header-footer',
+      '--virtual-time-budget=6000', `--print-to-pdf=${pdf}`, url
+    ], { stdio: 'ignore' });
+
+    assert.ok(fs.existsSync(pdf), 'PDF was produced');
+
+    const raw = fs.readFileSync(pdf);
+    const counts = [...raw.toString('latin1').matchAll(/\/Count\s+(\d+)/g)].map((m) => +m[1]);
+    assert.equal(Math.max(...counts), 1, 'exactly one page');
+
+    const png = path.join(tmp, 'custom.png');
+    execFileSync('sips', ['-s', 'format', 'png', pdf, '--out', png], { stdio: 'ignore' });
+    const img = PNG.sync.read(fs.readFileSync(png));
+    const ratio = img.height / img.width;
+    assert.ok(Math.abs(ratio - 180 / 120) < 0.02, `120x180mm aspect ratio, got ${ratio.toFixed(3)}`);
+
+    const res = jsQR(
+      new Uint8ClampedArray(img.data), img.width, img.height
+    );
+    assert.ok(res, 'the code on a custom-size page still scans');
+    assert.equal(res.data, 'https://school.edu/custom');
+  } finally {
+    server.kill();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
