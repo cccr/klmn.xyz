@@ -228,6 +228,45 @@ body > footer > div {
 .rail input[type="color"]::-webkit-color-swatch { border: none; }
 .rail input[type="color"]::-moz-color-swatch { border: none; }
 
+/* ── Prose ─────────────────────────────────────────────────────────────
+   Body copy on the bed: explanatory sections under an artifact, and the
+   rendered markdown on a plain page. One treatment, used by both. */
+.prose { max-width: 68ch; margin-top: 2rem; }
+.prose > * + * { margin-top: 1rem; }
+.prose h1 {
+    font-family: var(--cond);
+    font-size: 2.125rem; line-height: 1.1; font-weight: 700; letter-spacing: -.01em;
+}
+.prose h2 {
+    font-family: var(--cond);
+    font-size: 1.125rem; font-weight: 600;
+    margin-top: 2rem;
+    padding-bottom: .375rem;
+    border-bottom: 1px solid var(--rule);
+}
+.prose p { line-height: 1.6; }
+.prose a { color: var(--reg); text-decoration: underline; }
+.prose code {
+    font-family: var(--mono); font-size: .875em;
+    padding: .0625rem .25rem;
+    background: var(--ground-sunk);
+}
+.prose .bullets, .bullets { margin-top: .75rem; }
+.bullets li {
+    position: relative;
+    padding-left: 1.125rem;
+    line-height: 1.55;
+    font-size: .9375rem;
+}
+.bullets li + li { margin-top: .4375rem; }
+/* An en dash rather than a bullet glyph: it sits on the baseline with the
+   text instead of floating above it. */
+.bullets li::before {
+    content: '\2013';
+    position: absolute; left: 0;
+    color: var(--ink-soft);
+}
+
 /* ── Rail furniture ────────────────────────────────────────────────────── */
 
 /* The scale a value is drawn from, as a small aligned table rather than a
@@ -264,8 +303,9 @@ body > footer > div {
 .rail-credit a { text-decoration: underline; }
 .rail-credit a:hover { color: var(--reg); }
 
-/* Anything else on the bed lines up with the artifact above it. */
-.bed > .spec, .bed > .notice {
+/* Anything else on the bed lines up with the artifact above it, so the spec,
+   any notice and the explanatory prose all share the paper's edges. */
+.bed > *:not(.trim) {
     width: 100%;
     max-width: var(--trim-width, none);
     margin-inline: auto;
@@ -325,6 +365,27 @@ body > footer > div {
     background: var(--reg);
     border-color: var(--reg);
 }
+
+/* Segmented control. The script marks which button is on; this decides what
+   that looks like. It used to rewrite the whole class list on every repaint,
+   so the control's appearance lived half here and half in a JS string. */
+.seg {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+    margin-top: .25rem;
+}
+.seg button {
+    padding: .3125rem 0;
+    font-family: var(--mono); font-size: .8125rem;
+    color: var(--ink-soft);
+    background: var(--paper);
+    border: 1px solid var(--rule); border-left-width: 0;
+    cursor: pointer;
+    transition: background-color .12s, color .12s;
+}
+.seg button:first-child { border-left-width: 1px; }
+.seg button:hover { color: var(--ink); }
+.seg button.is-on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.seg button.is-on + button { border-left-color: var(--ink); }
 
 /* ── The artifact ──────────────────────────────────────────────────────
    Paper stock, lit off the bed, with registration marks at its trim. The

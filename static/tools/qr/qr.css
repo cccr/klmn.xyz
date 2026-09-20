@@ -16,24 +16,6 @@
 }
 #payload:focus { outline: none; border-color: var(--reg); }
 
-/* Segmented control. The script marks which button is on; this decides what
-   that looks like. It used to rewrite the whole class list on every repaint,
-   so the control's appearance lived half here and half in a JS string. */
-.qr-seg { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: .25rem; }
-.qr-seg button {
-    padding: .3125rem 0;
-    font-family: var(--mono); font-size: .8125rem;
-    color: var(--ink-soft);
-    background: var(--paper);
-    border: 1px solid var(--rule); border-left-width: 0;
-    cursor: pointer;
-    transition: background-color .12s, color .12s;
-}
-.qr-seg button:first-child { border-left-width: 1px; }
-.qr-seg button:hover { color: var(--ink); }
-.qr-seg button.is-on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
-.qr-seg button.is-on + button { border-left-color: var(--ink); }
-
 /* The code is the artifact, so it gets the paper and the trim marks. The
    canvas sizes itself from the module size, so the paper holds a floor and
    centres whatever turns up. */

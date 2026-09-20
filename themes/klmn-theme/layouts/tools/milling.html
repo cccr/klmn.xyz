@@ -1,328 +1,157 @@
+{{ define "head" }}
+<link rel="stylesheet" href="/tools/milling/milling.css">
+{{ end }}
+
 {{ define "main" }}
-<div class="max-w-6xl mx-auto px-0 py-0">
-    <header class="mb-8 flex items-start justify-between gap-4">
-        <div>
-            <h1 class="text-3xl md:text-4xl font-bold tracking-tight">CNC Feed &amp; Speed Planner</h1>
-            <p class="text-slate-600 mt-2 max-w-2xl">
-                Dial in feeds, speeds, and cut parameters for common materials on hobby/DIY and rigid CNC machines.
-                Metric/imperial aware, with an intuitive Conservative ↔ Aggressive tuning slider and rich inline hints.
-            </p>
-        </div>
-        <div class="flex items-center gap-2">
-            <button id="btnMetric" class="px-3 py-1.5 rounded-full border text-sm bg-slate-900 text-white border-slate-900" title="Show values in millimeters and mm/min">Metric</button>
-            <button id="btnImperial" class="px-3 py-1.5 rounded-full border text-sm bg-white text-slate-700 border-slate-300" title="Show values in inches and inches/min">Imperial</button>
-        </div>
-    </header>
+<div class="press">
+    <div class="rail">
+        <h1>Feed &amp; Speed Planner</h1>
+        <p>Feeds, speeds and cut parameters for common materials, on hobby routers and rigid
+           machines alike.</p>
 
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <!-- Left: Inputs -->
-        <div class="lg:col-span-5 space-y-6">
-            <section class="bg-white/70 backdrop-blur border border-slate-200 rounded-2xl p-5 shadow-sm">
-                <div class="mb-3">
-                    <h2 class="text-xl font-semibold text-slate-800">Material &amp; Tool</h2>
-                    <p class="text-slate-500 text-sm leading-relaxed">Pick your stock, cutter type, and diameter. Hints guide you to safe, productive numbers.</p>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="form-label">Material</label><span class="form-tooltip">Sets chipload &amp; SFM bands</span></div>
-                        <select id="material" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white"></select>
-                    </div>
-                    <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="form-label">Tool Material</label><span class="form-tooltip">Carbide tolerates higher SFM</span></div>
-                        <select id="toolMaterial" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                            <option>HSS</option>
-                            <option>Carbide</option>
-                        </select>
-                    </div>
-                    <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="form-label">Diameter</label><span class="form-tooltip">Click a quick size or set precisely</span></div>
-                        <div class="flex items-center gap-2">
-                            <input id="diamMm" type="number" step="0.001" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white" />
-                            <span class="text-xs text-slate-500 whitespace-nowrap">mm</span>
-                        </div>
-                        <div class="flex flex-wrap gap-2 mt-2" id="quickDia"></div>
-                    </div>
-                    <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="form-label">Flutes</label><span class="form-tooltip">More flutes → lower chipload/tooth on light machines</span></div>
-                        <select id="flutes" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                            <option value="1">1</option>
-                            <option value="2">2</option>
-                            <option value="3">3</option>
-                        </select>
-                    </div>
-                </div>
-            </section>
-
-            <section class="bg-white/70 backdrop-blur border border-slate-200 rounded-2xl p-5 shadow-sm">
-                <div class="mb-3">
-                    <h2 class="text-xl font-semibold text-slate-800">Machine &amp; Strategy</h2>
-                    <p class="text-slate-500 text-sm leading-relaxed">Tune for your machine’s stiffness and milling approach.</p>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="form-label">Machine Rigidity</label><span class="form-tooltip">DIY routers need gentler settings</span></div>
-                        <select id="rigidity" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                            <option>DIY Router</option>
-                            <option>Rigid CNC</option>
-                        </select>
-                    </div>
-                    <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="form-label">Operation</label><span class="form-tooltip">Side milling is easier than slotting</span></div>
-                        <select id="operation" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                            <option>Side Milling</option>
-                            <option>Slotting</option>
-                            <option>Boring</option>
-                        </select>
-                    </div>
-                    <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="form-label">Spindle RPM</label><span class="form-tooltip">We’ll nudge into target SFM if needed</span></div>
-                        <div class="flex items-center gap-3">
-                            <input id="rpm" type="range" min="3000" max="24000" step="100" class="w-full accent-slate-800" />
-                            <span id="rpmPill" class="px-2.5 py-1 rounded-full bg-slate-900 text-white text-[11px] tracking-wide">12000 RPM</span>
-                        </div>
-                    </div>
-                    <div class="mb-4">
-                        <div class="flex items-center justify-between"><label class="form-label">Conservative ↔ Aggressive</label><span class="form-tooltip">Controls chipload and DOC/WOC within safe bands</span></div>
-                        <div class="flex items-center gap-3">
-                            <input id="aggr" type="range" min="0" max="100" step="1" class="w-full accent-slate-800" />
-                            <span id="aggrPill" class="px-2.5 py-1 rounded-full bg-slate-900 text-white text-[11px] tracking-wide">30%</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="bg-white/70 backdrop-blur border border-slate-200 rounded-2xl p-5 shadow-sm">
-                <h2 class="text-xl font-semibold text-slate-800 mb-2">Tips for Best Results</h2>
-                <ul class="list-disc ml-5 text-sm text-slate-600 space-y-1">
-                    <li>Use an air blast; chips must leave the cut. Packed chips = heat = broken/end-burred tools.</li>
-                    <li>Prefer helical ramp entries (2–3°) into pockets; avoid straight plunges.</li>
-                    <li>If it squeals or walls are shiny/smeared → reduce WOC/DOC or lower RPM and keep chipload.</li>
-                    <li>Clamp like you mean it: good fixturing beats tiny feed tweaks.</li>
-                    <li>For plastics, keep chips thick and RPM moderate to avoid melting.</li>
-                </ul>
-            </section>
+        <div class="rail-group">
+            <h2>Units</h2>
+            <div class="seg" role="group" aria-label="Units">
+                <button type="button" id="btnMetric" title="Millimetres and mm/min">Metric</button>
+                <button type="button" id="btnImperial" title="Inches and inches/min">Imperial</button>
+            </div>
         </div>
 
-        <!-- Right: Outputs -->
-        <div class="lg:col-span-7 space-y-6">
-            <section class="bg-white/70 backdrop-blur border border-slate-200 rounded-2xl p-5 shadow-sm">
-                <div class="mb-3">
-                    <h2 class="text-xl font-semibold text-slate-800">Calculated Recipe</h2>
-                    <p class="text-slate-500 text-sm leading-relaxed">All numbers update live as you adjust controls.</p>
-                </div>
+        <div class="rail-group">
+            <h2>Material and tool</h2>
+            <div class="field">
+                <label for="material">Material</label>
+                <span class="field-value"><select id="material"></select></span>
+            </div>
+            <div class="field">
+                <label for="toolMaterial">Tool</label>
+                <span class="field-value"><select id="toolMaterial">
+                    <option>HSS</option>
+                    <option>Carbide</option>
+                </select></span>
+            </div>
+            <div class="field field-measure field-tight">
+                <label for="diamMm">Diameter</label>
+                <span class="field-value"><input id="diamMm" type="number" step="0.001" min="0"
+                      aria-label="Cutter diameter in millimetres" /><span class="unit">mm</span></span>
+            </div>
+            <div class="chips" id="quickDia"></div>
+            <div class="field">
+                <label for="flutes">Flutes</label>
+                <span class="field-value"><select id="flutes">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                </select></span>
+            </div>
+            <p class="rail-hint">More flutes means less chipload per tooth on a light machine.</p>
+        </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div class="flex flex-col items-start gap-1 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                        <div class="text-xs uppercase tracking-wide text-slate-500">Chipload / Tooth</div>
-                        <div id="chiploadOut" class="text-2xl font-semibold text-slate-800">—</div>
-                        <div class="text-xs text-slate-500">Target band adapts to material, diameter, flutes &amp; machine</div>
-                    </div>
-                    <div class="flex flex-col items-start gap-1 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                        <div class="text-xs uppercase tracking-wide text-slate-500">Feed Rate</div>
-                        <div id="feedOut" class="text-2xl font-semibold text-slate-800">—</div>
-                        <div class="text-xs text-slate-500">feed = RPM × flutes × chipload</div>
-                    </div>
-                    <div class="flex flex-col items-start gap-1 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                        <div class="text-xs uppercase tracking-wide text-slate-500">Surface Speed</div>
-                        <div id="sfmOut" class="text-2xl font-semibold text-slate-800">—</div>
-                        <div id="sfmBand" class="text-xs text-slate-500">Recommended: —</div>
-                    </div>
-                </div>
+        <div class="rail-group">
+            <h2>Machine and strategy</h2>
+            <div class="field">
+                <label for="rigidity">Rigidity</label>
+                <span class="field-value"><select id="rigidity">
+                    <option>DIY Router</option>
+                    <option>Rigid CNC</option>
+                </select></span>
+            </div>
+            <div class="field">
+                <label for="operation">Operation</label>
+                <span class="field-value"><select id="operation">
+                    <option>Side Milling</option>
+                    <option>Slotting</option>
+                    <option>Boring</option>
+                </select></span>
+            </div>
+            <div class="field field-tight">
+                <label for="rpm">Spindle</label>
+                <span class="field-value"><span id="rpmPill">12000</span><span class="unit">rpm</span></span>
+            </div>
+            <input id="rpm" class="rail-range" type="range" min="3000" max="24000" step="100"
+                   aria-label="Spindle speed in rpm" />
+            <div class="field field-tight">
+                <label for="aggr">Aggressiveness</label>
+                <span class="field-value"><span id="aggrPill">30</span><span class="unit">%</span></span>
+            </div>
+            <input id="aggr" class="rail-range" type="range" min="0" max="100" step="1"
+                   aria-label="Conservative to aggressive" />
+            <p class="rail-hint">Conservative on the left, aggressive on the right. Moves chipload
+               and stepdown within the safe band for what you picked above.</p>
+        </div>
+    </div>
 
-                <div id="rpmSuggest" class="mt-4 hidden p-3 border border-amber-300 bg-amber-50 rounded-xl text-amber-900 text-sm"></div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    <div class="flex flex-col items-start gap-1 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                        <div class="text-xs uppercase tracking-wide text-slate-500">Recommended DOC (stepdown)</div>
-                        <div id="docOut" class="text-2xl font-semibold text-slate-800">—</div>
-                        <div class="text-xs text-slate-500">Based on diameter, operation &amp; aggressiveness</div>
+    <div class="bed">
+        <div class="trim">
+            <div class="artifact recipe">
+                <h2>Cut recipe</h2>
+                <dl>
+                    <div class="recipe-row">
+                        <dt>Chipload per tooth</dt>
+                        <dd id="chiploadOut">&mdash;</dd>
+                        <p>Band adapts to material, diameter, flutes and machine</p>
                     </div>
-                    <div class="flex flex-col items-start gap-1 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                        <div class="text-xs uppercase tracking-wide text-slate-500">Recommended WOC (stepover)</div>
-                        <div id="wocOut" class="text-2xl font-semibold text-slate-800">—</div>
-                        <div id="wocSub" class="text-xs text-slate-500">Fraction of diameter for side milling</div>
+                    <div class="recipe-row">
+                        <dt>Feed rate</dt>
+                        <dd id="feedOut">&mdash;</dd>
+                        <p>rpm &times; flutes &times; chipload</p>
                     </div>
-                </div>
-
-                <div class="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                    <div class="text-sm text-slate-700 font-medium mb-2">Context</div>
-                    <div class="text-sm text-slate-600 space-y-1">
-                        <p><b>Material:</b> <span id="ctxMaterial"></span> — <span id="ctxMatNote"></span></p>
-                        <p><b>Tool:</b> <span id="ctxTool"></span></p>
-                        <p><b>Machine:</b> <span id="ctxMachine"></span> • <b>Operation:</b> <span id="ctxOp"></span></p>
+                    <div class="recipe-row">
+                        <dt>Surface speed</dt>
+                        <dd id="sfmOut">&mdash;</dd>
+                        <p id="sfmBand">Recommended: &mdash;</p>
                     </div>
-                </div>
+                    <div class="recipe-row">
+                        <dt>Stepdown, DOC</dt>
+                        <dd id="docOut">&mdash;</dd>
+                        <p>From diameter, operation and aggressiveness</p>
+                    </div>
+                    <div class="recipe-row">
+                        <dt>Stepover, WOC</dt>
+                        <dd id="wocOut">&mdash;</dd>
+                        <p id="wocSub">Fraction of diameter for side milling</p>
+                    </div>
+                </dl>
+            </div>
+        </div>
 
-                <div class="mt-4 p-4 bg-white rounded-2xl border border-slate-200">
-                    <div class="text-sm text-slate-700 font-medium mb-2">Notes for this cut</div>
-                    <ul id="notesList" class="text-sm text-slate-600 list-disc ml-5 space-y-1"></ul>
-                </div>
-            </section>
+        <p id="rpmSuggest" class="notice hidden"></p>
 
-            <section class="bg-white/70 backdrop-blur border border-slate-200 rounded-2xl p-5 shadow-sm">
-                <div class="mb-2">
-                    <h2 class="text-xl font-semibold text-slate-800">How It’s Calculated</h2>
-                </div>
-                <div class="text-sm text-slate-600 space-y-2">
-                    <p><b>Chipload/tooth</b> starts from a material baseline (mm/tooth) for a 3.175 mm 1-flute tool, then scales by diameter, flute count, machine rigidity, and your Conservative↔Aggressive slider.</p>
-                    <p><b>Feed rate</b> uses <code class="px-1 py-0.5 bg-slate-100 rounded">feed = RPM × flutes × chipload</code> (in mm/min). Toggle Imperial to view IPM.</p>
-                    <p><b>SFM</b> is computed as <code class="px-1 py-0.5 bg-slate-100 rounded">SFM = π × diameter(in) × RPM / 12</code>. We suggest an RPM that keeps you in the recommended SFM band for the chosen material &amp; tool.</p>
-                    <p><b>DOC/WOC</b> are heuristics as fractions of tool diameter—higher for rigid machines and side-milling.</p>
-                </div>
-            </section>
+        <dl class="spec">
+            <dt>material</dt><dd><span id="ctxMaterial"></span> &mdash; <span id="ctxMatNote"></span></dd>
+            <dt>tool</dt><dd id="ctxTool"></dd>
+            <dt>machine</dt><dd id="ctxMachine"></dd>
+            <dt>operation</dt><dd id="ctxOp"></dd>
+        </dl>
+
+        <div class="prose">
+            <h2>Notes for this cut</h2>
+            <ul id="notesList" class="bullets"></ul>
+
+            <h2>Getting good results</h2>
+            <ul class="bullets">
+                <li>Use an air blast. Chips must leave the cut — packed chips mean heat, and heat
+                    means a broken or burred tool.</li>
+                <li>Ramp into pockets helically at 2&ndash;3&deg; rather than plunging straight down.</li>
+                <li>If it squeals, or the walls come out shiny and smeared, cut the stepover or
+                    stepdown, or drop the rpm and keep the chipload.</li>
+                <li>Clamp like you mean it. Good fixturing beats small feed tweaks.</li>
+                <li>In plastics, keep chips thick and rpm moderate or the cut will melt.</li>
+            </ul>
+
+            <h2>How this is calculated</h2>
+            <p>Chipload per tooth starts from a material baseline for a 3.175&nbsp;mm single-flute
+               tool, then scales by diameter, flute count, machine rigidity and the aggressiveness
+               slider.</p>
+            <p>Feed rate is <span class="num">rpm &times; flutes &times; chipload</span>. Surface
+               speed is <span class="num">&pi; &times; diameter &times; rpm &divide; 12</span> in
+               SFM; when the current rpm falls outside the recommended band for the material and
+               tool, a better one is suggested above.</p>
+            <p>Stepdown and stepover are heuristics expressed as fractions of tool diameter, higher
+               for rigid machines and for side milling.</p>
         </div>
     </div>
 </div>
 
-<script>
-    const round=(v,d=2)=>{const p=Math.pow(10,d);return Math.round(v*p)/p;};
-    const mmToIn=(mm)=>mm/25.4;
-    const MATERIAL_DB={
-        "Aluminum 6061":{chipload_mm_min:0.02,chipload_mm_max:0.05,sfm_min:250,sfm_max:800,note:"Free-milling aluminum. Loves sharp tools, air blast, light mist."},
-        "Aluminum 7075":{chipload_mm_min:0.018,chipload_mm_max:0.045,sfm_min:200,sfm_max:700,note:"Stronger alloy. Slightly lower SFM vs 6061."},
-        "Brass":{chipload_mm_min:0.015,chipload_mm_max:0.04,sfm_min:200,sfm_max:600,note:"Rigid, chips nicely. Watch for chatter; reduce WOC if it sings."},
-        "Copper":{chipload_mm_min:0.015,chipload_mm_max:0.035,sfm_min:150,sfm_max:500,note:"Gummy—needs sharp tools and good chip evacuation."},
-        "Mild Steel 1018":{chipload_mm_min:0.01,chipload_mm_max:0.03,sfm_min:60,sfm_max:200,note:"Challenging on light routers. Prefer small WOC, flood/mist if possible."},
-        "Delrin":{chipload_mm_min:0.03,chipload_mm_max:0.08,sfm_min:200,sfm_max:1000,note:"Machines beautifully. Air blast to clear strings."},
-        "Acrylic":{chipload_mm_min:0.03,chipload_mm_max:0.07,sfm_min:150,sfm_max:800,note:"Prevent melting: keep chips thick, RPM moderate, feed steady."}
-    };
-    function diameterScaleFactor(d){ if(d<=3.5)return 1.0; if(d<=6.5)return 1.6; if(d<=8.5)return 1.9; return 2.4; }
-    function suggestionDocWoc(op,rig){
-      const isRigid = rig === "Rigid CNC";
-      if (op === "Slotting") {
-        return { doc: isRigid ? 0.5 : 0.2, woc: 1.0 };
-      }
-      if (op === "Boring") {
-        // Circular interpolation / boring: light radial engagement, modest axial step
-        return { doc: isRigid ? 0.3 : 0.15, woc: isRigid ? 0.1 : 0.05 };
-      }
-      // Side Milling (default)
-      return { doc: isRigid ? 1.0 : 0.5, woc: isRigid ? 0.4 : 0.2 };
-    }
-
-    let units="Metric";
-    function q(id){return document.getElementById(id);}
-    const els={material:q('material'),toolMaterial:q('toolMaterial'),diamMm:q('diamMm'),flutes:q('flutes'),
-        rigidity:q('rigidity'),operation:q('operation'),rpm:q('rpm'),aggr:q('aggr'),
-        rpmPill:q('rpmPill'),aggrPill:q('aggrPill'),
-        chiploadOut:q('chiploadOut'),feedOut:q('feedOut'),sfmOut:q('sfmOut'),sfmBand:q('sfmBand'),
-        rpmSuggest:q('rpmSuggest'),docOut:q('docOut'),wocOut:q('wocOut'),wocSub:q('wocSub'),
-        ctxMaterial:q('ctxMaterial'),ctxMatNote:q('ctxMatNote'),ctxTool:q('ctxTool'),
-        ctxMachine:q('ctxMachine'),ctxOp:q('ctxOp'),notesList:q('notesList'),
-        quickDia:q('quickDia'),btnMetric:q('btnMetric'),btnImperial:q('btnImperial')};
-
-    // populate selects & quick dia
-    Object.keys(MATERIAL_DB).forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;els.material.appendChild(o);});
-    [3.175,4,6,8,10,12].forEach(d=>{
-        const b=document.createElement('button');
-        b.className='px-2.5 py-1 rounded-full text-xs border bg-white border-slate-300 text-slate-700 hover:bg-slate-50';
-        b.textContent=d+' mm';
-        b.addEventListener('click',()=>{ els.diamMm.value=d; update();});
-        els.quickDia.appendChild(b);
-    });
-
-    function syncUnitBtns(){
-        els.btnMetric.className = units==='Metric' ? 'px-3 py-1.5 rounded-full border text-sm bg-slate-900 text-white border-slate-900'
-            : 'px-3 py-1.5 rounded-full border text-sm bg-white text-slate-700 border-slate-300';
-        els.btnImperial.className = units==='Imperial' ? 'px-3 py-1.5 rounded-full border text-sm bg-slate-900 text-white border-slate-900'
-            : 'px-3 py-1.5 rounded-full border text-sm bg-white text-slate-700 border-slate-300';
-    }
-    els.btnMetric.addEventListener('click',()=>{units='Metric'; syncUnitBtns(); update();});
-    els.btnImperial.addEventListener('click',()=>{units='Imperial'; syncUnitBtns(); update();});
-
-    ['change','input'].forEach(evt=>{
-        [els.material,els.toolMaterial,els.diamMm,els.flutes,els.rigidity,els.operation,els.rpm,els.aggr]
-            .forEach(el=>el.addEventListener(evt,update));
-    });
-
-    // defaults
-    els.material.value='Aluminum 6061';
-    els.diamMm.value=3.175; els.flutes.value=1; els.rpm.value=12000; els.aggr.value=30;
-    syncUnitBtns();
-
-    function update(){
-        const material=els.material.value, mat=MATERIAL_DB[material];
-        const toolMaterial=els.toolMaterial.value;
-        const diamMm=parseFloat(els.diamMm.value||0), flutes=parseInt(els.flutes.value||1);
-        const rigidity=els.rigidity.value, operation=els.operation.value;
-        const rpm=parseInt(els.rpm.value||0), aggr=parseInt(els.aggr.value||0);
-        els.rpmPill.textContent=rpm+' RPM'; els.aggrPill.textContent=aggr+'%';
-
-        const diamIn=mmToIn(diamMm), sfm=(Math.PI*diamIn*rpm)/12;
-        let sfmMin=mat.sfm_min, sfmMax=mat.sfm_max; if(toolMaterial==='HSS') sfmMax*=0.85; else sfmMax*=1.15;
-
-        const fluteScale=(flutes===1)?1.0:(flutes===2?0.85:0.75);
-        const rigidScale=(rigidity==='Rigid CNC')?1.15:1.0;
-        const clMin=mat.chipload_mm_min*diameterScaleFactor(diamMm)*fluteScale*rigidScale*0.95;
-        const clMax=mat.chipload_mm_max*diameterScaleFactor(diamMm)*fluteScale*rigidScale*1.05;
-        const clChosen=clMin+(clMax-clMin)*(aggr/100);
-
-        let feedMmMin=rpm*flutes*clChosen, rpmSuggested=rpm;
-        if(sfm>sfmMax){ rpmSuggested=Math.floor((sfmMax*12)/(Math.PI*diamIn)); feedMmMin=rpmSuggested*flutes*clChosen; }
-        else if(sfm<sfmMin){ rpmSuggested=Math.ceil((sfmMin*12)/(Math.PI*diamIn)); feedMmMin=rpmSuggested*flutes*clChosen; }
-
-        const dw=suggestionDocWoc(operation,rigidity);
-        const docMm=dw.doc*diamMm*(0.8+(aggr/100)*0.4);
-        const wocMm=(operation==='Slotting'?diamMm:dw.woc*diamMm)*(0.9+(aggr/100)*0.2);
-
-        const chiploadDisplay=units==='Metric' ? (round(clChosen,3)+' mm/tooth') : (round(mmToIn(clChosen),4)+' in/tooth');
-        const feedDisplay   =units==='Metric' ? (round(feedMmMin)+' mm/min')     : (round(feedMmMin/25.4)+' ipm');
-        const docDisplay    =units==='Metric' ? (round(docMm,2)+' mm')           : (round(mmToIn(docMm),3)+' in');
-        const wocDisplay    =units==='Metric' ? (round(wocMm,2)+' mm')           : (round(mmToIn(wocMm),3)+' in');
-
-        els.chiploadOut.textContent=chiploadDisplay;
-        els.feedOut.textContent=feedDisplay;
-        els.sfmOut.textContent=round(sfm)+' SFM';
-        els.sfmBand.textContent='Recommended: '+round(sfmMin)+'–'+round(sfmMax)+' SFM';
-
-        if(rpmSuggested!==rpm){
-            els.rpmSuggest.classList.remove('hidden');
-            els.rpmSuggest.innerHTML='RPM suggestion: Your current RPM sets SFM outside the recommended band. Consider <b>'+rpm+' → '+rpmSuggested+' RPM</b> to stay in band.';
-        } else {
-            els.rpmSuggest.classList.add('hidden'); els.rpmSuggest.textContent='';
-        }
-
-        els.docOut.textContent=docDisplay;
-        els.wocOut.textContent=wocDisplay;
-        els.wocSub.textContent = (operation === 'Slotting')
-          ? 'Slotting uses full width'
-          : (operation === 'Boring')
-            ? 'Radial stepover per circular pass'
-            : 'Fraction of diameter for side milling';
-
-        els.ctxMaterial.textContent=material;
-        els.ctxMatNote.textContent=mat.note;
-        els.ctxTool.textContent=round(diamMm,3)+' mm • '+flutes+' flute(s) • '+toolMaterial;
-        els.ctxMachine.textContent=rigidity;
-        els.ctxOp.textContent=operation;
-
-        const notes=[];
-        notes.push(mat.note);
-        if(material.toLowerCase().includes('aluminum')) notes.push('Use strong air blast; light mist or WD-40 reduces built-up edge.');
-        if (operation === 'Slotting') {
-          notes.push('Favor helical ramp entries; keep stepdowns smaller to maintain chip evacuation.');
-        } else if (operation === 'Boring') {
-          notes.push('Boring: use small radial stepover and light DOC; keep feed smooth during circular interpolation.');
-        } else {
-          notes.push('Side milling: aim for steady chip thickness; adjust WOC to avoid chatter/rubbing.');
-        }
-        if(toolMaterial==='HSS') notes.push('HSS heats faster—keep SFM modest and ensure chips (not dust) are produced.');
-        else notes.push('Carbide tolerates higher SFM but still needs proper chipload to avoid rubbing.');
-        els.notesList.innerHTML='';
-        notes.forEach(n=>{ const li=document.createElement('li'); li.textContent=n; els.notesList.appendChild(li); });
-    }
-
-    function suggestionDocWoc(op,rig){
-      const isRigid = (rig === 'Rigid CNC');
-      if (op === 'Slotting') {
-        return { doc: isRigid ? 0.5 : 0.2, woc: 1.0 };
-      }
-      if (op === 'Boring') {
-        return { doc: isRigid ? 0.3 : 0.15, woc: isRigid ? 0.1 : 0.05 };
-      }
-      return { doc: isRigid ? 1.0 : 0.5, woc: isRigid ? 0.4 : 0.2 };
-    }
-
-    update();
-</script>
+<script src="/tools/milling/milling.js"></script>
 {{ end }}
