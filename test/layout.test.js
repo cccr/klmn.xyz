@@ -94,3 +94,41 @@ test('captions share a top edge across a row with the caption below',
       `row ${row} captions differ in top edge by ${spread.toFixed(1)}px`);
   }
 });
+
+test('a long unbroken label stays inside its column',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  const state = Object.assign({}, BASE, { cols: 3, tiles: {
+    '0,0': { u: 'https://a.example/1', l: 'Supercalifragilisticexpialidocious', d: '' },
+    '0,1': { u: 'https://a.example/2', l: 'Short', d: '' },
+    '0,2': { u: 'https://a.example/3', l: 'Three', d: '' }
+  } });
+  const probe = `(function () {
+    var cell = document.querySelector('.cell[data-pos="0,0"]');
+    var label = cell.querySelector('.cap .label');
+    return { cellW: cell.getBoundingClientRect().width,
+             labelScrollW: label.scrollWidth, labelClientW: label.clientWidth };
+  })()`;
+  const m = await withSheet(state, (p) => p.evalJson(probe));
+  assert.ok(m.labelScrollW <= m.labelClientW + 1,
+    `label overflows its box: ${m.labelScrollW} > ${m.labelClientW}`);
+});
+
+test('an over-capacity tile renders a centred, coloured error',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  const state = Object.assign({}, BASE, { ecc: 'H', tiles: {
+    '0,0': { u: 'https://example.com/' + 'x'.repeat(3200), l: 'Too long', d: '' }
+  } });
+  const probe = `(function () {
+    var el = document.querySelector('.code.too-long');
+    if (!el) return null;
+    var cs = getComputedStyle(el);
+    return { text: el.textContent, color: cs.color,
+             align: cs.alignItems, justify: cs.justifyContent };
+  })()`;
+  const m = await withSheet(state, (p) => p.evalJson(probe));
+  assert.ok(m, 'the tile reports its failure');
+  assert.equal(m.text, 'Link too long');
+  assert.equal(m.color, 'rgb(185, 28, 28)', 'reads as an error, not as body text');
+  assert.equal(m.align, 'center');
+  assert.equal(m.justify, 'center');
+});

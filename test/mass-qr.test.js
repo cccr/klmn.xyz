@@ -666,3 +666,18 @@ test('the caption band falls back to millimetres when nothing can be measured', 
   assert.equal(noDesc.$('grid').style.getPropertyValue('--cap-h'), '5.2mm',
     'a sheet with no descriptions reserves only the label line');
 });
+
+test('caption text takes the code colour, so it survives a dark sheet', () => {
+  const p = withTiles({ '0,0': { u: 'https://school.edu/x', l: 'X', d: 'd' } },
+    { fg: '#ffffff', bg: '#0f172a' });
+  const cap = p.doc.querySelector('.cell[data-pos="0,0"] .cap');
+  assert.equal(cap.style.color, 'rgb(255, 255, 255)');
+});
+
+test('caption colour follows the code colour control', () => {
+  const p = withTiles({ '0,0': { u: 'https://school.edu/x', l: 'X', d: '' } });
+  const cap = () => p.doc.querySelector('.cell[data-pos="0,0"] .cap').style.color;
+  assert.equal(cap(), 'rgb(0, 0, 0)');
+  p.setInput(p.$('fg'), '#b91c1c');
+  assert.equal(cap(), 'rgb(185, 28, 28)');
+});

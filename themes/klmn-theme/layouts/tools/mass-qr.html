@@ -57,11 +57,33 @@
     .cell.is-empty { outline: 1px dashed #cbd5e1; outline-offset: -1px; cursor: pointer; }
     .cell.is-empty::after { content: '+'; color: #94a3b8; font-size: 24px; line-height: 1; }
 
-    .cap { text-align: center; max-width: 100%; }
-    .cap .label { font-weight: 600; display: block; }
-    .cap .desc { display: block; opacity: .75; }
+    /* Colour is set inline from `fg` in buildTile: the code colour is the
+       ink colour of the sheet. Left to the theme's slate, captions were
+       invisible on any dark background — on screen and on paper. */
+    .cap { text-align: center; max-width: 100%; min-width: 0; }
+    .cap .label, .cap .desc {
+        /* A long unbroken label used to render wider than its column and
+           bleed into the gutter; .cell has no overflow of its own, so from
+           three columns up it overlapped the neighbouring caption. The clamp
+           also keeps the measured caption band bounded. */
+        display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
+        overflow-wrap: anywhere; line-height: 1.3;
+    }
+    .cap .label { font-weight: 600; -webkit-line-clamp: 2; line-clamp: 2; }
+    .cap .desc { opacity: .75; -webkit-line-clamp: 1; line-clamp: 1; }
+
     .code { min-height: 0; width: 100%; position: relative; }
     .code svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    /* A tile whose payload will not fit still prints — a visibly broken tile
+       beats a silently blank one. Unstyled it came out as 16px left-aligned
+       body text hanging out of the cell, reading like a typo. */
+    .code.too-long, .code.error {
+        display: flex; align-items: center; justify-content: center;
+        text-align: center; overflow-wrap: anywhere; padding: 2mm;
+        color: #b91c1c; font-size: 3mm; font-weight: 600; line-height: 1.3;
+        outline: 1px dashed #b91c1c; outline-offset: -1px;
+    }
 
     /* The editing cell itself keeps its normal grid-track size (min-width: 0,
        inherited from .cell) so the grid tracks never reflow. The overlay that
@@ -435,6 +457,7 @@
 
         var cap = document.createElement('div');
         cap.className = 'cap';
+        cap.style.color = state.fg;
         var sizes = CAP_MM[state.capSize];
 
         var label = document.createElement('span');
