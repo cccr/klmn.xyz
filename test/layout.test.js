@@ -132,3 +132,18 @@ test('an over-capacity tile renders a centred, coloured error',
   assert.equal(m.align, 'center');
   assert.equal(m.justify, 'center');
 });
+
+test('the margin control changes the printable area', { skip: !CHROME && 'no Chrome' }, async () => {
+  const probe = `(function () {
+    var sheet = document.getElementById('sheet');
+    var grid = document.getElementById('grid');
+    return { sheetW: sheet.getBoundingClientRect().width,
+             gridW: grid.getBoundingClientRect().width };
+  })()`;
+  const wide = await withSheet(Object.assign({}, MIXED, { mg: 20 }), (p) => p.evalJson(probe));
+  const tight = await withSheet(Object.assign({}, MIXED, { mg: 2 }), (p) => p.evalJson(probe));
+  // 20mm a side vs 2mm a side is 36mm ≈ 136px more grid at 96dpi.
+  assert.ok(tight.gridW - wide.gridW > 120,
+    `tighter margin should widen the grid: ${wide.gridW} -> ${tight.gridW}`);
+  assert.ok(Math.abs(tight.sheetW - wide.sheetW) < 0.5, 'the paper itself is unchanged');
+});

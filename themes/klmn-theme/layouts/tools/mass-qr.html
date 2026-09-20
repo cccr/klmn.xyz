@@ -6,20 +6,22 @@
        which left #customDims visible for every paper size. */
     [hidden] { display: none !important; }
 
-    /* Width/height are set inline from paperDims() so the sheet and the @page
-       rule cannot disagree, and so custom sizes need no extra rule. */
+    /* Width, height and padding are all set inline from state (paperDims()
+       and state.mg) so the sheet and the @page rule cannot disagree, and so
+       custom sizes and margins need no extra rule. The grid's gap comes from
+       state.gp the same way. */
     /* Flex column, so #grid receives a definite height from the sheet's own
        fixed height rather than resolving `height: 100%` up an ancestor chain.
        In print that chain broke — #sheetWrap loses `overflow: auto`, the grid
        height went indefinite, and each tile's square SVG then sized itself
        from its intrinsic aspect, pushing the rows past the page. */
     .sheet {
-        width: 210mm; height: 297mm; padding: 10mm;
+        width: 210mm; height: 297mm;
         background: #fff; box-shadow: 0 1px 12px rgba(15, 23, 42, .12);
         display: flex; flex-direction: column; overflow: hidden;
     }
 
-    #grid { display: grid; gap: 4mm; width: 100%; flex: 1 1 auto; min-height: 0; }
+    #grid { display: grid; width: 100%; flex: 1 1 auto; min-height: 0; }
 
     .cell {
         display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -170,6 +172,16 @@
                 <select id="rows" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white"></select>
             </div>
             <div>
+                <label class="form-label" for="mg">Margin (mm)</label>
+                <input id="mg" type="number" inputmode="decimal" min="0" max="50" step="0.5"
+                       class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
+            </div>
+            <div>
+                <label class="form-label" for="gp">Gutter (mm)</label>
+                <input id="gp" type="number" inputmode="decimal" min="0" max="30" step="0.5"
+                       class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
+            </div>
+            <div>
                 <label class="form-label" for="paper">Paper</label>
                 <select id="paper" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
                     <option value="a4">A4</option>
@@ -265,6 +277,7 @@
                 browser rescales the sheet, so the codes print at the wrong physical size.
             </p>
         </div>
+        <p id="warn" class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-3 no-print" hidden></p>
     </div>
 
     <div id="sheetWrap" class="overflow-auto pb-8">
@@ -299,7 +312,7 @@
         return {
             v: 1, rows: 2, cols: 2, paper: 'a4', orient: 'p', ecc: 'Q',
             capPos: 'above', capSize: 'm', fg: '#000000', bg: '#ffffff',
-            cw: 210, ch: 297, cu: 'mm', qz: 4, tiles: {}
+            cw: 210, ch: 297, cu: 'mm', qz: 4, mg: 10, gp: 4, tiles: {}
         };
     }
 
@@ -323,6 +336,16 @@
         if (!isFinite(n)) return dflt;
         n = Math.min(DIM_MAX, Math.max(DIM_MIN, n));
         return Math.round(n * 100) / 100;
+    }
+
+    // Margin and gutter are fractional millimetres like the custom paper
+    // dimensions, so they need a float clamp too — but their own bounds.
+    // Rounded to 0.1mm, which is finer than any printer resolves.
+    var MG_MAX = 50, GP_MAX = 30;
+    function clampMm(n, lo, hi, dflt) {
+        n = parseFloat(n);
+        if (!isFinite(n)) return dflt;
+        return Math.round(Math.min(hi, Math.max(lo, n)) * 10) / 10;
     }
 
     function pickEnum(v, name, dflt) {
@@ -351,6 +374,8 @@
             ch: clampDim(obj.ch, d.ch),
             cu: pickEnum(obj.cu, 'cu', d.cu),
             qz: clamp(obj.qz, 0, 8, d.qz),
+            mg: clampMm(obj.mg, 0, MG_MAX, d.mg),
+            gp: clampMm(obj.gp, 0, GP_MAX, d.gp),
             tiles: {}
         };
         var tiles = obj.tiles || {};
@@ -747,14 +772,53 @@
         return s.orient === 'l' ? [dims[1], dims[0]] : dims;
     }
 
+    // Margin and gutter are absolute millimetres, so a small sheet and a
+    // dense grid can between them leave nothing for the codes: six columns
+    // on 50mm paper at the defaults leaves 10mm for all six. Nothing caught
+    // that before — the sheet simply rendered unreadable.
+    var MIN_CELL_MM = 12;
+    function cellMm(s) {
+        var dims = paperDims(s);
+        return [
+            (dims[0] - 2 * s.mg - (s.cols - 1) * s.gp) / s.cols,
+            (dims[1] - 2 * s.mg - (s.rows - 1) * s.gp) / s.rows
+        ];
+    }
+
+    function densityNote(s) {
+        var cell = cellMm(s);
+        var side = Math.min(cell[0], cell[1]);
+        if (side <= 0) {
+            return 'The margin and gutter use up the whole sheet at ' + s.cols + '\u00d7' + s.rows +
+                   '. Reduce them, or use fewer rows and columns.';
+        }
+        if (side < MIN_CELL_MM) {
+            return 'Each code gets about ' + Math.round(side) + 'mm here \u2014 under ' +
+                   MIN_CELL_MM + 'mm most phones cannot scan. Use a bigger sheet, fewer cells, ' +
+                   'or a smaller margin.';
+        }
+        return null;
+    }
+
+    var elWarn = document.getElementById('warn');
+    function applyWarning() {
+        var note = densityNote(state);
+        elWarn.hidden = !note;
+        if (note) elWarn.textContent = note;
+    }
+
     function applySheetChrome() {
         var sheet = document.getElementById('sheet');
         var dims = paperDims(state);
         sheet.style.width = dims[0] + 'mm';
         sheet.style.height = dims[1] + 'mm';
+        sheet.style.padding = state.mg + 'mm';
+        grid.style.gap = state.gp + 'mm';
         document.getElementById('pageRule').textContent =
             '@page { size: ' + dims[0] + 'mm ' + dims[1] + 'mm; margin: 0; }';
         syncCustomInputs();
+
+        applyWarning();
 
         // Paper/orientation just changed the sheet's real (unscaled) size,
         // which "fit" zoom is computed from — recompute it here rather than
@@ -809,6 +873,8 @@
     }
 
     function syncCustomInputs() {
+        document.getElementById('mg').value = state.mg;
+        document.getElementById('gp').value = state.gp;
         elCustom.hidden = state.paper !== 'custom';
         if (elCustom.hidden) return;
         var inches = state.cu === 'in';
@@ -834,6 +900,18 @@
 
     // Changing units re-labels the same sheet; it must not resize it.
     elCu.addEventListener('change', function () { setState({ cu: elCu.value }); });
+
+    // Margin and gutter are always millimetres — they are sheet furniture,
+    // not paper dimensions, so `cu` does not apply to them.
+    [['mg', document.getElementById('mg')], ['gp', document.getElementById('gp')]]
+        .forEach(function (pair) {
+            pair[1].value = state[pair[0]];
+            pair[1].addEventListener('change', function () {
+                var patch = {};
+                patch[pair[0]] = pair[1].value;
+                setState(patch);
+            });
+        });
 
     var SIMPLE = ['paper', 'orient', 'ecc', 'qz', 'capPos', 'capSize'];
     SIMPLE.forEach(function (name) {

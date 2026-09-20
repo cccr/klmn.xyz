@@ -73,6 +73,9 @@ A single object, short-keyed to keep URLs short:
   capSize: 'm',            // 's' | 'm' | 'l'
   fg: '#000000',
   bg: '#ffffff',
+  qz: 4,                   // quiet zone, modules, 0-8
+  mg: 10,                  // sheet margin, mm, 0-50
+  gp: 4,                   // gutter between cells, mm, 0-30
   tiles: {                 // sparse — absent key means empty cell
     "0,0": { u: "https://school.edu/schedule", l: "Schedule", d: "Bell times" }
   }
@@ -84,6 +87,11 @@ case.
 
 **Defaults** for a fresh sheet: 2×2, A4 portrait, ECC `Q` (a poster gets handled and thumbtacked),
 caption above at medium, black on white.
+
+**Margin and gutter** are millimetres on the state, written inline onto the sheet's padding
+and the grid's gap. They are the only lever on the space a square code leaves in a
+non-square cell, and the only way out of a grid too dense for its paper — below 12mm per
+cell the tool warns.
 
 **Caption sizes** are concrete millimetres, not relative units, so they hold at any grid density:
 `s` = 3mm label / 2.2mm description, `m` = 4mm / 2.8mm, `l` = 5.5mm / 3.6mm.
