@@ -30,8 +30,6 @@ test('default state matches the spec defaults', () => {
   assert.equal(s.v, 1);
   assert.equal(s.rows, 2);
   assert.equal(s.cols, 2);
-  assert.equal(s.paper, 'a4');
-  assert.equal(s.orient, 'p');
   assert.equal(s.ecc, 'Q');
   assert.equal(s.capPos, 'above');
   assert.equal(s.capSize, 'm');
@@ -66,13 +64,12 @@ test('garbage and wrong-version hashes decode to null', () => {
 test('normalize clamps the grid and drops out-of-range tiles', () => {
   const { window } = page();
   const s = window.massQr.normalize({
-    v: 1, rows: 99, cols: 0, ecc: 'BOGUS', paper: 'a3',
+    v: 1, rows: 99, cols: 0, ecc: 'BOGUS',
     tiles: { '0,0': { u: 'a', l: 'A', d: '' }, '5,5': { u: 'b', l: 'B', d: '' } }
   });
   assert.ok(s.rows <= 6 && s.rows >= 1);
   assert.ok(s.cols >= 1);
   assert.equal(s.ecc, 'Q', 'invalid enum falls back to the default');
-  assert.equal(s.paper, 'a4');
   assert.ok(s.tiles['0,0']);
   assert.ok(!s.tiles['5,5'], 'tile outside the grid is dropped');
 });
@@ -295,22 +292,6 @@ test('declining a resize triggered via the column select reverts the select itse
   assert.equal(p.doc.querySelectorAll('#grid .cell').length, 9);
 });
 
-test('paper and orientation drive the sheet size and @page rule', () => {
-  const { $, window } = page();
-  const fire = (el, v) => { el.value = v; el.dispatchEvent(new window.Event('change', { bubbles: true })); };
-
-  fire($('paper'), 'letter');
-  assert.equal($('sheet').style.width, '215.9mm');
-  assert.equal($('sheet').style.height, '279.4mm');
-  fire($('orient'), 'l');
-  assert.equal($('sheet').style.width, '279.4mm');
-  assert.match($('pageRule').textContent, /279\.4mm 215\.9mm/);
-
-  fire($('paper'), 'a4');
-  fire($('orient'), 'p');
-  assert.equal($('sheet').style.width, '210mm');
-  assert.match($('pageRule').textContent, /210mm 297mm/);
-});
 
 test('ECC change updates state and the tile still decodes', () => {
   const p = page();
@@ -400,8 +381,8 @@ test('changing a control while an editor is open commits the tile instead of wip
   p.setInput(cell.querySelector('input.f-url'), 'https://school.edu/x');
   p.setInput(cell.querySelector('input.f-label'), 'X');
 
-  p.$('paper').value = 'letter';
-  p.$('paper').dispatchEvent(new p.window.Event('change', { bubbles: true }));
+  p.$('capSize').value = 'l';
+  p.$('capSize').dispatchEvent(new p.window.Event('change', { bubbles: true }));
 
   assert.deepEqual(p.window.massQr.getState().tiles['0,0'],
     { u: 'https://school.edu/x', l: 'X', d: '' }, 'the typed tile must survive an unrelated control change');
@@ -448,7 +429,7 @@ test('the native beforeprint event (Ctrl-P) commits an open editor even without 
   assert.equal(p.doc.querySelector('.cell.is-editing'), null);
 });
 
-test('journey: fill two cells, resize, recolour and reorient without losing tiles or leaving a stuck editor', () => {
+test('journey: fill two cells, resize, recolour and recaption without losing tiles or leaving a stuck editor', () => {
   const p = page();
 
   p.click(p.doc.querySelector('.cell[data-pos="0,0"]'));
@@ -470,135 +451,33 @@ test('journey: fill two cells, resize, recolour and reorient without losing tile
 
   p.setInput(p.$('fg'), '#ff00ff');
 
-  p.$('orient').value = 'l';
-  p.$('orient').dispatchEvent(new p.window.Event('change', { bubbles: true }));
+  p.$('capPos').value = 'below';
+  p.$('capPos').dispatchEvent(new p.window.Event('change', { bubbles: true }));
 
   const s = p.window.massQr.getState();
   assert.deepEqual(s.tiles['0,0'], { u: 'https://school.edu/one', l: 'One', d: '' });
   assert.deepEqual(s.tiles['0,1'], { u: 'https://school.edu/two', l: 'Two', d: '' });
   assert.equal(s.fg, '#ff00ff');
-  assert.equal(s.orient, 'l');
+  assert.equal(s.capPos, 'below');
   assert.equal(p.doc.querySelectorAll('.cell.is-editing').length, 0, 'no cell should be left mid-edit');
   assert.equal(p.doc.querySelectorAll('#grid .cell.is-filled .code svg').length, 2);
 });
-
-// ── Custom paper size ──────────────────────────────────────────────
 
 function fireChange(p, el, v) {
   el.value = v;
   el.dispatchEvent(new p.window.Event('change', { bubbles: true }));
 }
 
-test('custom paper: defaults are A4 dimensions in mm', () => {
-  const { window } = page();
-  const s = window.massQr.defaultState();
-  assert.equal(s.cw, 210);
-  assert.equal(s.ch, 297);
-  assert.equal(s.cu, 'mm');
-});
 
-test('custom paper: dimensions round-trip through the URL hash', () => {
-  const { window } = page();
-  const s = window.massQr.defaultState();
-  s.paper = 'custom';
-  s.cw = 215.9;
-  s.ch = 279.4;
-  s.cu = 'in';
-  assert.deepEqual(window.massQr.decodeState(window.massQr.encodeState(s)), s);
-});
 
-test('custom paper: dimensions are clamped and garbage falls back to A4 size', () => {
-  const { window } = page();
-  const tiny = window.massQr.normalize({ v: 1, paper: 'custom', cw: 1, ch: 99999 });
-  assert.equal(tiny.cw, 50, 'below the floor clamps up');
-  assert.equal(tiny.ch, 1200, 'above the ceiling clamps down');
 
-  const junk = window.massQr.normalize({ v: 1, paper: 'custom', cw: 'abc', ch: null });
-  assert.equal(junk.paper, 'custom', 'paper choice survives');
-  assert.equal(junk.cw, 210, 'unparseable width falls back to A4 width');
-  assert.equal(junk.ch, 297);
 
-  assert.equal(window.massQr.normalize({ v: 1, cu: 'furlongs' }).cu, 'mm', 'bad unit falls back');
-});
 
-test('custom paper: fractional decimals survive normalization', () => {
-  const { window } = page();
-  const s = window.massQr.normalize({ v: 1, paper: 'custom', cw: 215.9, ch: 279.4 });
-  assert.equal(s.cw, 215.9);
-  assert.equal(s.ch, 279.4);
-});
 
-test('custom paper: drives the sheet size and the @page rule', () => {
-  const p = page();
-  p.window.massQr.setState({ paper: 'custom', cw: 100, ch: 150 });
-  const sheet = p.$('sheet');
-  assert.equal(sheet.style.width, '100mm');
-  assert.equal(sheet.style.height, '150mm');
-  assert.match(p.$('pageRule').textContent, /100mm 150mm/);
-});
 
-test('custom paper: orientation swaps the custom dimensions', () => {
-  const p = page();
-  p.window.massQr.setState({ paper: 'custom', cw: 100, ch: 150, orient: 'l' });
-  assert.equal(p.$('sheet').style.width, '150mm');
-  assert.equal(p.$('sheet').style.height, '100mm');
-  assert.match(p.$('pageRule').textContent, /150mm 100mm/);
-});
 
-test('custom paper: preset sizes still drive the sheet inline, not via CSS classes', () => {
-  const p = page();
-  fireChange(p, p.$('paper'), 'letter');
-  assert.equal(p.$('sheet').style.width, '215.9mm');
-  assert.equal(p.$('sheet').style.height, '279.4mm');
-  fireChange(p, p.$('orient'), 'l');
-  assert.equal(p.$('sheet').style.width, '279.4mm');
-});
 
-test('custom paper: the dimension fields show only when Custom is selected', () => {
-  const p = page();
-  assert.ok(p.$('customDims').hidden, 'hidden for A4');
-  fireChange(p, p.$('paper'), 'custom');
-  assert.ok(!p.$('customDims').hidden, 'shown for custom');
-  fireChange(p, p.$('paper'), 'a4');
-  assert.ok(p.$('customDims').hidden, 'hidden again');
-});
 
-test('custom paper: typing inches stores millimetres', () => {
-  const p = page();
-  fireChange(p, p.$('paper'), 'custom');
-  fireChange(p, p.$('cu'), 'in');
-  fireChange(p, p.$('cw'), '8.5');
-  fireChange(p, p.$('ch'), '11');
-  const s = p.window.massQr.getState();
-  assert.ok(Math.abs(s.cw - 215.9) < 0.01, `8.5in -> ${s.cw}mm`);
-  assert.ok(Math.abs(s.ch - 279.4) < 0.01, `11in -> ${s.ch}mm`);
-  assert.equal(p.$('sheet').style.width, '215.9mm');
-});
-
-test('custom paper: switching unit converts the display, not the sheet', () => {
-  const p = page();
-  p.window.massQr.setState({ paper: 'custom', cw: 210, ch: 297 });
-  fireChange(p, p.$('cu'), 'in');
-  assert.ok(Math.abs(parseFloat(p.$('cw').value) - 8.27) < 0.01, `210mm -> ${p.$('cw').value}in`);
-  assert.equal(p.$('sheet').style.width, '210mm', 'physical size unchanged');
-  fireChange(p, p.$('cu'), 'mm');
-  assert.ok(Math.abs(parseFloat(p.$('cw').value) - 210) < 0.01, 'and back again');
-  assert.equal(p.$('sheet').style.width, '210mm');
-});
-
-test('custom paper: a shared custom sheet reopens with its own unit and size', () => {
-  const seed = page();
-  seed.window.massQr.setState({ paper: 'custom', cw: 215.9, ch: 279.4, cu: 'in' });
-  const hash = '#s=' + seed.window.massQr.encodeState(seed.window.massQr.getState());
-
-  const p = page({ hash });
-  const s = p.window.massQr.getState();
-  assert.equal(s.paper, 'custom');
-  assert.equal(s.cu, 'in');
-  assert.equal(p.$('sheet').style.width, '215.9mm');
-  assert.ok(!p.$('customDims').hidden, 'fields visible on load');
-  assert.ok(Math.abs(parseFloat(p.$('cw').value) - 8.5) < 0.01, 'shown in inches');
-});
 
 // ── Quiet zone ─────────────────────────────────────────────────────
 
@@ -682,66 +561,14 @@ test('caption colour follows the code colour control', () => {
   assert.equal(cap(), 'rgb(185, 28, 28)');
 });
 
-// ── Margin and gutter ──────────────────────────────────────────────
-
-test('margin and gutter default to 10mm and 4mm', () => {
-  const s = page().window.massQr.defaultState();
-  assert.equal(s.mg, 10);
-  assert.equal(s.gp, 4);
-});
-
-test('margin and gutter round-trip and clamp', () => {
-  const { window } = page();
-  const s = window.massQr.defaultState();
-  s.mg = 0; s.gp = 12.5;
-  assert.deepEqual(window.massQr.decodeState(window.massQr.encodeState(s)), s);
-  assert.equal(window.massQr.normalize({ v: 1, mg: 999 }).mg, 50, 'margin clamps down');
-  assert.equal(window.massQr.normalize({ v: 1, mg: -5 }).mg, 0, 'margin clamps up');
-  assert.equal(window.massQr.normalize({ v: 1, gp: 999 }).gp, 30, 'gutter clamps down');
-  assert.equal(window.massQr.normalize({ v: 1, gp: 'wide' }).gp, 4, 'garbage falls back');
-});
-
-test('margin and gutter reach the sheet and the grid', () => {
-  const p = page();
-  fireChange(p, p.$('mg'), '5');
-  fireChange(p, p.$('gp'), '1.5');
-  assert.equal(p.$('sheet').style.padding, '5mm');
-  assert.equal(p.$('grid').style.gap, '1.5mm');
-  assert.equal(p.window.massQr.getState().mg, 5);
-});
 
 
 
 
-// ── Zoom ───────────────────────────────────────────────────────────
 
-test('zoom defaults to fit and round-trips like every other control', () => {
-  const { window } = page();
-  assert.equal(window.massQr.defaultState().zoom, 'fit');
-  const s = window.massQr.defaultState();
-  s.zoom = '1.5';
-  assert.deepEqual(window.massQr.decodeState(window.massQr.encodeState(s)), s);
-  assert.equal(window.massQr.normalize({ v: 1, zoom: 'enormous' }).zoom, 'fit');
-});
 
-test('a shared sheet reopens at the zoom it was saved with', () => {
-  const seed = page();
-  fireChange(seed, seed.$('zoom'), '1.5');
-  assert.equal(seed.window.massQr.getState().zoom, '1.5');
-  const hash = '#s=' + seed.window.massQr.encodeState(seed.window.massQr.getState());
 
-  const p = page({ hash });
-  assert.equal(p.$('zoom').value, '1.5', 'the control shows the saved zoom');
-  assert.match(p.$('sheet').style.transform, /scale\(1\.5\)/);
-});
 
-test('changing zoom does not rebuild the grid', () => {
-  const p = withTiles({ '0,0': { u: 'https://school.edu/x', l: 'X', d: '' } });
-  const before = p.doc.querySelector('.cell[data-pos="0,0"]');
-  fireChange(p, p.$('zoom'), '1');
-  assert.strictEqual(p.doc.querySelector('.cell[data-pos="0,0"]'), before,
-    'a preview-only control must not re-encode every code');
-});
 
 // ── Editor keyboard ────────────────────────────────────────────────
 
@@ -795,10 +622,9 @@ test('Enter on the Delete button deletes rather than commits', () => {
 test('controls are grouped, and every one still resolves by id', () => {
   const { doc, $ } = page();
   const groups = [...doc.querySelectorAll('#controls fieldset legend')].map((l) => l.textContent.trim());
-  assert.deepEqual(groups, ['Sheet', 'Codes', 'Preview']);
+  assert.deepEqual(groups, ['Sheet', 'Codes', 'Output']);
 
-  for (const id of ['cols', 'rows', 'mg', 'gp', 'paper', 'cw', 'ch', 'cu', 'orient',
-                    'ecc', 'qz', 'capPos', 'capSize', 'fg', 'bg', 'zoom', 'btnPrint']) {
+  for (const id of ['cols', 'rows', 'ecc', 'qz', 'capPos', 'capSize', 'fg', 'bg', 'btnPrint']) {
     assert.ok($(id), `#${id} still exists`);
   }
 });
@@ -811,18 +637,6 @@ test('the colour and caption controls say what they do', () => {
   assert.equal(label('capPos'), 'Caption position');
 });
 
-test('a landscape custom sheet says what it will actually print', () => {
-  const p = page();
-  assert.ok(p.$('customNote').hidden, 'nothing to say for A4 portrait');
-  p.window.massQr.setState({ paper: 'custom', cw: 120, ch: 180, orient: 'l' });
-  assert.ok(!p.$('customNote').hidden);
-  // paperDims swaps the pair for landscape, so the fields read 120 x 180
-  // while the paper is 180 x 120 — say so rather than let them contradict.
-  assert.match(p.$('customNote').textContent, /180\s*×\s*120\s*mm/);
-
-  p.window.massQr.setState({ orient: 'p' });
-  assert.ok(p.$('customNote').hidden, 'portrait needs no note');
-});
 
 
 

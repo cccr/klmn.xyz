@@ -1,27 +1,25 @@
 {{ define "main" }}
-<style id="pageRule">@page { size: 210mm 297mm; margin: 0; }</style>
 <style>
-    /* The `hidden` attribute is only a UA-stylesheet rule, so any author
-       display declaration beats it — including Tailwind's `flex` utility,
-       which left #customDims visible for every paper size. */
-    [hidden] { display: none !important; }
+    /* The sheet has no physical size of its own. On screen it is a preview
+       at a conventional paper ratio; in print it simply fills whatever the
+       browser gives it, the way any other web page does.
 
-    /* Width, height and padding are all set inline from state (paperDims()
-       and state.mg) so the sheet and the @page rule cannot disagree, and so
-       custom sizes and margins need no extra rule. The grid's gap comes from
-       state.gp the same way. */
-    /* Flex column, so #grid receives a definite height from the sheet's own
-       fixed height rather than resolving `height: 100%` up an ancestor chain.
-       In print that chain broke — #sheetWrap loses `overflow: auto`, the grid
-       height went indefinite, and each tile's square SVG then sized itself
-       from its intrinsic aspect, pushing the rows past the page. */
+       It used to be a rigid 210x297mm box with a JS-rewritten @page { size }
+       behind it. That is the arrangement that broke in Safari: WebKit does
+       not honour the size descriptor, so the page box was whatever the print
+       dialog said while the sheet stayed rigidly 297mm — and the overflow had
+       to go somewhere. Nothing here asserts a millimetre any more. */
     .sheet {
-        width: 210mm; height: 297mm;
+        width: 100%;
+        max-width: 48rem;
+        aspect-ratio: var(--preview-ratio, 210 / 297);
+        margin-inline: auto;
+        padding: var(--sheet-pad, 10mm);
         background: #fff; box-shadow: 0 1px 12px rgba(15, 23, 42, .12);
         display: flex; flex-direction: column; overflow: hidden;
     }
 
-    #grid { display: grid; width: 100%; flex: 1 1 auto; min-height: 0; }
+    #grid { display: grid; gap: var(--gutter, 4mm); width: 100%; flex: 1 1 auto; min-height: 0; }
 
     .cell {
         display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -111,6 +109,11 @@
     .cell.is-editing .editor .f-done { background: #0f172a; color: #fff; border: none; }
     .cell.is-editing .editor .f-delete { background: #fff; color: #b91c1c; border: 1px solid #fecaca; }
 
+    /* Margin only — never `size`. The paper is the printer's business, and
+       the one engine-specific thing we relied on before was exactly the size
+       descriptor Safari ignores. */
+    @page { margin: 10mm; }
+
     @media print {
         /* Site chrome from baseof.html — hidden from here so the theme stays untouched. */
         body > header, body > footer { display: none !important; }
@@ -125,20 +128,25 @@
             margin: 0 !important; padding: 0 !important;
             min-height: 0 !important; background: #fff !important;
         }
-        main { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+        main { height: 100% !important; padding: 0 !important; margin: 0 !important; max-width: none !important; }
         .mq-controls, #btnPrint, .no-print { display: none !important; }
 
         #sheetWrap { overflow: visible !important; padding: 0 !important; }
-        #sheetBox { width: auto !important; height: auto !important; }
+        /* Percentage heights chain from the page box, which is better
+           supported across engines than `vh` in print. The sheet fills the
+           printable area exactly, so the grid still gets a definite height
+           and the result is still one page — without anyone declaring how
+           big the paper is. */
+        /* `height: 100%` needs an unbroken chain of definite heights, so
+           every ancestor from <html> down to the sheet gets one. Without the
+           chain the sheet collapsed to its content height — 81px — and the
+           grid rows had nothing to divide. */
+        html, body, #page, #sheetWrap { height: 100% !important; }
         .sheet {
-            box-shadow: none !important;
-            transform: none !important;
-            max-width: none !important;
-            margin: 0 !important;
-            /* Browsers drop CSS backgrounds from print by default; without
-               this a non-white sheet background prints as plain white while
-               the QR panels (an SVG <rect fill>, unaffected) keep their own
-               colour — a visible mismatch with the on-screen preview. */
+            width: 100% !important; height: 100% !important;
+            max-width: none !important; aspect-ratio: auto !important;
+            padding: 0 !important; margin: 0 !important;
+            box-shadow: none !important; transform: none !important;
             print-color-adjust: exact;
             -webkit-print-color-adjust: exact;
         }
@@ -153,55 +161,18 @@
     }
 </style>
 
-<div class="max-w-6xl mx-auto px-0 py-0">
+<div id="page" class="max-w-6xl mx-auto px-0 py-0">
     <header class="mb-6 no-print">
         <h1 class="text-3xl md:text-4xl font-bold tracking-tight">Mass QR Sheet</h1>
         <p class="text-slate-600 mt-2 max-w-2xl">
             Fill a grid with links, print one page, pin it to the board. Every code comes out the
-            same size on a sheet that fits exactly one page &mdash; margin, gutter and paper size
-            are yours to set, and the preview is the page that prints.
-        </p>
-    </header>
+            same size, and the sheet fits itself to whatever paper your printer is set to.
+        </p>    </header>
 
     <div id="controls" class="mq-controls bg-white/70 backdrop-blur border border-slate-200 rounded-2xl p-4 shadow-sm mb-6">
         <div class="flex flex-wrap gap-x-8 gap-y-5">
             <fieldset class="flex flex-wrap items-end gap-3 min-w-max">
                 <legend class="form-label mb-1 w-full">Sheet</legend>
-                <div>
-                    <label class="form-label" for="paper">Paper</label>
-                    <select id="paper" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                        <option value="a4">A4</option>
-                        <option value="letter">Letter</option>
-                        <option value="custom">Custom</option>
-                    </select>
-                </div>
-                <div id="customDims" class="flex items-end gap-2" hidden>
-                    <div>
-                        <label class="form-label" for="cw">Width</label>
-                        <input id="cw" type="number" inputmode="decimal"
-                               class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
-                    </div>
-                    <span class="pb-2.5 text-slate-400">&times;</span>
-                    <div>
-                        <label class="form-label" for="ch">Height</label>
-                        <input id="ch" type="number" inputmode="decimal"
-                               class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
-                    </div>
-                    <div>
-                        <label class="form-label" for="cu">Units</label>
-                        <select id="cu" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                            <option value="mm">mm</option>
-                            <option value="in">inches</option>
-                        </select>
-                    </div>
-                </div>
-                <div>
-                    <label class="form-label" for="orient">Orientation</label>
-                    <select id="orient" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                        <option value="p">Portrait</option>
-                        <option value="l">Landscape</option>
-                    </select>
-                </div>
                 <div>
                     <label class="form-label" for="cols">Columns</label>
                     <select id="cols" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white"></select>
@@ -210,17 +181,6 @@
                     <label class="form-label" for="rows">Rows</label>
                     <select id="rows" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white"></select>
                 </div>
-                <div>
-                    <label class="form-label" for="mg">Margin (mm)</label>
-                    <input id="mg" type="number" inputmode="decimal" min="0" max="50" step="0.5"
-                           class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
-                </div>
-                <div>
-                    <label class="form-label" for="gp">Gutter (mm)</label>
-                    <input id="gp" type="number" inputmode="decimal" min="0" max="30" step="0.5"
-                           class="block w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white" />
-                </div>
-                <p id="customNote" class="basis-full text-xs text-slate-500" hidden></p>
             </fieldset>
 
             <fieldset class="flex flex-wrap items-end gap-3 min-w-max">
@@ -274,35 +234,20 @@
             </fieldset>
 
             <fieldset class="flex flex-wrap items-end gap-3 min-w-max">
-                <legend class="form-label mb-1 w-full">Preview</legend>
-                <div>
-                    <label class="form-label" for="zoom">Zoom</label>
-                    <select id="zoom" class="block px-3 py-2 rounded-xl border border-slate-300 bg-white">
-                        <option value="fit">Fit width</option>
-                        <option value="page">Fit page</option>
-                        <option value="1">100%</option>
-                        <option value="1.5">150%</option>
-                    </select>
-                </div>
+                <legend class="form-label mb-1 w-full">Output</legend>
                 <button id="btnPrint" class="px-4 py-2 rounded-xl text-sm bg-slate-900 text-white hover:bg-slate-800">Print</button>
             </fieldset>
         </div>
         <p class="text-xs text-slate-500 mt-3 no-print">
-            In the print dialog pick the same paper size as above, set Margins to
-            <strong>None</strong> and Scale to <strong>100%</strong>. Anything else and the
-            browser rescales the sheet, so the codes print at the wrong physical size.
+            Paper size, orientation and margins all come from your print dialog &mdash; the sheet
+            fits the page it is given. The preview is A4-proportioned; on other paper the codes
+            stay square and the spacing adjusts.
         </p>
     </div>
 
     <div id="sheetWrap" class="overflow-auto pb-8">
-        <!-- #sheetBox exists purely to reserve the sheet's *scaled* size.
-             transform: scale() does not affect layout, so the wrapper used to
-             reserve the sheet's full unscaled height — 363px of blank scroll
-             below a fit-zoomed sheet, plus a phantom horizontal scrollbar. -->
-        <div id="sheetBox">
-            <div id="sheet" class="sheet">
-                <div id="grid"></div>
-            </div>
+        <div id="sheet" class="sheet">
+            <div id="grid"></div>
         </div>
     </div>
 
@@ -323,17 +268,15 @@
 
     var MAX = 6;
     var ENUMS = {
-        paper: ['a4', 'letter', 'custom'], orient: ['p', 'l'], cu: ['mm', 'in'],
         ecc: ['L', 'M', 'Q', 'H'],
-        capPos: ['above', 'below'], capSize: ['s', 'm', 'l'],
-        zoom: ['fit', 'page', '1', '1.5']
+        capPos: ['above', 'below'], capSize: ['s', 'm', 'l']
     };
 
     function defaultState() {
         return {
-            v: 1, rows: 2, cols: 2, paper: 'a4', orient: 'p', ecc: 'Q',
+            v: 1, rows: 2, cols: 2, ecc: 'Q',
             capPos: 'above', capSize: 'm', fg: '#000000', bg: '#ffffff',
-            cw: 210, ch: 297, cu: 'mm', qz: 4, mg: 10, gp: 4, zoom: 'fit', tiles: {}
+            qz: 4, tiles: {}
         };
     }
 
@@ -343,30 +286,6 @@
         n = parseInt(n, 10);
         if (isNaN(n)) return dflt;
         return Math.min(hi, Math.max(lo, n));
-    }
-
-    // Custom paper dimensions are fractional, so they need a float clamp —
-    // clamp() above parses integers and would truncate 215.9 to 215.
-    var DIM_MIN = 50, DIM_MAX = 1200;
-
-    // Rounded to 0.01mm: inch conversion lands on values like 215.89999999999998,
-    // which would otherwise be written verbatim into the sheet's width and the
-    // @page rule. Ten microns is far below anything a printer can resolve.
-    function clampDim(n, dflt) {
-        n = parseFloat(n);
-        if (!isFinite(n)) return dflt;
-        n = Math.min(DIM_MAX, Math.max(DIM_MIN, n));
-        return Math.round(n * 100) / 100;
-    }
-
-    // Margin and gutter are fractional millimetres like the custom paper
-    // dimensions, so they need a float clamp too — but their own bounds.
-    // Rounded to 0.1mm, which is finer than any printer resolves.
-    var MG_MAX = 50, GP_MAX = 30;
-    function clampMm(n, lo, hi, dflt) {
-        n = parseFloat(n);
-        if (!isFinite(n)) return dflt;
-        return Math.round(Math.min(hi, Math.max(lo, n)) * 10) / 10;
     }
 
     function pickEnum(v, name, dflt) {
@@ -384,20 +303,12 @@
             v: 1,
             rows: clamp(obj.rows, 1, MAX, d.rows),
             cols: clamp(obj.cols, 1, MAX, d.cols),
-            paper: pickEnum(obj.paper, 'paper', d.paper),
-            orient: pickEnum(obj.orient, 'orient', d.orient),
             ecc: pickEnum(obj.ecc, 'ecc', d.ecc),
             capPos: pickEnum(obj.capPos, 'capPos', d.capPos),
             capSize: pickEnum(obj.capSize, 'capSize', d.capSize),
             fg: hex(obj.fg, d.fg),
             bg: hex(obj.bg, d.bg),
-            cw: clampDim(obj.cw, d.cw),
-            ch: clampDim(obj.ch, d.ch),
-            cu: pickEnum(obj.cu, 'cu', d.cu),
             qz: clamp(obj.qz, 0, 8, d.qz),
-            mg: clampMm(obj.mg, 0, MG_MAX, d.mg),
-            gp: clampMm(obj.gp, 0, GP_MAX, d.gp),
-            zoom: pickEnum(obj.zoom, 'zoom', d.zoom),
             tiles: {}
         };
         var tiles = obj.tiles || {};
@@ -752,9 +663,9 @@
     // how its text wraps and only layout knows that. Two passes: let the row
     // size to content, read the tallest caption, then write the band back.
     //
-    // offsetHeight, not getBoundingClientRect(): the sheet carries a zoom
-    // transform, and a transformed rect would report 0.7x the real height at
-    // "fit" zoom and under-size the band.
+    // offsetHeight, not getBoundingClientRect(): the former is untransformed
+    // layout pixels, so the band stays correct even if something scales the
+    // sheet.
     var CAP_LINE = 1.3; // line-height, matching the .cap rules
     function applyCaptionBand() {
         grid.style.setProperty('--cap-h', 'auto');
@@ -799,39 +710,7 @@
                 grid.appendChild(cell);
             }
         }
-        // Sheet dimensions first: the caption's wrapping width comes from the
-        // cell, which comes from the sheet, so measuring before the sheet is
-        // sized would band the captions against the previous paper size.
-        applySheetChrome();
         applyCaptionBand();
-    }
-
-    var PAPER_MM = { a4: [210, 297], letter: [215.9, 279.4] };
-    var MM_PER_IN = 25.4;
-
-    // The one place a sheet's physical size is decided. Everything that needs
-    // millimetres — the sheet box, the @page rule — reads it from here, so the
-    // preview and the printed page cannot drift apart.
-    function paperDims(s) {
-        var dims = s.paper === 'custom' ? [s.cw, s.ch] : PAPER_MM[s.paper].slice();
-        return s.orient === 'l' ? [dims[1], dims[0]] : dims;
-    }
-
-    function applySheetChrome() {
-        var sheet = document.getElementById('sheet');
-        var dims = paperDims(state);
-        sheet.style.width = dims[0] + 'mm';
-        sheet.style.height = dims[1] + 'mm';
-        sheet.style.padding = state.mg + 'mm';
-        grid.style.gap = state.gp + 'mm';
-        document.getElementById('pageRule').textContent =
-            '@page { size: ' + dims[0] + 'mm ' + dims[1] + 'mm; margin: 0; }';
-        syncCustomInputs();
-
-        // Paper/orientation just changed the sheet's real (unscaled) size,
-        // which "fit" zoom is computed from — recompute it here rather than
-        // leaving a stale scale in place until the next unrelated render().
-        applyZoom();
     }
 
     function fillSizeSelect(el, value) {
@@ -860,79 +739,7 @@
         if (!resize(parseInt(elRows.value, 10), state.cols)) elRows.value = state.rows;
     });
 
-    // ── Custom paper dimensions ────────────────────────────────
-    // State stores millimetres always; `cu` is only how the numbers are shown.
-    // Rendering the fields never writes back to state, so switching units
-    // cannot drift the real size through display rounding.
-    var elCustom = document.getElementById('customDims');
-    var elCw = document.getElementById('cw');
-    var elCh = document.getElementById('ch');
-    var elCu = document.getElementById('cu');
-
-    function toDisplay(mm, unit) {
-        var n = unit === 'in' ? mm / MM_PER_IN : mm;
-        return Math.round(n * 100) / 100;
-    }
-
-    function toMm(value, unit) {
-        var n = parseFloat(value);
-        if (!isFinite(n)) return null;
-        return unit === 'in' ? n * MM_PER_IN : n;
-    }
-
-    function syncCustomInputs() {
-        document.getElementById('mg').value = state.mg;
-        document.getElementById('gp').value = state.gp;
-        elCustom.hidden = state.paper !== 'custom';
-
-        // Width/Height are the sheet as typed; paperDims() swaps them for
-        // landscape, so the fields would otherwise silently contradict the
-        // paper that comes out of the printer.
-        var note = document.getElementById('customNote');
-        note.hidden = state.paper !== 'custom' || state.orient !== 'l';
-        if (!note.hidden) {
-            var d = paperDims(state);
-            note.textContent = 'Prints ' + d[0] + ' \u00d7 ' + d[1] + ' mm (landscape)';
-        }
-
-        if (elCustom.hidden) return;
-        var inches = state.cu === 'in';
-        elCu.value = state.cu;
-        [elCw, elCh].forEach(function (el) {
-            el.step = inches ? '0.125' : '0.1';
-            el.min = toDisplay(DIM_MIN, state.cu);
-            el.max = toDisplay(DIM_MAX, state.cu);
-        });
-        elCw.value = toDisplay(state.cw, state.cu);
-        elCh.value = toDisplay(state.ch, state.cu);
-    }
-
-    [['cw', elCw], ['ch', elCh]].forEach(function (pair) {
-        pair[1].addEventListener('change', function () {
-            var mm = toMm(pair[1].value, state.cu);
-            if (mm === null) { syncCustomInputs(); return; }  // put the old value back
-            var patch = {};
-            patch[pair[0]] = mm;
-            setState(patch);
-        });
-    });
-
-    // Changing units re-labels the same sheet; it must not resize it.
-    elCu.addEventListener('change', function () { setState({ cu: elCu.value }); });
-
-    // Margin and gutter are always millimetres — they are sheet furniture,
-    // not paper dimensions, so `cu` does not apply to them.
-    [['mg', document.getElementById('mg')], ['gp', document.getElementById('gp')]]
-        .forEach(function (pair) {
-            pair[1].value = state[pair[0]];
-            pair[1].addEventListener('change', function () {
-                var patch = {};
-                patch[pair[0]] = pair[1].value;
-                setState(patch);
-            });
-        });
-
-    var SIMPLE = ['paper', 'orient', 'ecc', 'qz', 'capPos', 'capSize'];
+    var SIMPLE = ['ecc', 'qz', 'capPos', 'capSize'];
     SIMPLE.forEach(function (name) {
         var el = document.getElementById(name);
         el.value = state[name];
@@ -952,60 +759,6 @@
             setState(patch);
         });
     });
-
-    // Zoom is always a `transform: scale()` on the sheet, never `max-width` —
-    // max-width shrinks the box itself, and .sheet has a hard mm height, so
-    // the width shrinks while the height doesn't and every tile distorts.
-    // "Fit" is the same mechanism as 100%/150%, just with a computed scale
-    // instead of a fixed one, so the preview stays proportionally true at
-    // every zoom level. transform-origin is top-left (not top-center): with
-    // overflow: auto, LTR scrollable overflow only extends rightward, so
-    // scaling from the left edge keeps the whole sheet reachable by scroll —
-    // scaling from the center pushes content off the left, unreachably.
-    var elZoom = document.getElementById('zoom');
-    var elBox = document.getElementById('sheetBox');
-    elZoom.value = state.zoom;
-
-    function zoomScale(naturalW, naturalH, wrap) {
-        if (state.zoom === 'fit') {
-            return naturalW > 0 ? Math.min(1, wrap.clientWidth / naturalW) : 1;
-        }
-        if (state.zoom === 'page') {
-            // Whatever is left of the viewport below the wrapper's top edge,
-            // minus the wrapper's own bottom padding (pb-8 = 32px).
-            var room = window.innerHeight - wrap.getBoundingClientRect().top - 32;
-            var byW = naturalW > 0 ? wrap.clientWidth / naturalW : 1;
-            var byH = naturalH > 0 && room > 0 ? room / naturalH : 1;
-            return Math.min(1, byW, byH);
-        }
-        return parseFloat(state.zoom);
-    }
-
-    function applyZoom() {
-        var sheet = document.getElementById('sheet');
-        var wrap = document.getElementById('sheetWrap');
-        // offsetWidth/Height are untransformed layout pixels, so reading them
-        // while a previous scale is still applied is safe.
-        var naturalW = sheet.offsetWidth, naturalH = sheet.offsetHeight;
-        var scale = zoomScale(naturalW, naturalH, wrap);
-        sheet.style.margin = '0'; // centring via margin fights a left-origin scale
-        sheet.style.transformOrigin = 'top left';
-        sheet.style.transform = 'scale(' + scale + ')';
-        elBox.style.width = (naturalW * scale) + 'px';
-        elBox.style.height = (naturalH * scale) + 'px';
-    }
-
-    // Preview-only: it must not go through setState(), which re-renders the
-    // grid and re-encodes every code for a change that moves no ink.
-    elZoom.addEventListener('change', function () {
-        commitOpen();
-        state = normalize(Object.assign({}, state, { zoom: elZoom.value }));
-        applyZoom();
-        persist();
-    });
-    // The sheet's natural size does not change on resize, but the wrap's
-    // available width — and the viewport height "fit page" reads — do.
-    window.addEventListener('resize', applyZoom);
 
     document.getElementById('btnPrint').addEventListener('click', function () {
         commitOpen();

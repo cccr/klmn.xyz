@@ -133,57 +133,8 @@ test('an over-capacity tile renders a centred, coloured error',
   assert.equal(m.justify, 'center');
 });
 
-test('the margin control changes the printable area', { skip: !CHROME && 'no Chrome' }, async () => {
-  const probe = `(function () {
-    var sheet = document.getElementById('sheet');
-    var grid = document.getElementById('grid');
-    return { sheetW: sheet.getBoundingClientRect().width,
-             gridW: grid.getBoundingClientRect().width };
-  })()`;
-  const wide = await withSheet(Object.assign({}, MIXED, { mg: 20 }), (p) => p.evalJson(probe));
-  const tight = await withSheet(Object.assign({}, MIXED, { mg: 2 }), (p) => p.evalJson(probe));
-  // 20mm a side vs 2mm a side is 36mm ≈ 136px more grid at 96dpi.
-  assert.ok(tight.gridW - wide.gridW > 120,
-    `tighter margin should widen the grid: ${wide.gridW} -> ${tight.gridW}`);
-  assert.ok(Math.abs(tight.sheetW - wide.sheetW) < 0.5, 'the paper itself is unchanged');
-});
 
-test('a scaled sheet reserves only the space it occupies',
-  { skip: !CHROME && 'no Chrome' }, async () => {
-  const m = await withSheet(MIXED, async (p) => {
-    await p.setViewport(600, 800);
-    return p.evalJson(`(function () {
-      var sheet = document.getElementById('sheet');
-      var wrap = document.getElementById('sheetWrap');
-      var r = sheet.getBoundingClientRect();
-      return { visualH: r.height, visualW: r.width,
-               wrapScrollH: wrap.scrollHeight, wrapScrollW: wrap.scrollWidth,
-               wrapClientW: wrap.clientWidth,
-               transform: getComputedStyle(sheet).transform };
-    })()`);
-  });
-  assert.ok(m.transform !== 'none' && !m.transform.startsWith('matrix(1,'),
-    'precondition: the sheet is scaled down at 600px');
-  // Before #sheetBox, the wrapper reserved the unscaled 1122px for a sheet
-  // drawn 792px tall — 363px of blank scroll — and scrollWidth stayed 794
-  // against a 560px client, giving a phantom horizontal scrollbar.
-  assert.ok(m.wrapScrollH - m.visualH < 40,
-    `dead space below the sheet: ${(m.wrapScrollH - m.visualH).toFixed(0)}px`);
-  assert.ok(m.wrapScrollW <= m.wrapClientW + 1,
-    `phantom horizontal scroll: ${m.wrapScrollW} > ${m.wrapClientW}`);
-});
 
-test('fit page brings the whole sheet into view', { skip: !CHROME && 'no Chrome' }, async () => {
-  const m = await withSheet(Object.assign({}, MIXED, { zoom: 'page' }), async (p) => {
-    await p.setViewport(1400, 700);
-    return p.evalJson(`(function () {
-      var r = document.getElementById('sheet').getBoundingClientRect();
-      return { visualH: r.height, viewportH: window.innerHeight, top: r.top };
-    })()`);
-  });
-  assert.ok(m.top + m.visualH <= m.viewportH + 1,
-    `sheet runs past the viewport: ${(m.top + m.visualH).toFixed(0)} > ${m.viewportH}`);
-});
 
 // The regression that started all of this, stated as one property: on a sheet
 // with mixed captions, every code is the same size, every code in a row shares

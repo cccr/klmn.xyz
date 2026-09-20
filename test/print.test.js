@@ -8,6 +8,9 @@ const { execFileSync, spawn } = require('child_process');
 const jsQR = require('jsqr');
 const { PNG } = require('pngjs');
 const { buildSite, SITE } = require('./harness');
+const { withSheet, closeAll, CHROME: CDP_CHROME } = require('./cdp');
+
+test.after(closeAll);
 
 // Resolves a real Chrome/Chromium binary across platforms instead of a
 // hardcoded macOS path, so this — the sole end-to-end coverage of loading
@@ -52,54 +55,57 @@ function hashFor(state) {
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-test('the printed PDF is one A4 page with four scannable codes', async (t) => {
-  if (!CHROME) return t.skip('No Chrome/Chromium found; set CHROME=<path to binary> to run this test');
-  buildSite();
-
-  const server = spawn('python3', ['-m', 'http.server', String(PORT)], { cwd: SITE, stdio: 'ignore' });
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'massqr-'));
+test('the sheet prints as one page, on whatever paper it is given',
+  { skip: !CDP_CHROME && 'no Chrome' }, async () => {
+  // Three very different papers. Nothing in the page declares a size any
+  // more, so all three must come out as one full page of scannable codes —
+  // that is the whole claim the tool now makes about printing.
+  const papers = [
+    { name: 'A4',      w: 8.27, h: 11.69 },
+    { name: 'Letter',  w: 8.5,  h: 11 },
+    { name: 'A5-land', w: 8.27, h: 5.83 }
+  ];
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'massqr-paper-'));
   try {
-    await new Promise((r) => setTimeout(r, 1500));
-    const pdf = path.join(tmp, 'sheet.pdf');
-    const url = `http://localhost:${PORT}/tools/mass-qr/#s=${hashFor(STATE)}`;
-    execFileSync(CHROME, [
-      '--headless', '--disable-gpu', '--no-sandbox', '--no-pdf-header-footer',
-      '--virtual-time-budget=6000', `--print-to-pdf=${pdf}`, url
-    ], { stdio: 'ignore' });
+    await withSheet(STATE, async (p) => {
+      for (const paper of papers) {
+        const pdf = await p.printToPDF({ preferCSSPageSize: false,
+          paperWidth: paper.w, paperHeight: paper.h,
+          marginTop: 0.4, marginBottom: 0.4, marginLeft: 0.4, marginRight: 0.4 });
 
-    assert.ok(fs.existsSync(pdf), 'PDF was produced');
+        const counts = [...pdf.toString('latin1').matchAll(/\/Count\s+(\d+)/g)].map((m2) => +m2[1]);
+        assert.equal(Math.max(...counts), 1, `${paper.name}: exactly one page`);
 
-    // Page count: Chrome writes an uncompressed page tree, so /Count is readable.
-    const raw = fs.readFileSync(pdf);
-    const counts = [...raw.toString('latin1').matchAll(/\/Count\s+(\d+)/g)].map((m) => +m[1]);
-    assert.equal(Math.max(...counts), 1, 'exactly one page');
+        const f = path.join(tmp, `${paper.name}.pdf`);
+        fs.writeFileSync(f, pdf);
+        const png = f.replace('.pdf', '.png');
+        execFileSync('sips', ['-s', 'format', 'png', f, '--out', png], { stdio: 'ignore' });
+        const img = PNG.sync.read(fs.readFileSync(png));
 
-    // A4 portrait at 72dpi is 595x842pt; allow a point of rounding either way.
-    const png = path.join(tmp, 'sheet.png');
-    execFileSync('sips', ['-s', 'format', 'png', pdf, '--out', png], { stdio: 'ignore' });
-    const img = PNG.sync.read(fs.readFileSync(png));
-    const ratio = img.height / img.width;
-    assert.ok(Math.abs(ratio - 842 / 595) < 0.02, `A4 aspect ratio, got ${ratio.toFixed(3)}`);
+        // Aspect follows the paper, not a hardcoded sheet.
+        const ratio = img.height / img.width;
+        assert.ok(Math.abs(ratio - paper.h / paper.w) < 0.03,
+          `${paper.name}: page follows the paper, got ${ratio.toFixed(3)} want ${(paper.h / paper.w).toFixed(3)}`);
 
-    // Every code must still scan after going through the print pipeline. jsQR
-    // finds one code per call, so each quadrant is cropped and decoded alone.
-    const found = [];
-    const halves = [[0, 0], [1, 0], [0, 1], [1, 1]];
-    for (const [qx, qy] of halves) {
-      const w = Math.floor(img.width / 2), h = Math.floor(img.height / 2);
-      const buf = new Uint8ClampedArray(w * h * 4);
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const si = ((y + qy * h) * img.width + (x + qx * w)) * 4;
-        const di = (y * w + x) * 4;
-        buf[di] = img.data[si]; buf[di + 1] = img.data[si + 1];
-        buf[di + 2] = img.data[si + 2]; buf[di + 3] = 255;
+        // Every code still scans. jsQR finds one per call, so crop quadrants.
+        const found = [];
+        for (const [qx, qy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+          const w = Math.floor(img.width / 2), h = Math.floor(img.height / 2);
+          const buf = new Uint8ClampedArray(w * h * 4);
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            const si = ((y + qy * h) * img.width + (x + qx * w)) * 4;
+            const di = (y * w + x) * 4;
+            buf[di] = img.data[si]; buf[di + 1] = img.data[si + 1];
+            buf[di + 2] = img.data[si + 2]; buf[di + 3] = 255;
+          }
+          const res = jsQR(buf, w, h);
+          if (res) found.push(res.data);
+        }
+        assert.deepEqual(found.sort(), Object.values(STATE.tiles).map((t2) => t2.u).sort(),
+          `${paper.name}: all four codes scan`);
       }
-      const res = jsQR(buf, w, h);
-      if (res) found.push(res.data);
-    }
-    assert.deepEqual(found.sort(), Object.values(STATE.tiles).map((t2) => t2.u).sort());
+    });
   } finally {
-    server.kill();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
@@ -115,43 +121,6 @@ const CUSTOM_STATE = {
   tiles: { '0,0': { u: 'https://school.edu/custom', l: 'Custom', d: '' } }
 };
 
-test('a custom paper size prints at its real physical size', async (t) => {
-  if (!CHROME) return t.skip('No Chrome/Chromium found; set CHROME=<path to binary> to run this test');
-  buildSite();
-
-  const server = spawn('python3', ['-m', 'http.server', String(PORT + 1)], { cwd: SITE, stdio: 'ignore' });
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'massqr-custom-'));
-  try {
-    await new Promise((r) => setTimeout(r, 1500));
-    const pdf = path.join(tmp, 'custom.pdf');
-    const url = `http://localhost:${PORT + 1}/tools/mass-qr/#s=${hashFor(CUSTOM_STATE)}`;
-    execFileSync(CHROME, [
-      '--headless', '--disable-gpu', '--no-sandbox', '--no-pdf-header-footer',
-      '--virtual-time-budget=6000', `--print-to-pdf=${pdf}`, url
-    ], { stdio: 'ignore' });
-
-    assert.ok(fs.existsSync(pdf), 'PDF was produced');
-
-    const raw = fs.readFileSync(pdf);
-    const counts = [...raw.toString('latin1').matchAll(/\/Count\s+(\d+)/g)].map((m) => +m[1]);
-    assert.equal(Math.max(...counts), 1, 'exactly one page');
-
-    const png = path.join(tmp, 'custom.png');
-    execFileSync('sips', ['-s', 'format', 'png', pdf, '--out', png], { stdio: 'ignore' });
-    const img = PNG.sync.read(fs.readFileSync(png));
-    const ratio = img.height / img.width;
-    assert.ok(Math.abs(ratio - 180 / 120) < 0.02, `120x180mm aspect ratio, got ${ratio.toFixed(3)}`);
-
-    const res = jsQR(
-      new Uint8ClampedArray(img.data), img.width, img.height
-    );
-    assert.ok(res, 'the code on a custom-size page still scans');
-    assert.equal(res.data, 'https://school.edu/custom');
-  } finally {
-    server.kill();
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
 
 // Landscape + a dense grid + large captions is the combination that exposed a
 // broken height chain: in print, #sheetWrap loses `overflow: auto`, the grid's
@@ -170,57 +139,6 @@ const LANDSCAPE_STATE = {
     '1,1': { u: 'https://test.io/d', l: 'test.io', d: '' }
   }
 };
-
-test('a landscape custom sheet stays on one page and keeps every code', async (t) => {
-  if (!CHROME) return t.skip('No Chrome/Chromium found; set CHROME=<path to binary> to run this test');
-  buildSite();
-
-  const server = spawn('python3', ['-m', 'http.server', String(PORT + 2)], { cwd: SITE, stdio: 'ignore' });
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'massqr-land-'));
-  try {
-    await new Promise((r) => setTimeout(r, 1500));
-    const pdf = path.join(tmp, 'landscape.pdf');
-    const url = `http://localhost:${PORT + 2}/tools/mass-qr/#s=${hashFor(LANDSCAPE_STATE)}`;
-    execFileSync(CHROME, [
-      '--headless', '--disable-gpu', '--no-sandbox', '--no-pdf-header-footer',
-      '--virtual-time-budget=6000', `--print-to-pdf=${pdf}`, url
-    ], { stdio: 'ignore' });
-
-    const raw = fs.readFileSync(pdf);
-    const counts = [...raw.toString('latin1').matchAll(/\/Count\s+(\d+)/g)].map((m) => +m[1]);
-    assert.equal(Math.max(...counts), 1, 'one page — a broken height chain spills the bottom row');
-
-    // 5x7in rotated to landscape is 7x5, ratio 0.714.
-    const png = path.join(tmp, 'landscape.png');
-    execFileSync('sips', ['-s', 'format', 'png', pdf, '--out', png], { stdio: 'ignore' });
-    const img = PNG.sync.read(fs.readFileSync(png));
-    const ratio = img.height / img.width;
-    assert.ok(Math.abs(ratio - 5 / 7) < 0.02, `landscape 7x5 aspect, got ${ratio.toFixed(3)}`);
-
-    // All four must be on this page: the bug put the bottom row on page two,
-    // so a quadrant decode is what proves the whole grid actually fits.
-    const found = [];
-    for (const [qx, qy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
-      const w = Math.floor(img.width / 2), h = Math.floor(img.height / 2);
-      const buf = new Uint8ClampedArray(w * h * 4);
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const si = ((y + qy * h) * img.width + (x + qx * w)) * 4;
-        const di = (y * w + x) * 4;
-        buf[di] = img.data[si]; buf[di + 1] = img.data[si + 1];
-        buf[di + 2] = img.data[si + 2]; buf[di + 3] = 255;
-      }
-      const res = jsQR(buf, w, h);
-      if (res) found.push(res.data);
-    }
-    assert.deepEqual(found.sort(), Object.values(LANDSCAPE_STATE.tiles).map((x) => x.u).sort());
-  } finally {
-    server.kill();
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-const { withSheet, closeAll, CHROME: CDP_CHROME } = require('./cdp');
-test.after(closeAll);
 
 // Body margin comes only from Tailwind's CDN preflight. Block that script —
 // offline, corporate proxy, a slow CDN on the day someone hits Ctrl-P — and
