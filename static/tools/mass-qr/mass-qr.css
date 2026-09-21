@@ -175,10 +175,6 @@
 /* ── Print ─────────────────────────────────────────────────────────────── */
 
 @media print {
-    /* Site chrome from baseof.html — hidden from here so the theme stays
-       untouched. */
-    body > header, body > footer { display: none !important; }
-
     /* Body's margin used to be zeroed only by Tailwind's CDN preflight, so a
        blocked or slow CDN on the day someone hit Ctrl-P started the sheet 8px
        down a page it exactly fills — 8px from a second, blank page, on a
@@ -190,7 +186,7 @@
         min-height: 0 !important; background: #fff !important;
     }
     main { height: 100% !important; padding: 0 !important; margin: 0 !important; max-width: none !important; }
-    .rail, #btnPrint, .no-print { display: none !important; }
+    .rail, #btnPrint { display: none !important; }
 
     /* The rail is gone, so the press grid has nothing left to lay out. */
     #page { display: block !important; }

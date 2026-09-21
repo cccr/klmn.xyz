@@ -1,41 +1,16 @@
 /* ══ Wiggle Animator ═══════════════════════════════════════════════════════
    The console is the rail; the canvas is the artifact — what you see under
    the trim marks is exactly what the GIF or WebM will contain. style.css
-   owns the reset, the chrome, the rail and the buttons.
+   owns the reset, the chrome, the rail, the drop zone and the switch; this
+   file is the example picker and the canvas.
    ═══════════════════════════════════════════════════════════════════════ */
-
-/* ── Source ────────────────────────────────────────────────────────────── */
-
-.upload-area {
-    display: flex; flex-direction: column; align-items: center; gap: .5rem;
-    margin-top: .5rem;
-    padding: 1.25rem 1rem;
-    border: 1px dashed var(--rule);
-    background: var(--paper);
-    color: var(--ink-soft);
-    text-align: center;
-    cursor: pointer;
-    transition: border-color .12s, color .12s;
-}
-.upload-area:hover, .upload-area.dragover { border-color: var(--reg); color: var(--reg); }
-.upload-area p { font-size: .8125rem; line-height: 1.4; }
-.upload-area input { display: none; }
-.upload-area .icon { stroke: currentColor; }
-
-.filename {
-    display: none;
-    margin-top: .5rem;
-    font-family: var(--mono); font-size: .75rem;
-    color: var(--ink-soft);
-    overflow-wrap: anywhere;
-}
 
 /* ── Examples ──────────────────────────────────────────────────────────── */
 
 .examples-toggle {
     display: block; width: 100%;
     margin-top: 1rem; padding: 0 0 .375rem;
-    font-family: var(--cond); font-size: .9375rem; font-weight: 600;
+    font-family: var(--cond); font-size: var(--fs-body); font-weight: 600;
     color: var(--ink); text-align: left;
     background: none; border: 0; border-bottom: 1px solid var(--rule);
     cursor: pointer;
@@ -51,7 +26,7 @@
 
 .examples-group { margin-top: .75rem; }
 .examples-sublabel {
-    font-size: .75rem; color: var(--ink-soft);
+    font-size: var(--fs-note); color: var(--ink-soft);
     margin-bottom: .375rem;
 }
 .examples-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .375rem; }
@@ -69,42 +44,6 @@
 
 /* ── Stroke override ───────────────────────────────────────────────────── */
 
-.toggle-row {
-    display: flex; align-items: center; gap: .625rem;
-    padding-block: .625rem;
-    cursor: pointer;
-}
-.toggle-row input[type="checkbox"] {
-    position: absolute; opacity: 0; width: 0; height: 0;
-}
-.toggle-pill {
-    flex: none;
-    position: relative;
-    width: 2rem; height: 1.125rem;
-    background: var(--ground-sunk);
-    border: 1px solid var(--rule);
-    border-radius: 999px;
-    transition: background-color .12s, border-color .12s;
-}
-.toggle-pill::after {
-    content: '';
-    position: absolute; top: 1px; left: 1px;
-    width: .875rem; height: .875rem;
-    background: var(--ink-soft);
-    border-radius: 999px;
-    transition: transform .12s, background-color .12s;
-}
-.toggle-row input[type="checkbox"]:checked + .toggle-pill {
-    background: var(--reg); border-color: var(--reg);
-}
-.toggle-row input[type="checkbox"]:checked + .toggle-pill::after {
-    transform: translateX(.875rem); background: var(--paper);
-}
-.toggle-row input[type="checkbox"]:focus-visible + .toggle-pill {
-    outline: 2px solid var(--reg); outline-offset: 2px;
-}
-.toggle-label { font-size: .875rem; color: var(--ink-soft); }
-
 /* JS flips this to `flex`, so the hidden state has to be the CSS default. */
 .stroke-options { display: none; flex-direction: column; }
 
@@ -117,12 +56,10 @@
 
 #mainArea { min-height: 32rem; }
 
-.trim-fit { width: max-content; max-width: 100%; }
-
 #canvas { display: block; max-width: 100%; height: auto; }
 
 .wig-status {
     margin-top: 1.25rem;
-    font-family: var(--mono); font-size: .8125rem;
+    font-family: var(--mono); font-size: var(--fs-fine);
     color: var(--ink-soft); text-align: center;
 }

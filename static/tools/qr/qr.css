@@ -1,20 +1,8 @@
 /* ══ QR Code Generator ═════════════════════════════════════════════════════
-   style.css owns the reset, the chrome, the rail and the trim marks. This
-   file is the payload field, the segmented control, and the paper the code
-   is printed on.
+   style.css owns the reset, the chrome, the rail (the payload textarea
+   included) and the trim marks. This file is the paper the code is printed
+   on.
    ═══════════════════════════════════════════════════════════════════════ */
-
-#payload {
-    width: 100%;
-    padding: .5rem .625rem;
-    border: 1px solid var(--rule);
-    background: var(--paper);
-    color: var(--ink);
-    font-family: var(--mono);
-    font-size: .8125rem; line-height: 1.45;
-    resize: vertical;
-}
-#payload:focus { outline: none; border-color: var(--reg); }
 
 /* The code is the artifact, so it gets the paper and the trim marks. The
    canvas sizes itself from the module size, so the paper holds a floor and
@@ -32,6 +20,6 @@
 }
 #emptyHint {
     max-width: 18ch;
-    font-size: .8125rem; line-height: 1.5;
+    font-size: var(--fs-fine); line-height: 1.5;
     color: var(--ink-soft); text-align: center;
 }
