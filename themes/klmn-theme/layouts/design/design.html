@@ -1,0 +1,700 @@
+{{ define "head" }}
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="/design/design.css">
+{{ end }}
+
+{{ define "main" }}
+{{- /* The specimen book for /css/style.css.
+
+       Every component below is the real one, rendered by the same stylesheet
+       the tools load — there is no copy of a button in here. That is the
+       whole point: change a token or a rule in style.css and this page moves
+       with it, and so does every tool.
+
+       design.css is scaffolding only (the ledger, the swatch bars, the
+       stage). If a rule in that file changes how a .btn or a .field looks,
+       it is in the wrong file. */ -}}
+
+<div class="press">
+    <div class="rail">
+        <h1>Design system</h1>
+        <p>Every colour, size and component the tools are built from, rendered live by the same
+           stylesheet they load. Nothing on this page is a mock-up.</p>
+
+        <div class="rail-group">
+            <h2>Contents</h2>
+            <nav class="ds-toc">
+                <a href="#colour">Colour</a>
+                <a href="#type">Type</a>
+                <a href="#rhythm">Rhythm</a>
+                <a href="#layout">Layout</a>
+                <a href="#controls">Rail controls</a>
+                <a href="#actions">Actions</a>
+                <a href="#readouts">Readouts</a>
+                <a href="#text">Text</a>
+                <a href="#lists">Index pages</a>
+                <a href="#utilities">Utilities</a>
+                <a href="#contract">Where a style belongs</a>
+            </nav>
+        </div>
+
+        <div class="rail-group">
+            <h2>Changing something</h2>
+            <p class="rail-hint">
+                Suggest it here, against a component you can point at. Edits land in
+                <span class="ds-path">/css/style.css</span> and arrive on every tool at once —
+                there is no per-tool copy to keep in step.
+            </p>
+        </div>
+
+        <div class="rail-group">
+            <h2>The one rule</h2>
+            <p class="rail-hint">
+                Used by more than one page: <span class="ds-path">style.css</span>, and shown on
+                this page. Used by exactly one page: that page's own file. When a second tool wants
+                it, it moves here in the same commit.
+            </p>
+        </div>
+    </div>
+
+    <div class="bed">
+
+        <!-- ── Colour ─────────────────────────────────────────────────── -->
+        <section class="ds-section" id="colour">
+            <div class="prose">
+                <h2>Colour</h2>
+                <p>Eight values, and no more. Six of them are greys doing structural work; the
+                   hierarchy is carried by the gap between the bench and the paper, not by tinting
+                   things. The two colours that are not grey are each reserved for one job, which is
+                   why they still register when they turn up.</p>
+            </div>
+
+            <dl class="ds-ledger">
+                <dt>--ground</dt>
+                <dd class="ds-colour">
+                    <span class="ds-swatch" style="background: var(--ground)"></span>
+                    <span class="ds-hex" data-token="--ground"></span>
+                    <span class="ds-role">The bench. Page background, everywhere.</span>
+                </dd>
+
+                <dt>--ground-sunk</dt>
+                <dd class="ds-colour">
+                    <span class="ds-swatch" style="background: var(--ground-sunk)"></span>
+                    <span class="ds-hex" data-token="--ground-sunk"></span>
+                    <span class="ds-role">A recess in the bench: the header band, a hover, an
+                        inline code span.</span>
+                </dd>
+
+                <dt>--rule</dt>
+                <dd class="ds-colour">
+                    <span class="ds-swatch" style="background: var(--rule)"></span>
+                    <span class="ds-hex" data-token="--rule"></span>
+                    <span class="ds-role">Every hairline drawn on the bench.</span>
+                </dd>
+
+                <dt>--paper</dt>
+                <dd class="ds-colour">
+                    <span class="ds-swatch" style="background: var(--paper)"></span>
+                    <span class="ds-hex" data-token="--paper"></span>
+                    <span class="ds-role">The artifact. Pure white so it reads brighter than the
+                        bench it lies on.</span>
+                </dd>
+
+                <dt>--paper-rule</dt>
+                <dd class="ds-colour">
+                    <span class="ds-swatch" style="background: var(--paper-rule)"></span>
+                    <span class="ds-hex" data-token="--paper-rule"></span>
+                    <span class="ds-role">A hairline drawn on paper rather than on the bench.
+                        Lighter, or it reads as printed content.</span>
+                </dd>
+
+                <dt>--ink</dt>
+                <dd class="ds-colour">
+                    <span class="ds-swatch" style="background: var(--ink)"></span>
+                    <span class="ds-hex" data-token="--ink"></span>
+                    <span class="ds-role">Text, and the fill of the one action that matters.</span>
+                </dd>
+
+                <dt>--ink-soft</dt>
+                <dd class="ds-colour">
+                    <span class="ds-swatch" style="background: var(--ink-soft)"></span>
+                    <span class="ds-hex" data-token="--ink-soft"></span>
+                    <span class="ds-role">Labels, units, hints — anything that names a value rather
+                        than being one.</span>
+                </dd>
+
+                <dt>--reg</dt>
+                <dd class="ds-colour">
+                    <span class="ds-swatch" style="background: var(--reg)"></span>
+                    <span class="ds-hex" data-token="--reg"></span>
+                    <span class="ds-role">Registration cyan. Focus, hover, trim marks, and a value
+                        being adjusted right now. Never decoration.</span>
+                </dd>
+
+                <dt>--alert</dt>
+                <dd class="ds-colour">
+                    <span class="ds-swatch" style="background: var(--alert)"></span>
+                    <span class="ds-hex" data-token="--alert"></span>
+                    <span class="ds-role">Something will not come out right. Nothing else.</span>
+                </dd>
+            </dl>
+
+            <div class="prose ds-after">
+                <p>Two colours are deliberately absent. There is no warm cream and no terracotta,
+                   because that pairing is the house style of every page generated in the last two
+                   years. And there is no dark scheme: it was built, looked at, and rejected.</p>
+            </div>
+        </section>
+
+        <!-- ── Type ───────────────────────────────────────────────────── -->
+        <section class="ds-section" id="type">
+            <div class="prose">
+                <h2>Type</h2>
+                <p>One family in three widths. Condensed sets anything that names something — the
+                   wordmark, headings, button labels — because at the same size it reads as a
+                   different voice without introducing a second typeface. Mono sets every number,
+                   so values line up down a rail whether or not anyone is comparing them.</p>
+            </div>
+
+            <dl class="ds-ledger">
+                <dt>--sans</dt>
+                <dd>
+                    <p class="ds-family" style="font-family: var(--sans)">IBM Plex Sans</p>
+                    <span class="ds-role">Body copy, labels, descriptions.</span>
+                </dd>
+                <dt>--cond</dt>
+                <dd>
+                    <p class="ds-family" style="font-family: var(--cond)">IBM Plex Sans Condensed</p>
+                    <span class="ds-role">Headings, the wordmark, button labels.</span>
+                </dd>
+                <dt>--mono</dt>
+                <dd>
+                    <p class="ds-family" style="font-family: var(--mono)">IBM Plex Mono 0123456789</p>
+                    <span class="ds-role">Every value, with <span class="ds-code">font-variant-numeric:
+                        tabular-nums</span> so digits keep their column.</span>
+                </dd>
+            </dl>
+
+            <div class="prose ds-after">
+                <h3>The scale</h3>
+                <p>Ten steps, named for the job rather than the number. A tool that needs a size
+                   which is not on this list is evidence the scale is a step short — add it to
+                   <span class="ds-path">style.css</span> rather than writing a loose value into one
+                   page's file.</p>
+            </div>
+
+            <dl class="ds-ledger ds-ledger-type">
+                <dt>--fs-note</dt>
+                <dd><span class="ds-spec" style="font-size: var(--fs-note)">Hints, legends, credits</span><span class="ds-px"></span></dd>
+                <dt>--fs-fine</dt>
+                <dd><span class="ds-spec" style="font-size: var(--fs-fine)">Spec tables and notices</span><span class="ds-px"></span></dd>
+                <dt>--fs-label</dt>
+                <dd><span class="ds-spec" style="font-size: var(--fs-label)">A rail label and its value</span><span class="ds-px"></span></dd>
+                <dt>--fs-body</dt>
+                <dd><span class="ds-spec" style="font-size: var(--fs-body)">Body copy and buttons</span><span class="ds-px"></span></dd>
+                <dt>--fs-group</dt>
+                <dd><span class="ds-spec" style="font-size: var(--fs-group)">A rail group heading</span><span class="ds-px"></span></dd>
+                <dt>--fs-head</dt>
+                <dd><span class="ds-spec" style="font-size: var(--fs-head)">A heading on paper</span><span class="ds-px"></span></dd>
+                <dt>--fs-figure</dt>
+                <dd><span class="ds-spec ds-spec-num" style="font-size: var(--fs-figure)">1 280 mm/min</span><span class="ds-px"></span></dd>
+                <dt>--fs-item</dt>
+                <dd><span class="ds-spec ds-spec-cond" style="font-size: var(--fs-item)">Mass QR Sheet</span><span class="ds-px"></span></dd>
+                <dt>--fs-page</dt>
+                <dd><span class="ds-spec ds-spec-cond" style="font-size: var(--fs-page)">Feed &amp; Speed Planner</span><span class="ds-px"></span></dd>
+                <dt>--fs-index</dt>
+                <dd><span class="ds-spec ds-spec-cond" style="font-size: var(--fs-index)">Tools</span><span class="ds-px"></span></dd>
+            </dl>
+        </section>
+
+        <!-- ── Rhythm ─────────────────────────────────────────────────── -->
+        <section class="ds-section" id="rhythm">
+            <div class="prose">
+                <h2>Rhythm</h2>
+                <p>Space is not tokenised. It is a rhythm rather than a set of names: these are the
+                   steps the stylesheets actually use, and a new rule should land on one of them
+                   rather than inventing a value in between.</p>
+            </div>
+
+            <dl class="ds-ledger ds-ledger-rhythm">
+                <dt>0.25rem</dt><dd><span class="ds-rule-bar" style="width: .25rem"></span><span class="ds-role">Inside a value pair.</span></dd>
+                <dt>0.5rem</dt><dd><span class="ds-rule-bar" style="width: .5rem"></span><span class="ds-role">A field's own padding; the gap between buttons.</span></dd>
+                <dt>0.75rem</dt><dd><span class="ds-rule-bar" style="width: .75rem"></span><span class="ds-role">Under a heading, before its copy.</span></dd>
+                <dt>1rem</dt><dd><span class="ds-rule-bar" style="width: 1rem"></span><span class="ds-role">Between paragraphs; a label from its value.</span></dd>
+                <dt>1.25rem</dt><dd><span class="ds-rule-bar" style="width: 1.25rem"></span><span class="ds-role">The trim's padding — where the registration marks sit.</span></dd>
+                <dt>1.75rem</dt><dd><span class="ds-rule-bar" style="width: 1.75rem"></span><span class="ds-role">Between rail groups.</span></dd>
+                <dt>2rem</dt><dd><span class="ds-rule-bar" style="width: 2rem"></span><span class="ds-role">The rail's right margin at full width.</span></dd>
+                <dt>2.5rem</dt><dd><span class="ds-rule-bar" style="width: 2.5rem"></span><span class="ds-role">Main's top and bottom padding; the stacked rail-to-bed gap.</span></dd>
+                <dt>3rem</dt><dd><span class="ds-rule-bar" style="width: 3rem"></span><span class="ds-role">The bed's left inset, across the rail's rule.</span></dd>
+                <dt>4rem</dt><dd><span class="ds-rule-bar" style="width: 4rem"></span><span class="ds-role">Above the footer, and nowhere else.</span></dd>
+            </dl>
+        </section>
+
+        <!-- ── Layout ─────────────────────────────────────────────────── -->
+        <section class="ds-section" id="layout">
+            <div class="prose">
+                <h2>Layout</h2>
+                <p>Every tool is the same shape, and the shape is the argument: the controls are a
+                   rail down the side, and the thing you are about to print, download or export sits
+                   on paper beside them under registration marks. A tool that does not fit this
+                   shape is worth a conversation before it is worth a new layout.</p>
+            </div>
+
+            <div class="ds-block">
+                <p class="ds-name">.press &rsaquo; .rail + .bed</p>
+                <div class="ds-diagram">
+                    <div class="ds-diagram-rail">
+                        <span>.rail</span>
+                        <p>18rem at 60rem and up, full width below. Capped at 26rem so it never
+                           becomes a second column of reading.</p>
+                    </div>
+                    <div class="ds-diagram-bed">
+                        <span>.bed</span>
+                        <p>minmax(0, 1fr) — the zero minimum is load-bearing. An implicit auto
+                           column cannot shrink below its content, and one wide tile drags the whole
+                           document sideways.</p>
+                    </div>
+                </div>
+            </div>
+
+            <dl class="ds-ledger">
+                <dt>.press</dt>
+                <dd><span class="ds-role">The grid. One column, becoming rail + bed at 60rem.</span></dd>
+                <dt>.rail</dt>
+                <dd><span class="ds-role">Controls, and the tool's name and description. Gains a
+                    right-hand rule at 60rem.</span></dd>
+                <dt>.bed</dt>
+                <dd><span class="ds-role">The artifact and everything that explains it. Its direct
+                    children line up with the paper's edges automatically.</span></dd>
+                <dt>--trim-width</dt>
+                <dd><span class="ds-role">Set on <span class="ds-code">.bed</span> per tool; caps the
+                    paper and everything under it to one measure. 30rem on the QR generator, 34rem on
+                    the planner, 48.5rem on the sheet.</span></dd>
+            </dl>
+
+            <div class="prose ds-after">
+                <h3>The artifact</h3>
+                <p>Registration marks appear on exactly one thing per page and nowhere else. They
+                   are the page saying <em>this is the object you are about to take away</em> — a
+                   second pair anywhere would make them decoration.</p>
+            </div>
+
+            <div class="ds-block">
+                <p class="ds-name">.trim &rsaquo; .artifact</p>
+                <div class="trim ds-trim-demo">
+                    <div class="artifact ds-artifact-demo">
+                        <p class="on-stock">Paper stock. Whatever prints, downloads or exports goes
+                           here, and nothing else does.</p>
+                    </div>
+                </div>
+            </div>
+
+            <dl class="ds-ledger">
+                <dt>.trim</dt>
+                <dd><span class="ds-role">1.25rem of bleed carrying the four registration marks. The
+                    mark is one SVG in <span class="ds-code">--regmark</span>, placed at each
+                    corner.</span></dd>
+                <dt>.artifact</dt>
+                <dd><span class="ds-role">The paper: white, a hairline edge, and one shadow lifting
+                    it off the bench.</span></dd>
+                <dt>.trim-fit</dt>
+                <dd><span class="ds-role">For an artifact with an intrinsic size — a canvas — so the
+                    marks land on its real rectangle rather than on the column.</span></dd>
+                <dt>.on-stock</dt>
+                <dd><span class="ds-role">Text sitting on paper rather than on the bench.</span></dd>
+            </dl>
+        </section>
+
+        <!-- ── Rail controls ──────────────────────────────────────────── -->
+        <section class="ds-section" id="controls">
+            <div class="prose">
+                <h2>Rail controls</h2>
+                <p>A control is a label on the left and its value on the right, with the values
+                   aligned down the rail in a mono column. Inputs have no boxes: a number on the rail
+                   looks like the number it is, and only shows an edge when you are pointing at it or
+                   typing in it.</p>
+                <p>These are shown inside a real <span class="ds-code">.rail</span>, because that is
+                   what scopes them — the same markup out on the bed gets browser-default form
+                   controls.</p>
+            </div>
+
+            <div class="ds-block">
+                <p class="ds-name">.rail &rsaquo; .rail-group &rsaquo; .field</p>
+                <div class="ds-railbox">
+                    <div class="rail">
+                        <div class="rail-group">
+                            <h2>Sheet</h2>
+                            <div class="field field-measure">
+                                <label for="ds-mg">Margin</label>
+                                <span class="field-value"><input id="ds-mg" type="number" value="10"
+                                      min="0" max="50" step="0.5"><span class="unit">mm</span></span>
+                            </div>
+                            <div class="field">
+                                <label for="ds-cols">Columns</label>
+                                <span class="field-value"><select id="ds-cols">
+                                    <option>2</option><option selected>3</option><option>4</option>
+                                </select></span>
+                            </div>
+                            <div class="field">
+                                <span class="field-name">Ink</span>
+                                <span class="field-value ink-pair">
+                                    <input type="color" value="#14181a" aria-label="Foreground">
+                                    <input type="color" value="#ffffff" aria-label="Background">
+                                </span>
+                            </div>
+                            <div class="field field-tight">
+                                <label for="ds-module">Module size</label>
+                                <span class="field-value"><span id="ds-moduleOut">8</span><span class="unit">px</span></span>
+                            </div>
+                            <input id="ds-module" class="rail-range" type="range" min="2" max="20" value="8"
+                                   aria-label="Module size in pixels">
+                            <p class="rail-hint">A hint carries the reasoning that will not fit in a
+                               label. It is the last thing in a group, never the first.</p>
+                        </div>
+
+                        <div class="rail-group">
+                            <h2>Content</h2>
+                            <label class="sr-only" for="ds-payload">Text or URL</label>
+                            <textarea id="ds-payload" rows="3" spellcheck="false"
+                                      placeholder="https://klmn.xyz"></textarea>
+                            <p class="rail-hint" id="ds-count">0 characters</p>
+                        </div>
+
+                        <div class="rail-group">
+                            <h2>Correction</h2>
+                            <div class="seg" role="group" aria-label="Error correction" id="ds-seg">
+                                <button type="button">L</button>
+                                <button type="button" class="is-on">M</button>
+                                <button type="button">Q</button>
+                                <button type="button">H</button>
+                            </div>
+                            <div class="rail-legend" aria-hidden="true">
+                                <span>L 7%</span><span>M 15%</span><span>Q 25%</span><span>H 30%</span>
+                            </div>
+                        </div>
+
+                        <div class="rail-group">
+                            <h2>Source</h2>
+                            <label class="upload-area" for="ds-file">
+                                <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none"
+                                     stroke-width="1.5" aria-hidden="true">
+                                    <path d="M12 16V4m0 0L7 9m5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+                                </svg>
+                                <p>Drop an SVG here, or choose a file</p>
+                                <input id="ds-file" type="file" accept=".svg">
+                            </label>
+                            <p class="filename" style="display: block">wiggle-source.svg</p>
+                        </div>
+
+                        <div class="rail-group">
+                            <h2>Override</h2>
+                            <label class="toggle-row">
+                                <input type="checkbox" checked>
+                                <span class="toggle-pill"></span>
+                                <span class="toggle-label">Force a stroke width</span>
+                            </label>
+                            <div class="chips">
+                                <button type="button" class="chip">3.175</button>
+                                <button type="button" class="chip">6</button>
+                                <button type="button" class="chip">6.35</button>
+                                <button type="button" class="chip">8</button>
+                            </div>
+                        </div>
+
+                        <div class="rail-actions">
+                            <button class="btn btn-go">Download PNG</button>
+                            <button class="btn">Download SVG</button>
+                        </div>
+                        <p class="rail-credit">A credit line, for the library doing the real work.
+                           <a href="#controls">Linked</a>, and quieter than everything above it.</p>
+                    </div>
+                </div>
+            </div>
+
+            <dl class="ds-ledger">
+                <dt>.rail-group</dt>
+                <dd><span class="ds-role">A set of controls under a ruled heading. Sentence case —
+                    never a tracked-out all-caps eyebrow.</span></dd>
+                <dt>.field</dt>
+                <dd><span class="ds-role">Label left, value right, hairline under.</span></dd>
+                <dt>.field-name</dt>
+                <dd><span class="ds-role">Stands in for the label when the control has no single
+                    input to point at — a colour pair, a segmented group.</span></dd>
+                <dt>.field-value</dt>
+                <dd><span class="ds-role">The mono column. Everything that is a value goes in
+                    one.</span></dd>
+                <dt>.unit</dt>
+                <dd><span class="ds-role">mm, px, %, rpm. Smaller and softer, so the number reads
+                    first.</span></dd>
+                <dt>.ink-pair</dt>
+                <dd><span class="ds-role">Two swatches, or a swatch and its hex, reading as one
+                    value.</span></dd>
+                <dt>.field-measure</dt>
+                <dd><span class="ds-role">Ruler ticks in the margin, marking the controls that are a
+                    physical measurement rather than a count.</span></dd>
+                <dt>.field-tight</dt>
+                <dd><span class="ds-role">Drops the hairline, for a field whose control is the
+                    slider directly below it.</span></dd>
+                <dt>.rail-range</dt>
+                <dd><span class="ds-role">A full-width slider, paired with the
+                    <span class="ds-code">.field-tight</span> above it.</span></dd>
+                <dt>.rail textarea</dt>
+                <dd><span class="ds-role">Free text. The one input that keeps a visible box, because
+                    it is a paragraph rather than a number.</span></dd>
+                <dt>.rail-legend</dt>
+                <dd><span class="ds-role">The scale a value is drawn from, as an aligned row —
+                    not a run-on string joined with middle dots.</span></dd>
+                <dt>.rail-hint</dt>
+                <dd><span class="ds-role">Why, in one or two sentences, at the end of a group.</span></dd>
+                <dt>.rail-actions</dt>
+                <dd><span class="ds-role">A row of buttons that share the rail's width.</span></dd>
+                <dt>.rail-note / .rail-credit</dt>
+                <dd><span class="ds-role">Small print under the controls; the credit carries the
+                    links.</span></dd>
+                <dt>.upload-area</dt>
+                <dd><span class="ds-role">Somewhere to drop a file. Dashed, because the border is an
+                    invitation rather than an edge. The script adds
+                    <span class="ds-code">.dragover</span> while a file is over it, which lights the
+                    same cyan as hover.</span></dd>
+                <dt>.filename</dt>
+                <dd><span class="ds-role">What was dropped. Hidden until the script has a name to put
+                    in it.</span></dd>
+                <dt>.toggle-row</dt>
+                <dd><span class="ds-role">A switch for a setting that turns a whole group on. The
+                    real checkbox stays in the DOM and keeps the keyboard.</span></dd>
+                <dt>.chips / .chip</dt>
+                <dd><span class="ds-role">The handful of values worth one tap, under the field they
+                    fill in. The unit is on that field, so a chip carries a bare value.</span></dd>
+            </dl>
+        </section>
+
+        <!-- ── Actions ────────────────────────────────────────────────── -->
+        <section class="ds-section" id="actions">
+            <div class="prose">
+                <h2>Actions</h2>
+                <p>One button per page is filled with ink; everything else is an outline. The fill is
+                   ink rather than cyan on purpose — cyan is spoken for, and the artifact has to stay
+                   the brightest thing on the bench.</p>
+            </div>
+
+            <dl class="ds-ledger">
+                <dt>.btn.btn-go</dt>
+                <dd><button class="btn btn-go">Print the sheet</button>
+                    <span class="ds-role">The thing the page exists to do. One per page.</span></dd>
+                <dt>.btn</dt>
+                <dd><button class="btn">Download SVG</button>
+                    <span class="ds-role">Everything else. Hover picks up cyan.</span></dd>
+                <dt>.btn:disabled</dt>
+                <dd><button class="btn btn-go" disabled>Download PNG</button>
+                    <span class="ds-role">Nothing to act on yet. Dimmed rather than
+                    hidden, so the action is still findable.</span></dd>
+                <dt>.seg</dt>
+                <dd><div class="seg" role="group" aria-label="Units" id="ds-seg2">
+                        <button type="button" class="is-on">Metric</button>
+                        <button type="button">Imperial</button>
+                    </div>
+                    <span class="ds-role">Two to four options, all worth showing. Beyond four, it is
+                    a select.</span></dd>
+            </dl>
+
+            <div class="prose ds-after">
+                <p>Labels say what happens, in the imperative, and keep the same words through the
+                   whole flow. <span class="ds-code">Download PNG</span>, not
+                   <span class="ds-code">Export</span>; <span class="ds-code">Print the sheet</span>,
+                   not <span class="ds-code">Submit</span>. No arrows appended to the text.</p>
+            </div>
+        </section>
+
+        <!-- ── Readouts ───────────────────────────────────────────────── -->
+        <section class="ds-section" id="readouts">
+            <div class="prose">
+                <h2>Readouts</h2>
+                <p>What the artifact turned out to be, and anything that went wrong making it. Both
+                   sit on the bench under the paper, never on it — the paper only carries what will
+                   be printed.</p>
+            </div>
+
+            <div class="ds-block">
+                <p class="ds-name">.spec</p>
+                <dl class="spec">
+                    <dt>version</dt><dd>4</dd>
+                    <dt>modules</dt><dd>33 &times; 33</dd>
+                    <dt>correction</dt><dd>Q (25%)</dd>
+                    <dt>export</dt><dd>264 &times; 264 px</dd>
+                </dl>
+                <p class="ds-role ds-after">An aligned table, replacing the
+                   <span class="ds-code">A &middot; B &middot; C</span> string this used to be.
+                   Middle-dot runs read as decoration and nothing in them lines up.</p>
+            </div>
+
+            <div class="ds-block">
+                <p class="ds-name">.notice</p>
+                <p class="notice">At 24 000 rpm in aluminium this tool is above its recommended
+                   surface speed. 18 500 rpm keeps the same chipload.</p>
+                <p class="ds-name ds-after">.notice.notice-alert</p>
+                <p class="notice notice-alert">This payload is too long for correction level H. Drop
+                   to Q, or shorten the text.</p>
+                <p class="ds-role ds-after">A notice says what happened and what to do about it. It
+                   does not apologise, and it is never vague about which control to reach for.</p>
+            </div>
+
+            <div class="ds-block">
+                <p class="ds-name">.num</p>
+                <p class="ds-role">Mono with tabular figures, for a number inside a sentence:
+                   surface speed is <span class="num">&pi; &times; diameter &times; rpm &divide;
+                   12</span>, which is how the planner arrives at
+                   <span class="num">1 280 mm/min</span>.</p>
+            </div>
+        </section>
+
+        <!-- ── Text ───────────────────────────────────────────────────── -->
+        <section class="ds-section" id="text">
+            <div class="prose">
+                <h2>Text</h2>
+                <p>One prose treatment, used by the explanatory sections under an artifact and by
+                   any plain rendered page. Measure is capped at 68 characters; headings take a rule
+                   rather than extra weight.</p>
+
+                <h3>A heading inside prose</h3>
+                <p>Links are cyan and underlined — <a href="#text">like this one</a> — because on a
+                   page this quiet, colour alone is not enough to mark them. Inline
+                   <code>code</code> sits in a recess of the bench.</p>
+
+                <ul class="bullets">
+                    <li>An en dash rather than a bullet glyph: it sits on the baseline with the text
+                        instead of floating above it.</li>
+                    <li>Used for points that are a list, not a sequence. If they are steps, number
+                        them; if they are not, do not.</li>
+                    <li>Short enough to read as a scan.</li>
+                </ul>
+
+                <h3>Acronyms</h3>
+                <p>Machining and printing are dense with them. Marking one up means the expansion
+                   travels with the page and a screen reader announces it, instead of the copy
+                   stopping to spell it out: stepdown is the
+                   <abbr title="Depth of cut">DOC</abbr>, stepover is the
+                   <abbr title="Width of cut">WOC</abbr>, and both follow from
+                   <abbr title="Surface feet per minute">SFM</abbr> and the
+                   <abbr title="Error correction capacity">ECC</abbr> budget a code was given.</p>
+            </div>
+
+            <dl class="ds-ledger">
+                <dt>.prose</dt>
+                <dd><span class="ds-role">Body copy. 68ch measure, 1rem between blocks.</span></dd>
+                <dt>.prose h3</dt>
+                <dd><span class="ds-role">A subheading. Same family and weight as an
+                    <span class="ds-code">h2</span>, a step smaller and without the rule — the rule
+                    is what says <em>new section</em>.</span></dd>
+                <dt>.bullets</dt>
+                <dd><span class="ds-role">An unordered list. Works inside prose or on its own.</span></dd>
+                <dt>abbr[title]</dt>
+                <dd><span class="ds-role">Dotted underline, never dashed — a dashed underline reads
+                    as a spelling error.</span></dd>
+            </dl>
+        </section>
+
+        <!-- ── Index pages ────────────────────────────────────────────── -->
+        <section class="ds-section" id="lists">
+            <div class="prose">
+                <h2>Index pages</h2>
+                <p>The home page and <a href="/tools/">/tools/</a> have no artifact of their own, so
+                   the list of tools becomes one: a specimen sheet, each tool a row on paper.</p>
+            </div>
+
+            <div class="ds-block ds-index-demo">
+                <p class="ds-name">.index &rsaquo; .trim &rsaquo; .artifact.specimen</p>
+                <div class="index">
+                    <div class="index-head">
+                        <h1>Tools</h1>
+                        <div class="index-lede"><p>Small, single-purpose things that run entirely in
+                            your browser.</p></div>
+                    </div>
+                    <div class="trim">
+                        <div class="artifact specimen">
+                            <a href="/tools/mass-qr/">
+                                <h2>Mass QR Sheet</h2>
+                                <p>Fill a grid with links and print one page.</p>
+                            </a>
+                            <a href="/tools/milling/">
+                                <h2>Feed &amp; Speed Planner</h2>
+                                <p>Feeds, speeds and cut parameters for common materials.</p>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <dl class="ds-ledger">
+                <dt>.index</dt>
+                <dd><span class="ds-role">Sets the measure for the whole page via
+                    <span class="ds-code">--trim-width</span>.</span></dd>
+                <dt>.index-head</dt>
+                <dd><span class="ds-role">Title and lede, aligned to the paper below.</span></dd>
+                <dt>.index-lede</dt>
+                <dd><span class="ds-role">The page's own copy, rendered from markdown — so it is the
+                    one place a link can turn up above the paper.</span></dd>
+                <dt>.specimen</dt>
+                <dd><span class="ds-role">Rows on the artifact. The whole row is the link.</span></dd>
+            </dl>
+        </section>
+
+        <!-- ── Utilities ──────────────────────────────────────────────── -->
+        <section class="ds-section" id="utilities">
+            <div class="prose">
+                <h2>Utilities</h2>
+            </div>
+            <dl class="ds-ledger">
+                <dt>.hidden</dt>
+                <dd><span class="ds-role">Gone from the page.
+                    <span class="ds-code">display: none !important</span>, for scripts that toggle a
+                    notice on and off.</span></dd>
+                <dt>.sr-only</dt>
+                <dd><span class="ds-role">Present to a screen reader, absent on screen — for a label
+                    whose control is already obvious by position or by swatch.
+                    <span class="sr-only">This sentence is in the page but not on it.</span></span></dd>
+                <dt>.no-print</dt>
+                <dd><span class="ds-role">Dropped from the printed page. The rail carries it; the
+                    artifact never does.</span></dd>
+            </dl>
+        </section>
+
+        <!-- ── Contract ───────────────────────────────────────────────── -->
+        <section class="ds-section" id="contract">
+            <div class="prose">
+                <h2>Where a style belongs</h2>
+                <p>There is one shared stylesheet and one file per tool. The split is not by
+                   component type or by layer — it is by how many pages use the thing.</p>
+            </div>
+
+            <dl class="ds-ledger ds-ledger-files">
+                <dt>/css/style.css</dt>
+                <dd><span class="ds-role">Tokens, the reset, the site chrome, and every primitive on
+                    this page. Loaded by every page on the site. Anything added here has to appear
+                    above in the same commit.</span></dd>
+                <dt>/tools/&lt;name&gt;/&lt;name&gt;.css</dt>
+                <dd><span class="ds-role">What only that tool has: the QR paper, the sheet grid and
+                    its print rules, the recipe table, the example picker, the canvas. Loaded by that
+                    page alone, through the layout's
+                    <span class="ds-code">head</span> block.</span></dd>
+            </dl>
+
+            <div class="prose ds-after">
+                <h3>Moving something up</h3>
+                <p>When a second tool wants a component that lives in one tool's file, it moves into
+                   <span class="ds-path">style.css</span> and onto this page in the same commit —
+                   never copied. Two copies of a button diverge within a month, and the design system
+                   stops being true the first time they do.</p>
+
+                <h3>What stays down</h3>
+                <p>Geometry that was measured into place stays with its tool. The sheet's grid, its
+                   container-query clamp and its <span class="ds-code">@media print</span> block look
+                   generic and are not: every rule in them is load-bearing for one specific page
+                   coming out on one sheet of paper.</p>
+            </div>
+        </section>
+
+    </div>
+</div>
+
+<script src="/design/design.js"></script>
+{{ end }}

@@ -1,0 +1,198 @@
+/* ══ Design system — page scaffolding ══════════════════════════════════════
+   The ledger, the swatch bars, the stage the specimens stand on. Nothing
+   here styles a component: every button, field, notice and artifact on
+   /design/ is rendered by /css/style.css, unchanged, which is the only
+   reason the page can be trusted as a reference.
+
+   If a rule in this file ever changes how a .btn or a .field looks, it is in
+   the wrong file — move it into style.css and show it on the page.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Contents ──────────────────────────────────────────────────────────── */
+
+.ds-toc { display: flex; flex-direction: column; }
+.ds-toc a {
+    padding-block: .375rem;
+    font-size: var(--fs-label); color: var(--ink-soft);
+    border-bottom: 1px solid color-mix(in srgb, var(--rule) 55%, transparent);
+    transition: color .12s;
+}
+.ds-toc a:last-child { border-bottom: 0; }
+.ds-toc a:hover { color: var(--reg); }
+
+/* A file path or a token name inside running copy. Quieter than .ds-code:
+   it is a location, not a value. */
+.ds-path, .ds-code {
+    font-family: var(--mono);
+    font-size: .9em;
+    overflow-wrap: anywhere;
+}
+.ds-code {
+    padding: .0625rem .25rem;
+    background: var(--ground-sunk);
+}
+
+/* ── Sections ──────────────────────────────────────────────────────────── */
+
+.ds-section { padding-top: 3rem; }
+/* .prose caps itself at 68ch, which would leave every h2's rule stopping
+   short of the ledger under it. The measure belongs on the copy, so it moves
+   there and the headings run the section's full width. */
+.ds-section > .prose { max-width: none; }
+.ds-section > .prose > p,
+.ds-section > .prose > ul { max-width: 68ch; }
+.ds-section:first-child { padding-top: 0; }
+/* .prose puts 2rem above an h2 for the gap between blocks of copy; here the
+   section padding already carries that, so the first heading sits flush. */
+.ds-section > .prose:first-child > h2 { margin-top: 0; }
+.ds-after { margin-top: 1.25rem; }
+
+/* The class a specimen is demonstrating, set immediately above it. */
+.ds-name {
+    font-family: var(--mono);
+    font-size: var(--fs-note);
+    color: var(--ink-soft);
+}
+
+/* A specimen too wide for the ledger stands on its own under a rule. */
+.ds-block {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--rule);
+}
+.ds-block > .ds-name + * { margin-top: .75rem; }
+
+/* ── The ledger ────────────────────────────────────────────────────────
+   Name on the left, the live thing on the right — the shape the site
+   already uses for .spec and .field, one level up. */
+
+.ds-ledger {
+    display: grid;
+    grid-template-columns: 12rem minmax(0, 1fr);
+    /* The gap belongs to the name column rather than to the grid, so a row's
+       hairline runs unbroken from the name to the specimen. Split across a
+       column-gap it read as two rules with a nick between them. */
+    column-gap: 0;
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+}
+.ds-ledger > dt {
+    padding: 1rem 2rem 1rem 0;
+    font-family: var(--mono);
+    font-size: var(--fs-note);
+    color: var(--ink-soft);
+    overflow-wrap: anywhere;
+    border-bottom: 1px solid var(--rule);
+}
+.ds-ledger > dd {
+    display: flex; flex-direction: column; align-items: flex-start; gap: .625rem;
+    padding-block: 1rem;
+    border-bottom: 1px solid var(--rule);
+}
+
+/* Below the rail breakpoint the two columns would leave the name a sliver,
+   so the name sits above its specimen and the rules run full width. */
+@media (max-width: 40rem) {
+    .ds-ledger { grid-template-columns: minmax(0, 1fr); }
+    .ds-ledger > dt { padding: 1rem 0 0; border-bottom: 0; }
+    .ds-ledger > dd { padding-top: .5rem; }
+}
+
+/* What a thing is for. The sentence that decides whether you reach for it. */
+.ds-role {
+    display: block;
+    max-width: 58ch;
+    font-size: var(--fs-fine); line-height: 1.55;
+    color: var(--ink-soft);
+}
+
+/* ── Colour ────────────────────────────────────────────────────────────── */
+
+.ds-ledger > dd.ds-colour {
+    display: grid;
+    grid-template-columns: 4.5rem 5rem minmax(0, 1fr);
+    align-items: center;
+    gap: .5rem 1.25rem;
+}
+.ds-swatch {
+    display: block;
+    width: 4.5rem; height: 2.25rem;
+    /* Every swatch needs an edge: --paper and --ground both vanish against
+       the bench without one. An inset outline keeps the block's size honest,
+       which matters when two swatches are read side by side. */
+    outline: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+    outline-offset: -1px;
+}
+.ds-hex {
+    align-self: center;
+    font-family: var(--mono); font-size: var(--fs-fine);
+    text-transform: uppercase;
+    color: var(--ink);
+}
+@media (max-width: 52rem) {
+    .ds-ledger > dd.ds-colour { grid-template-columns: 4.5rem minmax(0, 1fr); }
+    .ds-colour .ds-role { grid-column: 1 / -1; }
+}
+
+/* ── Type ──────────────────────────────────────────────────────────────── */
+
+.ds-family { font-size: var(--fs-figure); line-height: 1.2; color: var(--ink); }
+.ds-ledger-type > dd { gap: .25rem; }
+.ds-spec { line-height: 1.15; color: var(--ink); font-family: var(--sans); }
+.ds-spec-cond { font-family: var(--cond); font-weight: 600; letter-spacing: -.01em; }
+.ds-spec-num  { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+/* Filled by design.js from the sample's own computed size, so the number
+   cannot drift from the token it labels. */
+.ds-px {
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+    font-size: var(--fs-note); color: var(--ink-soft);
+}
+
+/* ── Rhythm ────────────────────────────────────────────────────────────── */
+
+.ds-ledger-rhythm > dd { flex-direction: row; align-items: center; gap: 1rem; }
+.ds-rule-bar {
+    flex: none;
+    height: .75rem;
+    background: var(--reg);
+}
+.ds-ledger-rhythm .ds-role { max-width: 46ch; }
+
+/* A segmented control divides whatever width it is given; on a rail that is
+   the rail. Left to shrink-wrap in a ledger cell its labels would touch the
+   borders, so the specimen is given a rail's worth of room. */
+.ds-ledger .seg { width: 100%; max-width: 16rem; }
+
+/* ── Layout diagram ────────────────────────────────────────────────────── */
+
+.ds-diagram { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; background: var(--rule); }
+@media (min-width: 48rem) {
+    .ds-diagram { grid-template-columns: 18rem minmax(0, 1fr); }
+}
+.ds-diagram > * { padding: 1.25rem; background: var(--ground); }
+.ds-diagram-bed { background: var(--ground-sunk); }
+.ds-diagram span {
+    display: block;
+    font-family: var(--mono); font-size: var(--fs-fine); color: var(--reg);
+}
+.ds-diagram p {
+    margin-top: .5rem;
+    max-width: 44ch;
+    font-size: var(--fs-fine); line-height: 1.55; color: var(--ink-soft);
+}
+
+/* The artifact demo has no real content to give it a measure, so the page
+   supplies one. Everything inside it is the shipped .trim and .artifact. */
+.ds-trim-demo { max-width: 32rem; margin-inline: 0; }
+.ds-artifact-demo { padding: 1.75rem 2rem; }
+.ds-artifact-demo p { max-width: 42ch; line-height: 1.6; }
+
+/* ── Live rail ─────────────────────────────────────────────────────────
+   Rail controls are scoped to .rail, so showing one anywhere else would
+   show browser defaults instead. This is a real rail, out on the bed. */
+.ds-railbox { max-width: 26rem; }
+
+/* .index sets its own measure and centres itself; inside the ledger it
+   should sit where the rest of the page sits. */
+.ds-index-demo .index-head,
+.ds-index-demo .trim { margin-inline: 0; }
