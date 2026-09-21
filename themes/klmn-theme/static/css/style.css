@@ -30,8 +30,16 @@
 
     /* Registration cyan: on a site about black-and-white printed codes it is
        the one colour that can never be mistaken for the ink. Reserved for the
-       live value and the trim marks. */
-    --reg:         #0E7C80;
+       live value and the trim marks.
+
+       Deepened from #0E7C80 on 2026-09-21. Cyan is text as often as it is a
+       mark — links, a hovered nav item, a focused value — and at the old
+       value that text measured 4.05:1 on the bench, under AA. This clears it
+       on both grounds: 4.89 on --ground, 6.02 on --paper.
+
+       --regmark below carries the same colour hard-coded inside an SVG data
+       URI, where var() cannot reach. The two change together. */
+    --reg:         #0B6E72;
 
     --alert:       #B23A1F;
 
@@ -55,7 +63,7 @@
     --fs-index:  2.5rem;    /* 40 — an index page's name */
 
     /* A registration mark, drawn once and placed at each corner of a trim. */
-    --regmark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Cg fill='none' stroke='%230E7C80' stroke-width='1'%3E%3Ccircle cx='7' cy='7' r='3.5'/%3E%3Cpath d='M7 0v14M0 7h14'/%3E%3C/g%3E%3C/svg%3E");
+    --regmark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Cg fill='none' stroke='%230B6E72' stroke-width='1'%3E%3Ccircle cx='7' cy='7' r='3.5'/%3E%3Cpath d='M7 0v14M0 7h14'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 /* ── Reset ─────────────────────────────────────────────────────────────── */
@@ -86,6 +94,11 @@ button, input, optgroup, select, textarea {
     font: inherit; color: inherit; margin: 0; padding: 0;
 }
 button, select { text-transform: none; }
+/* Safari's UA stylesheet gives <select> a 5px radius; Chrome's gives it
+   none. `appearance: none` does not clear it, so the two engines drew
+   different shapes — invisible until a border was coloured on hover, at
+   which point Safari rendered the rail's hairline as a curve. */
+select { border-radius: 0; }
 button, [type="button"], [type="submit"] {
     -webkit-appearance: button; background-color: transparent; background-image: none;
 }
@@ -537,6 +550,10 @@ body > footer > div {
     border-color: var(--ink);
 }
 .btn-go:hover:not(:disabled) {
+    /* .btn:hover sets `color: var(--reg)` at the same specificity as this
+       rule, so without restating the colour the label turned cyan on a cyan
+       fill and disappeared. */
+    color: var(--paper);
     background: var(--reg);
     border-color: var(--reg);
 }

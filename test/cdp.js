@@ -136,6 +136,18 @@ async function withPage(relUrl, fn) {
         { format: 'png', captureBeyondViewport: true }, clip ? { clip } : {}));
       return Buffer.from(r.data, 'base64');
     },
+    // Pins :hover (or :focus, :active) on an element so a test can measure
+    // the hovered state instead of reasoning about which rule wins. A hover
+    // that makes its own label invisible is exactly the kind of cascade
+    // collision that reading the stylesheet talks you out of noticing.
+    async forcePseudo(selector, states) {
+      await c.send('DOM.enable');
+      await c.send('CSS.enable');
+      const { root } = await c.send('DOM.getDocument', { depth: -1 });
+      const { nodeId } = await c.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+      if (!nodeId) throw new Error(`no element matches ${selector}`);
+      await c.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: states });
+    },
     // Evaluates print-only rules without going through printToPDF, so a test
     // can assert on the styles the printer sees rather than inferring them
     // from a page count. Pass '' to go back to screen.

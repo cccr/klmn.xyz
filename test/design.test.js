@@ -126,3 +126,96 @@ test('the specimens are the real components, not copies',
   // Four registration marks on the artifact specimen, from --regmark.
   assert.strictEqual(seen.marks.split('url(').length - 1, 4);
 });
+
+// ── Interactive states ────────────────────────────────────────────────
+// A colour pair only exists for real in the state that produces it. The
+// earlier contrast pass measured resting states only and called the palette
+// AA, which is how a hovered .btn-go shipped with its label the same colour
+// as its fill.
+
+const relLum = (css) => {
+  const [r, g, b] = css.match(/[\d.]+/g).slice(0, 3).map((n) => {
+    n /= 255;
+    return n <= 0.03928 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const ratio = (fg, bg) => {
+  const [hi, lo] = [relLum(fg), relLum(bg)].sort((a, b) => b - a);
+  return (hi + 0.05) / (lo + 0.05);
+};
+
+// Walks up for the first opaque backdrop, so a transparent control is
+// measured against what is actually behind it.
+const PROBE = `(function (sel) {
+  var e = document.querySelector(sel);
+  if (!e) return null;
+  var cs = getComputedStyle(e), bg = cs.backgroundColor, n = e;
+  while (bg === 'rgba(0, 0, 0, 0)' && (n = n.parentElement)) bg = getComputedStyle(n).backgroundColor;
+  return { color: cs.color, bg: bg };
+})`;
+
+const STATES = [
+  ['/design/', '.ds-ledger .btn-go', 'hover'],
+  ['/design/', '.ds-ledger .btn:not(.btn-go)', 'hover'],
+  ['/design/', '.seg button.is-on', 'hover'],
+  ['/design/', '.seg button:not(.is-on)', 'hover'],
+  ['/design/', '.chip', 'hover'],
+  ['/design/', '.upload-area', 'hover'],
+  ['/design/', '.prose a', null],
+  ['/design/', '.prose a', 'hover'],
+  ['/', 'body > header nav a', 'hover'],
+  ['/', '.index-lede a', null],
+  ['/tools/qr/', '.rail-credit a', 'hover'],
+  ['/tools/milling/', '.field-value', null],
+  ['/tools/milling/', '.rail-hint', null],
+];
+
+test('text clears AA in every state, not just at rest',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  const failures = [];
+  for (const [url, sel, state] of STATES) {
+    const seen = await withPage(url, async (p) => {
+      await p.setViewport(1280, 900);
+      if (state) {
+        await p.forcePseudo(sel, [state]);
+        // The .12s transition is still interpolating right after the state
+        // is pinned; measuring immediately reads a colour that never rests.
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      return p.evalJson(`${PROBE}(${JSON.stringify(sel)})`);
+    });
+    assert.ok(seen, `${url} has no ${sel} to measure`);
+    const c = ratio(seen.color, seen.bg);
+    if (c < 4.5) {
+      failures.push(`${url} ${sel}${state ? ':' + state : ''} — ${c.toFixed(2)}:1 ` +
+                    `(${seen.color} on ${seen.bg})`);
+    }
+  }
+  assert.deepStrictEqual(failures, [], 'below AA:\n  ' + failures.join('\n  '));
+});
+
+test('a hovered .btn-go still has a label', { skip: !CHROME && 'no Chrome' }, async () => {
+  // The specific collision: .btn:hover and .btn-go:hover have equal
+  // specificity, so the fill rule has to restate the colour or the label
+  // inherits cyan onto a cyan background.
+  const seen = await withPage('/design/', async (p) => {
+    await p.setViewport(1280, 900);
+    await p.forcePseudo('.ds-ledger .btn-go', ['hover']);
+    await new Promise((r) => setTimeout(r, 400));
+    return p.evalJson(`${PROBE}('.ds-ledger .btn-go')`);
+  });
+  assert.notStrictEqual(seen.color, seen.bg, 'the label is the same colour as the fill');
+  assert.ok(ratio(seen.color, seen.bg) > 4.5,
+    `label to fill is only ${ratio(seen.color, seen.bg).toFixed(2)}:1`);
+});
+
+test('<select> is flattened for Safari', () => {
+  // Safari's UA stylesheet gives select a 5px radius that `appearance: none`
+  // does not clear and Chrome never applies, so on Safari the rail's bottom
+  // hairline rendered as a curve on hover. Chrome cannot observe the
+  // divergence, so the guard is on the declaration itself.
+  const css = stripComments(fs.readFileSync(STYLE, 'utf8'));
+  assert.match(css, /(^|\})\s*select\s*\{[^}]*border-radius:\s*0/m,
+    'the reset no longer zeroes <select> border-radius; Safari will round the rail again');
+});
