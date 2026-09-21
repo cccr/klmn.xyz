@@ -128,8 +128,12 @@ async function withPage(relUrl, fn) {
       await c.send('Runtime.evaluate', { expression: "window.dispatchEvent(new Event('resize'))" });
       await sleep(300);
     },
-    async screenshot() {
-      const r = await c.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
+    // `clip` is { x, y, width, height, scale } in CSS pixels — a whole page
+    // is often taller than an image worth looking at, so a review pass can
+    // pull one band out of it.
+    async screenshot(clip) {
+      const r = await c.send('Page.captureScreenshot', Object.assign(
+        { format: 'png', captureBeyondViewport: true }, clip ? { clip } : {}));
       return Buffer.from(r.data, 'base64');
     },
     // Evaluates print-only rules without going through printToPDF, so a test
