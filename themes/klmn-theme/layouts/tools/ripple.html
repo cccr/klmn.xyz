@@ -1,0 +1,104 @@
+{{ define "head" }}
+<link rel="stylesheet" href="/tools/ripple/ripple.css">
+{{ end }}
+
+{{ define "main" }}
+<div class="press">
+    <div class="rail">
+        <h1>Ripple Edge Profile</h1>
+        <p>Model a wavy, decaying edge — like ripples spreading from a shoreline — and export a
+           DXF polyline ready to route or laser-cut.</p>
+
+        <div class="rail-group">
+            <h2>Dimensions</h2>
+            <div class="field field-measure field-tight">
+                <label for="length">Length</label>
+                <span class="field-value"><input id="length" type="number" step="1" min="1"
+                      aria-label="Total length in millimetres" /><span class="unit">mm</span></span>
+            </div>
+            <div class="field field-tight">
+                <label for="segments">Resolution</label>
+                <span class="field-value"><input id="segments" type="number" step="50" min="2"
+                      aria-label="Number of segments" /></span>
+            </div>
+        </div>
+
+        <div class="rail-group">
+            <h2>Wave</h2>
+            <div class="field field-measure field-tight">
+                <label for="amplitude">Amplitude</label>
+                <span class="field-value"><input id="amplitude" type="number" step="0.5" min="0"
+                      aria-label="Wave height in millimetres" /><span class="unit">mm</span></span>
+            </div>
+            <div class="field field-measure field-tight">
+                <label for="offsetY">Waterline</label>
+                <span class="field-value"><input id="offsetY" type="number" step="0.5"
+                      aria-label="Vertical offset of the waterline in millimetres" /><span class="unit">mm</span></span>
+            </div>
+            <div class="field field-measure field-tight">
+                <label for="wavelength">Wavelength</label>
+                <span class="field-value"><input id="wavelength" type="number" step="0.5" min="0.1"
+                      aria-label="Initial wavelength in millimetres" /><span class="unit">mm</span></span>
+            </div>
+            <div class="field field-tight">
+                <label for="wlGrowth">Wavelength growth</label>
+                <span class="field-value"><input id="wlGrowth" type="number" step="0.005"
+                      aria-label="Wavelength growth per millimetre of length" /></span>
+            </div>
+            <div class="field field-tight">
+                <label for="damping">Damping</label>
+                <span class="field-value"><input id="damping" type="number" step="0.001" min="0"
+                      aria-label="Amplitude fade rate per millimetre" /></span>
+            </div>
+            <div class="field field-tight">
+                <label for="phase">Phase shift</label>
+                <span class="field-value"><input id="phase" type="number" step="0.1"
+                      aria-label="Phase shift in radians" /></span>
+            </div>
+            <p class="rail-hint">Damping fades the amplitude with distance; wavelength growth
+               stretches the ripples out as they travel.</p>
+        </div>
+
+        <div class="rail-group">
+            <h2>Profile</h2>
+            <div class="field">
+                <label for="profileMode">Mode</label>
+                <span class="field-value"><select id="profileMode">
+                    <option value="full">Full sine wave</option>
+                    <option value="top" selected>Top half, clamp to waterline</option>
+                    <option value="bottom">Bottom half, clamp to waterline</option>
+                    <option value="absolute">Absolute, crests upward</option>
+                </select></span>
+            </div>
+            <label class="toggle-row" for="keepCrestsLevel">
+                <input type="checkbox" id="keepCrestsLevel" />
+                <span class="toggle-pill"></span>
+                <span class="toggle-label">Keep crests near one line</span>
+            </label>
+            <label class="toggle-row" for="closeToWaterline">
+                <input type="checkbox" id="closeToWaterline" checked />
+                <span class="toggle-pill"></span>
+                <span class="toggle-label">Close the profile for CNC</span>
+            </label>
+        </div>
+
+        <div class="rail-actions">
+            <button type="button" class="btn btn-go" id="btnDownload">Download DXF</button>
+        </div>
+    </div>
+
+    <div class="bed">
+        <div class="trim">
+            <canvas id="canvas" class="artifact" width="760" height="220"></canvas>
+        </div>
+
+        <dl class="spec">
+            <dt>points</dt><dd id="specPoints">&mdash;</dd>
+            <dt>span</dt><dd id="specSpan">&mdash;</dd>
+            <dt>height</dt><dd id="specHeight">&mdash;</dd>
+        </dl>
+    </div>
+</div>
+
+<script src="/tools/ripple/ripple.js"></script>
+{{ end }}

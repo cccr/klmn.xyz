@@ -1,0 +1,13 @@
+/* ══ Ripple Edge Profile ═══════════════════════════════════════════════════
+   style.css owns the reset, the chrome, the rail and the trim marks. The
+   artifact here is the canvas itself: a wide, short strip because the thing
+   being cut is an edge, not a page.
+
+   The canvas's own width/height attributes are its bitmap resolution, which
+   the script rewrites every redraw from the box's rendered size — so that
+   box has to come from CSS alone. Deriving it from the attributes instead
+   (e.g. `height: auto`, relying on the canvas's intrinsic ratio) would feed
+   the script's own read of its box back into what it writes there next,
+   and a resize can collapse the whole thing to a few pixels. */
+.bed { --trim-width: 48rem; }
+#canvas { display: block; width: 100%; height: 16rem; }
