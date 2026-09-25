@@ -10,7 +10,14 @@
         "Copper":{chipload_mm_min:0.015,chipload_mm_max:0.035,sfm_min:150,sfm_max:500,note:"Gummy—needs sharp tools and good chip evacuation."},
         "Mild Steel 1018":{chipload_mm_min:0.01,chipload_mm_max:0.03,sfm_min:60,sfm_max:200,note:"Challenging on light routers. Prefer small WOC, flood/mist if possible."},
         "Delrin":{chipload_mm_min:0.03,chipload_mm_max:0.08,sfm_min:200,sfm_max:1000,note:"Machines beautifully. Air blast to clear strings."},
-        "Acrylic":{chipload_mm_min:0.03,chipload_mm_max:0.07,sfm_min:150,sfm_max:800,note:"Prevent melting: keep chips thick, RPM moderate, feed steady."}
+        "Acrylic":{chipload_mm_min:0.03,chipload_mm_max:0.07,sfm_min:150,sfm_max:800,note:"Prevent melting: keep chips thick, RPM moderate, feed steady."},
+        // Wood chiploads: Freud's solid-carbide router bit chart, 1/8" row, converted to mm.
+        // Wood is banded by rpm, not SFM: Leitz gives 50–90 m/s for wood, far beyond what a
+        // shank bit on a 24k spindle reaches, so charts (Freud, Onsrud) start at 18,000 rpm
+        // and Onsrud's method lowers rpm from there until the finish suffers.
+        "Softwood":{chipload_mm_min:0.10,chipload_mm_max:0.15,rpm_min:12000,rpm_max:18000,note:"Pine, spruce, fir, cedar. Tears and fuzzes with a dull edge or a thin chip; keep the tool sharp and the chips big."},
+        "Hardwood":{chipload_mm_min:0.05,chipload_mm_max:0.13,rpm_min:12000,rpm_max:18000,note:"Oak, maple, cherry, walnut. Too slow a feed burns it, cherry and maple first."},
+        "Plywood":{chipload_mm_min:0.075,chipload_mm_max:0.13,rpm_min:12000,rpm_max:18000,note:"Glue lines are abrasive—use carbide. Downcut or compression bits keep the face veneer from tearing out."}
     };
     function diameterScaleFactor(d){ if(d<=3.5)return 1.0; if(d<=6.5)return 1.6; if(d<=8.5)return 1.9; return 2.4; }
     function suggestionDocWoc(op,rig){
@@ -76,7 +83,9 @@
         els.rpmPill.textContent=rpm; els.aggrPill.textContent=aggr;
 
         const diamIn=mmToIn(diamMm), sfm=(Math.PI*diamIn*rpm)/12;
-        let sfmMin=mat.sfm_min, sfmMax=mat.sfm_max; if(toolMaterial==='HSS') sfmMax*=0.85; else sfmMax*=1.15;
+        const isWood=mat.rpm_min!==undefined;
+        let sfmMin=0, sfmMax=0;
+        if(!isWood){ sfmMin=mat.sfm_min; sfmMax=mat.sfm_max; if(toolMaterial==='HSS') sfmMax*=0.85; else sfmMax*=1.15; }
 
         const fluteScale=(flutes===1)?1.0:(flutes===2?0.85:0.75);
         const rigidScale=(rigidity==='Rigid CNC')?1.15:1.0;
@@ -85,7 +94,11 @@
         const clChosen=clMin+(clMax-clMin)*(aggr/100);
 
         let feedMmMin=rpm*flutes*clChosen, rpmSuggested=rpm;
-        if(sfm>sfmMax){ rpmSuggested=Math.floor((sfmMax*12)/(Math.PI*diamIn)); feedMmMin=rpmSuggested*flutes*clChosen; }
+        if(isWood){
+            if(rpm>mat.rpm_max) rpmSuggested=mat.rpm_max; else if(rpm<mat.rpm_min) rpmSuggested=mat.rpm_min;
+            feedMmMin=rpmSuggested*flutes*clChosen;
+        }
+        else if(sfm>sfmMax){ rpmSuggested=Math.floor((sfmMax*12)/(Math.PI*diamIn)); feedMmMin=rpmSuggested*flutes*clChosen; }
         else if(sfm<sfmMin){ rpmSuggested=Math.ceil((sfmMin*12)/(Math.PI*diamIn)); feedMmMin=rpmSuggested*flutes*clChosen; }
 
         const dw=suggestionDocWoc(operation,rigidity);
@@ -100,11 +113,16 @@
         els.chiploadOut.textContent=chiploadDisplay;
         els.feedOut.textContent=feedDisplay;
         els.sfmOut.textContent=round(sfm)+' SFM';
-        els.sfmBand.textContent='Recommended: '+round(sfmMin)+'–'+round(sfmMax)+' SFM';
+        els.sfmBand.textContent=isWood
+            ? 'Wood is set by chipload; run '+mat.rpm_min+'–'+mat.rpm_max+' rpm'
+            : 'Recommended: '+round(sfmMin)+'–'+round(sfmMax)+' SFM';
 
         if(rpmSuggested!==rpm){
             els.rpmSuggest.classList.remove('hidden');
-            els.rpmSuggest.textContent='This RPM puts surface speed outside the recommended band. '+rpm+' rpm would be better at '+rpmSuggested+' rpm.';
+            els.rpmSuggest.textContent=(isWood
+                ? 'This RPM is outside the '+mat.rpm_min+'–'+mat.rpm_max+' rpm band bit makers chart wood at. '
+                : 'This RPM puts surface speed outside the recommended band. ')
+                +rpm+' rpm would be better at '+rpmSuggested+' rpm.';
         } else {
             els.rpmSuggest.classList.add('hidden'); els.rpmSuggest.textContent='';
         }
@@ -133,7 +151,11 @@
         } else {
           notes.push('Side milling: aim for steady chip thickness; adjust WOC to avoid chatter/rubbing.');
         }
-        if(toolMaterial==='HSS') notes.push('HSS heats faster—keep SFM modest and ensure chips (not dust) are produced.');
+        if(isWood){
+            notes.push('Dust instead of chips means the chipload is too small: the bit rubs, heats and dulls, and the wood scorches. Raise the feed before dropping the rpm.');
+            if(toolMaterial==='HSS') notes.push('HSS dulls quickly in wood, fastest in plywood and MDF; the chart chiploads are for carbide.');
+        }
+        else if(toolMaterial==='HSS') notes.push('HSS heats faster—keep SFM modest and ensure chips (not dust) are produced.');
         else notes.push('Carbide tolerates higher SFM but still needs proper chipload to avoid rubbing.');
         els.notesList.innerHTML='';
         notes.forEach(n=>{ const li=document.createElement('li'); li.textContent=n; els.notesList.appendChild(li); });
