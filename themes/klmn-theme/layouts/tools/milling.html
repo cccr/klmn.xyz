@@ -144,8 +144,9 @@
                tool, then scales by diameter, flute count, machine rigidity and the aggressiveness
                slider.</p>
             <p>Feed rate is <span class="num">rpm &times; flutes &times; chipload</span>. Surface
-               speed is <span class="num">&pi; &times; diameter &times; rpm &divide; 12</span> in
-               <abbr title="Surface feet per minute">SFM</abbr>; when the current rpm falls
+               speed is <span class="num">&pi; &times; diameter &times; rpm</span>: divided by 1000
+               for m/min with the diameter in mm, or by 12 for
+               <abbr title="Surface feet per minute">SFM</abbr> with it in inches. When the current rpm falls
                outside the recommended band for the material and tool, a better one is suggested
                above.</p>
             <p>Wood is the exception. Industrial wood cutting speeds run 50&ndash;90&nbsp;m/s, far

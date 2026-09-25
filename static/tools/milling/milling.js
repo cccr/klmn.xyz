@@ -17,7 +17,8 @@
         // and Onsrud's method lowers rpm from there until the finish suffers.
         "Softwood":{chipload_mm_min:0.10,chipload_mm_max:0.15,rpm_min:12000,rpm_max:18000,note:"Pine, spruce, fir, cedar. Tears and fuzzes with a dull edge or a thin chip; keep the tool sharp and the chips big."},
         "Hardwood":{chipload_mm_min:0.05,chipload_mm_max:0.13,rpm_min:12000,rpm_max:18000,note:"Oak, maple, cherry, walnut. Too slow a feed burns it, cherry and maple first."},
-        "Plywood":{chipload_mm_min:0.075,chipload_mm_max:0.13,rpm_min:12000,rpm_max:18000,note:"Glue lines are abrasive—use carbide. Downcut or compression bits keep the face veneer from tearing out."}
+        "Plywood":{chipload_mm_min:0.075,chipload_mm_max:0.13,rpm_min:12000,rpm_max:18000,note:"Glue lines are abrasive—use carbide. Downcut or compression bits keep the face veneer from tearing out."},
+        "MDF":{chipload_mm_min:0.10,chipload_mm_max:0.18,rpm_min:12000,rpm_max:18000,note:"No grain, so it cuts clean in any direction, but the resin dulls tools fast—use carbide. The dust is fine and harmful: run extraction and wear a mask."}
     };
     function diameterScaleFactor(d){ if(d<=3.5)return 1.0; if(d<=6.5)return 1.6; if(d<=8.5)return 1.9; return 2.4; }
     function suggestionDocWoc(op,rig){
@@ -109,13 +110,15 @@
         const feedDisplay   =units==='Metric' ? (round(feedMmMin)+' mm/min')     : (round(feedMmMin/25.4)+' ipm');
         const docDisplay    =units==='Metric' ? (round(docMm,2)+' mm')           : (round(mmToIn(docMm),3)+' in');
         const wocDisplay    =units==='Metric' ? (round(wocMm,2)+' mm')           : (round(mmToIn(wocMm),3)+' in');
+        // Surface speed is computed in SFM; metric shows it as m/min (1 ft = 0.3048 m).
+        function speedDisplay(v,bare){ const n=units==='Metric' ? round(v*0.3048,0) : round(v,0); return bare ? String(n) : n+(units==='Metric'?' m/min':' SFM'); }
 
         els.chiploadOut.textContent=chiploadDisplay;
         els.feedOut.textContent=feedDisplay;
-        els.sfmOut.textContent=round(sfm)+' SFM';
+        els.sfmOut.textContent=speedDisplay(sfm);
         els.sfmBand.textContent=isWood
             ? 'Wood is set by chipload; run '+mat.rpm_min+'–'+mat.rpm_max+' rpm'
-            : 'Recommended: '+round(sfmMin)+'–'+round(sfmMax)+' SFM';
+            : 'Recommended: '+speedDisplay(sfmMin,true)+'–'+speedDisplay(sfmMax);
 
         if(rpmSuggested!==rpm){
             els.rpmSuggest.classList.remove('hidden');
@@ -155,8 +158,8 @@
             notes.push('Dust instead of chips means the chipload is too small: the bit rubs, heats and dulls, and the wood scorches. Raise the feed before dropping the rpm.');
             if(toolMaterial==='HSS') notes.push('HSS dulls quickly in wood, fastest in plywood and MDF; the chart chiploads are for carbide.');
         }
-        else if(toolMaterial==='HSS') notes.push('HSS heats faster—keep SFM modest and ensure chips (not dust) are produced.');
-        else notes.push('Carbide tolerates higher SFM but still needs proper chipload to avoid rubbing.');
+        else if(toolMaterial==='HSS') notes.push('HSS heats faster—keep surface speed modest and ensure chips (not dust) are produced.');
+        else notes.push('Carbide tolerates higher surface speed but still needs proper chipload to avoid rubbing.');
         els.notesList.innerHTML='';
         notes.forEach(n=>{ const li=document.createElement('li'); li.textContent=n; els.notesList.appendChild(li); });
     }
