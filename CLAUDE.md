@@ -77,3 +77,11 @@ Two constraints that came from rejected work, so they do not get re-proposed:
   not here. The page itself (layout, `adraw.js`, `adraw.css`,
   `test/adraw.test.js`) is ordinary site code and lives here. Its tests are
   real-Chrome only: jsdom cannot run the engine.
+- `/tools/shelf-house/` is the one page written as ES modules, because
+  three.js and manifold-3d ship only as modules. Its libraries (three,
+  OrbitControls, manifold-3d with its `.wasm`, fflate) are vendored at pinned
+  versions under `static/tools/shelf-house/vendor/` and resolved by an import
+  map in the layout — still nothing from a CDN. To upgrade one, replace the
+  file there with the same path from the npm package. Without WebGL the 3D pane
+  shows a notice and the rest of the page keeps working, which is also what
+  headless Chrome in the tests sees.

@@ -1,0 +1,176 @@
+/* Shelf House — what only this page has: the block palette, the front-view
+   mat and the 3D pane, the corner picker, the print list. Everything else is
+   the shared rail/bed/artifact kit from /css/style.css. */
+
+.sh {
+    /* The mat is paper with a millimetre grid, like the other artifacts. */
+    --mat:       var(--paper);
+    --mat-minor: var(--paper-rule);
+    --mat-major: var(--rule);
+    --mat-text:  var(--ink-soft);
+    --sh-hole:   rgba(20, 24, 26, .55);
+    --sh-mark:   rgba(20, 24, 26, .7);
+}
+
+/* ── Palette ───────────────────────────────────────────────────────────── */
+
+.sh-palette { display: grid; grid-template-columns: 1fr 1fr; gap: .375rem; }
+.sh-palette li { position: relative; min-width: 0; }
+.sh-card {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: flex-start; gap: .25rem;
+    padding: .5rem;
+    text-align: left;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    cursor: grab;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    transition: border-color .12s;
+}
+.sh-card:hover { border-color: var(--ink-soft); }
+.sh-card:active { cursor: grabbing; }
+.sh-card svg { width: 100%; height: 2.5rem; }
+.sh-card strong, .sh-card span { display: block; }
+.sh-card strong { font-size: var(--fs-note); font-weight: 600; line-height: 1.25; }
+.sh-card span { font-family: var(--mono); font-size: var(--fs-note); color: var(--ink-soft); }
+.sh-remove {
+    position: absolute; top: 2px; right: 2px;
+    padding: 0 .3rem;
+    font-size: var(--fs-label); line-height: 1.2; color: var(--ink-soft);
+    cursor: pointer;
+}
+.sh-remove:hover { color: var(--alert); }
+
+/* ── Inspector ─────────────────────────────────────────────────────────── */
+
+.sh .rail input[type="text"] { width: 9rem; }
+.sh-where { margin-top: .5rem; font-size: var(--fs-note); color: var(--ink-soft); }
+.sh-warn { color: var(--alert); }
+
+.sh-corners { position: relative; aspect-ratio: 200 / 130; max-width: 15rem; margin: .75rem auto 0; }
+.sh-corners svg { width: 100%; height: 100%; }
+.sh-corner {
+    position: absolute; width: 1.25rem; height: 1.25rem; padding: 0;
+    transform: translate(-50%, -50%);
+    border-radius: 999px;
+    border: 1.5px solid var(--ink);
+    background: var(--paper);
+    cursor: pointer;
+}
+.sh-corner.on { background: var(--reg); border-color: var(--reg); }
+.sh-corner:hover { transform: translate(-50%, -50%) scale(1.12); }
+
+.sh-opening { margin-top: .75rem; padding-top: .5rem; border-top: 1px solid var(--rule); }
+.sh-opening-head {
+    display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+    font-size: var(--fs-label); font-weight: 600;
+}
+.sh-opening-head .chips { margin: 0; }
+
+/* ── Bed ───────────────────────────────────────────────────────────────── */
+
+.sh-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+    font-size: var(--fs-fine); color: var(--ink-soft);
+}
+.sh-bar .chips { margin: 0; }
+
+.sh-views {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    gap: 1.25rem;
+}
+.sh-pane { min-width: 0; }
+.sh-pane-head {
+    display: flex; align-items: center; gap: .75rem;
+    margin-bottom: .5rem;
+}
+.sh-pane-head h2 {
+    margin-right: auto;
+    font-family: var(--cond); font-size: var(--fs-group); font-weight: 600;
+}
+.sh-pane-head .chip { margin: 0; }
+.sh-explode {
+    display: flex; align-items: center; gap: .5rem;
+    font-family: var(--mono); font-size: var(--fs-note); color: var(--ink-soft);
+}
+.sh-explode input { width: 6rem; accent-color: var(--reg); }
+
+.sh-mat, .sh-3d { position: relative; height: clamp(18rem, 52vh, 28rem); overflow: hidden; }
+#mat { width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+#mat .block { cursor: grab; }
+#mat .block.dragging { cursor: grabbing; }
+#mat .ruler { fill: var(--mat-text); font: 9px var(--mono); }
+#mat .ground { stroke: var(--ink); stroke-width: 1.2; }
+#mat .sel { fill: none; stroke: var(--reg); stroke-width: 1.6; stroke-dasharray: 5 3; pointer-events: none; }
+#mat .warn { fill: none; stroke: var(--alert); stroke-width: 1.6; pointer-events: none; }
+#mat .warn-tag { fill: var(--alert); }
+#mat .warn-label { fill: var(--paper); font: 600 8px var(--sans); pointer-events: none; }
+#mat .mark { fill: var(--sh-mark); pointer-events: none; }
+#mat .shadow { fill: rgba(20, 24, 26, .16); pointer-events: none; }
+
+.sh-empty {
+    position: absolute; inset: 0;
+    display: grid; place-content: center; justify-items: center; gap: .75rem;
+    padding: 1rem;
+    text-align: center; font-size: var(--fs-label); color: var(--ink-soft);
+    pointer-events: none;
+}
+.sh-empty p { max-width: 32ch; }
+.sh-empty button { pointer-events: auto; }
+.sh-empty[hidden] { display: none; }
+
+.sh-3d canvas { width: 100%; height: 100%; touch-action: none; }
+.sh-loading {
+    position: absolute; inset: 0; display: grid; place-content: center;
+    font-size: var(--fs-fine); color: var(--ink-soft);
+}
+
+.sh-selection {
+    display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem;
+    min-height: 2.75rem; margin-top: .25rem;
+    font-size: var(--fs-fine); color: var(--ink-soft);
+}
+.sh-selection strong { color: var(--ink); font-weight: 600; }
+.sh-selection .spacer { margin-right: auto; }
+.sh-selection .chip { margin: 0; }
+
+/* ── Print list ────────────────────────────────────────────────────────── */
+
+.sh-print { margin-top: 1.5rem; }
+.sh-print > h2 {
+    font-family: var(--cond); font-size: var(--fs-head); font-weight: 600;
+    padding-bottom: .375rem; border-bottom: 1px solid var(--rule);
+}
+.sh-table { overflow-x: auto; }
+.sh-bom { width: 100%; border-collapse: collapse; font-size: var(--fs-fine); }
+.sh-bom th {
+    text-align: left; font-weight: 500; color: var(--ink-soft);
+    padding: .375rem .5rem; border-bottom: 1px solid var(--rule);
+}
+.sh-bom td { padding: .375rem .5rem; border-bottom: 1px solid color-mix(in srgb, var(--rule) 55%, transparent); }
+.sh-bom td:nth-child(3) { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sh-bom .num { text-align: right; }
+.sh-bom td:last-child { text-align: right; }
+.sh-bom .chip { margin: 0; }
+.sh-bom tr.current td { background: color-mix(in srgb, var(--reg) 9%, transparent); }
+.sh-swatch {
+    display: inline-block; width: .75rem; height: .75rem; margin-right: .5rem;
+    vertical-align: -1px; box-shadow: 0 0 0 1px rgba(20, 24, 26, .2);
+}
+.sh-total { margin-top: .75rem; font-family: var(--mono); font-size: var(--fs-fine); color: var(--ink-soft); }
+.sh-print .rail-actions { margin-top: 1rem; max-width: 26rem; }
+
+@media (max-width: 40rem) {
+    .sh-bom .sh-size, .sh-bom td:nth-child(3) { display: none; }
+}
+
+.sh-toast {
+    position: fixed; left: 50%; bottom: 1.25rem; z-index: 10;
+    transform: translateX(-50%);
+    max-width: calc(100vw - 2rem);
+    padding: .5rem 1rem;
+    font-size: var(--fs-fine);
+    background: var(--ink); color: var(--paper);
+}
+.sh-toast[hidden] { display: none; }

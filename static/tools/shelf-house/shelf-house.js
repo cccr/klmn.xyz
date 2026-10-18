@@ -1,0 +1,1230 @@
+import Module from 'manifold-3d';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { zipSync } from 'fflate';
+import {
+  PRESETS, OPENING_PRESETS, CORNERS, WALLS, SHAPES,
+  blockSize, buildBlock, frontProfile, meshArrays, toSTL, innerBox,
+} from './geometry.js';
+
+const k = await Module();
+k.setup();
+
+const STORAGE_KEY = 'shelf-house-layout-v2';
+const TYPES_KEY = 'shelf-house-types-v1';
+const PLA_DENSITY = 1.24; // g/cm³
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const $ = (id) => document.getElementById(id);
+const clone = (v) => structuredClone(v);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const fmt = (v) => (Math.round(v * 10) / 10).toString();
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// ------------------------------------------------------------------ block types
+
+let customTypes = loadTypes();
+
+function loadTypes() {
+  try {
+    const t = JSON.parse(localStorage.getItem(TYPES_KEY));
+    if (Array.isArray(t)) return t.filter((x) => x && x.key && x.cfg);
+  } catch { /* storage unavailable */ }
+  return [];
+}
+function saveTypes() {
+  try { localStorage.setItem(TYPES_KEY, JSON.stringify(customTypes)); } catch { /* ignore */ }
+}
+function typeDef(key) {
+  return PRESETS[key] || customTypes.find((t) => t.key === key);
+}
+function fromType(key) {
+  const t = typeDef(key);
+  return { kind: t.kind, name: t.name, base: key, cfg: clone(t.cfg) };
+}
+
+function makeExample() {
+  let id = 0;
+  const at = (key, x, y, extra = {}) => ({ id: ++id, ...fromType(key), x, y, ...extra });
+  return {
+    items: [
+      at('wide_porthole', 0, 0),
+      at('narrow_4pane', 120, 0),
+      at('wide_doorways', 0, 72),
+      at('narrow_skylight', 120, 72),
+      at('wide_arched', 39, 144),
+      at('round_table', 42, 0, { parent: 5 }),
+    ],
+  };
+}
+
+// ------------------------------------------------------------------ state
+
+let state = null; // set at start-up, once the helpers below exist
+let selectedId = null;
+let drag = null;
+let editSnapshot = null;
+const undoStack = [];
+const redoStack = [];
+
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (s && Array.isArray(s.items)) return sanitize(s);
+  } catch { /* storage unavailable or corrupt */ }
+  return null;
+}
+
+function sanitize(s) {
+  const items = s.items.filter((it) => it && (it.kind === 'room' || it.kind === 'furniture') && it.cfg && Number.isFinite(it.x));
+  return settle({ items });
+}
+
+const snap = (s) => JSON.stringify({ items: s.items });
+
+function persist() {
+  try { localStorage.setItem(STORAGE_KEY, snap(state)); } catch { /* ignore */ }
+}
+
+function pushUndo(snapshot) {
+  undoStack.push(snapshot);
+  if (undoStack.length > 150) undoStack.shift();
+  redoStack.length = 0;
+}
+
+function commit(next, { inspector = true } = {}) {
+  endEdit();
+  pushUndo(snap(state));
+  state = settle(next);
+  if (selectedId != null && !state.items.some((i) => i.id === selectedId)) selectedId = null;
+  persist();
+  render();
+  if (inspector) renderInspector();
+}
+
+function undo() {
+  endEdit();
+  if (!undoStack.length) return;
+  redoStack.push(snap(state));
+  state = settle(JSON.parse(undoStack.pop()));
+  afterHistory();
+}
+function redo() {
+  endEdit();
+  if (!redoStack.length) return;
+  undoStack.push(snap(state));
+  state = settle(JSON.parse(redoStack.pop()));
+  afterHistory();
+}
+function afterHistory() {
+  if (selectedId != null && !state.items.some((i) => i.id === selectedId)) selectedId = null;
+  persist();
+  render();
+  renderInspector();
+}
+
+const nextId = () => Math.max(0, ...state.items.map((i) => i.id)) + 1;
+const isRoom = (it) => it.kind === 'room';
+const sizeOf = (it) => blockSize(it.kind, it.cfg);
+const selected = () => state.items.find((i) => i.id === selectedId);
+const layoutCopy = () => ({ items: clone(state.items) });
+
+// Absolute bottom-left of an item in a layout.
+function absPos(layout, it) {
+  if (isRoom(it)) return { x: it.x, y: it.y };
+  const host = it.parent != null && layout.items.find((m) => m.id === it.parent);
+  if (host) return { x: host.x + it.x, y: host.y + host.cfg.walls.floor };
+  return { x: it.x, y: 0 };
+}
+
+// ------------------------------------------------------------------ physics
+
+// Drop every room straight down until it rests on the floor or on another
+// room. Rooms are processed bottom-up; the one being moved yields to rooms
+// already at the same height so it lands on top rather than shoving them.
+function settle(layout, movedId = null) {
+  const rooms = layout.items.filter(isRoom);
+  rooms.sort((a, b) => a.y - b.y || (a.id === movedId) - (b.id === movedId) || a.x - b.x);
+  const placed = [];
+  const info = new Map();
+  for (const m of rooms) {
+    const w = sizeOf(m).w;
+    let y = 0;
+    for (const o of placed) if (overlapX(m.x, w, o.x, sizeOf(o).w) > 0.01) y = Math.max(y, o.y + sizeOf(o).h);
+    m.y = y;
+    let level = 0, lo = Infinity, hi = -Infinity;
+    for (const o of placed) {
+      const os = sizeOf(o);
+      if (Math.abs(o.y + os.h - y) < 0.01 && overlapX(m.x, w, o.x, os.w) > 0.01) {
+        level = Math.max(level, info.get(o.id).level + 1);
+        lo = Math.min(lo, Math.max(m.x, o.x));
+        hi = Math.max(hi, Math.min(m.x + w, o.x + os.w));
+      }
+    }
+    const cx = m.x + w / 2;
+    info.set(m.id, { level, tips: y > 0 && (cx < lo - 0.01 || cx > hi + 0.01) });
+    placed.push(m);
+  }
+  for (const it of layout.items) {
+    if (isRoom(it) || it.parent == null) continue;
+    if (!layout.items.some((m) => m.id === it.parent)) it.parent = null;
+  }
+  layout.info = info;
+  return layout;
+}
+
+function overlapX(ax, aw, bx, bw) {
+  return Math.min(ax + aw, bx + bw) - Math.max(ax, bx);
+}
+
+// Magnetic x: snap to edges and centres of nearby rooms.
+function snapX(x, w, others, tol) {
+  let best = Math.round(x), bestD = tol;
+  const consider = (c) => { const d = Math.abs(c - x); if (d < bestD) { bestD = d; best = c; } };
+  consider(0);
+  for (const o of others) {
+    const ow = sizeOf(o).w;
+    consider(o.x); consider(o.x + ow); consider(o.x - w);
+    consider(o.x + ow - w); consider(o.x + ow / 2 - w / 2);
+  }
+  return best;
+}
+
+// The topmost room whose interior contains point (px, py).
+function hostAt(layout, px, py) {
+  let host = null;
+  for (const m of layout.items.filter(isRoom)) {
+    const s = sizeOf(m);
+    if (px >= m.x && px <= m.x + s.w && py >= m.y - 4 && py <= m.y + s.h && (!host || m.y > host.y)) host = m;
+  }
+  return host;
+}
+
+function furnitureRange(host, it) {
+  const b = innerBox(host.cfg);
+  return [b.x0, Math.max(b.x0, b.x1 - sizeOf(it).w)];
+}
+
+function placeFurniture(layout, it, ax, px, py) {
+  const host = hostAt(layout, px, py);
+  if (host) {
+    it.parent = host.id;
+    it.x = Math.round(clamp(ax - host.x, ...furnitureRange(host, it)));
+  } else {
+    it.parent = null;
+    it.x = Math.round(ax);
+  }
+}
+
+// Layout with one item moved to (ax, ay); px/py is the pointer.
+function proposeMove(base, d, ax, ay, px, py, tol) {
+  const layout = { items: clone(base.items) };
+  let it = layout.items.find((i) => i.id === d.id);
+  if (!it) { it = { id: d.id, ...fromType(d.typeKey), x: 0, y: 0 }; layout.items.push(it); }
+  if (isRoom(it)) {
+    const others = layout.items.filter((o) => isRoom(o) && o.id !== d.id);
+    it.x = snapX(ax, sizeOf(it).w, others, tol);
+    it.y = Math.max(0, ay);
+    settle(layout, d.id);
+  } else {
+    settle(layout);
+    placeFurniture(layout, it, ax, px, py);
+  }
+  return layout;
+}
+
+// After rooms change width, keep rooms that touched still touching and keep
+// stacked rooms over the same spot of the room below. `old` maps id -> old size.
+function reflow(layout, old) {
+  const rooms = layout.items.filter(isRoom).sort((a, b) => a.y - b.y || a.x - b.x);
+  const ow = (r) => (old.get(r.id) || sizeOf(r)).w;
+  const oh = (r) => (old.get(r.id) || sizeOf(r)).h;
+  const anchors = new Map();
+  for (const m of rooms) {
+    const left = rooms.find((o) => o !== m && Math.abs(o.y - m.y) < 0.01 && Math.abs(o.x + ow(o) - m.x) < 0.5);
+    if (left) { anchors.set(m.id, { ref: left, abut: true }); continue; }
+    let sup = null, best = 0.01;
+    for (const o of rooms) {
+      const ov = overlapX(m.x, ow(m), o.x, ow(o));
+      if (Math.abs(o.y + oh(o) - m.y) < 0.01 && ov > best) { best = ov; sup = o; }
+    }
+    if (sup) anchors.set(m.id, { ref: sup, rel: (m.x + ow(m) / 2 - sup.x) / ow(sup) });
+  }
+  for (const m of rooms) {
+    const a = anchors.get(m.id);
+    if (!a) continue;
+    const rw = sizeOf(a.ref).w;
+    m.x = a.abut ? a.ref.x + rw : Math.round(a.ref.x + a.rel * rw - sizeOf(m).w / 2);
+  }
+  for (const it of layout.items) {
+    if (isRoom(it) || it.parent == null) continue;
+    const host = layout.items.find((m) => m.id === it.parent);
+    if (host) it.x = clamp(it.x, ...furnitureRange(host, it));
+  }
+  return settle(layout);
+}
+
+// ------------------------------------------------------------------ geometry caches
+
+const cfgKey = (kind, cfg) => kind + JSON.stringify(cfg);
+const cache = { manifolds: new Map(), geometries: new Map(), profiles: new Map(), stats: new Map() };
+
+function manifoldFor(kind, cfg) {
+  const key = cfgKey(kind, cfg);
+  if (!cache.manifolds.has(key)) cache.manifolds.set(key, buildBlock(k, kind, cfg));
+  return cache.manifolds.get(key);
+}
+
+function geometryFor(kind, cfg) {
+  const key = cfgKey(kind, cfg);
+  if (!cache.geometries.has(key)) {
+    const { positions, indices } = meshArrays(manifoldFor(kind, cfg));
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    g.setIndex(new THREE.BufferAttribute(indices, 1));
+    const flat = g.toNonIndexed();
+    flat.computeVertexNormals();
+    g.dispose();
+    cache.geometries.set(key, flat);
+  }
+  return cache.geometries.get(key);
+}
+
+function profileFor(kind, cfg) {
+  const key = cfgKey(kind, cfg);
+  if (!cache.profiles.has(key)) cache.profiles.set(key, frontProfile(k, kind, cfg));
+  return cache.profiles.get(key);
+}
+
+function statsFor(kind, cfg) {
+  const key = cfgKey(kind, cfg);
+  if (!cache.stats.has(key)) {
+    const m = manifoldFor(kind, cfg);
+    const bb = m.boundingBox();
+    cache.stats.set(key, { size: bb.max.map((v, i) => v - bb.min[i]), grams: (m.volume() / 1000) * PLA_DENSITY });
+  }
+  return cache.stats.get(key);
+}
+
+// Drop cached geometry no block uses any more (live editing creates lots).
+function pruneCache() {
+  if (cache.manifolds.size + cache.profiles.size < 120) return;
+  const keep = new Set([
+    ...state.items.map((i) => cfgKey(i.kind, i.cfg)),
+    ...(drag?.preview?.items || []).map((i) => cfgKey(i.kind, i.cfg)),
+    ...Object.values(PRESETS).map((t) => cfgKey(t.kind, t.cfg)),
+    ...customTypes.map((t) => cfgKey(t.kind, t.cfg)),
+  ]);
+  for (const [key, m] of cache.manifolds) if (!keep.has(key)) { m.delete(); cache.manifolds.delete(key); }
+  for (const [key, g] of cache.geometries) if (!keep.has(key)) { g.dispose(); cache.geometries.delete(key); }
+  for (const key of cache.profiles.keys()) if (!keep.has(key)) cache.profiles.delete(key);
+  for (const key of cache.stats.keys()) if (!keep.has(key)) cache.stats.delete(key);
+}
+
+// ------------------------------------------------------------------ palette
+
+function polyPath(polys, ox, oy) {
+  return polys.map((poly) => 'M' + poly.map(([x, y]) => `${(ox + x).toFixed(2)},${(-(oy + y)).toFixed(2)}`).join('L') + 'Z').join('');
+}
+
+function thumb(kind, cfg) {
+  const { w, h } = blockSize(kind, cfg);
+  const prof = profileFor(kind, cfg);
+  const pad = 4;
+  const marks = prof.marks.map(([x0, y0, x1, y1]) => `<rect x="${x0}" y="${-y1}" width="${x1 - x0}" height="${y1 - y0}" fill="var(--sh-mark)"/>`).join('');
+  return `<svg viewBox="${-pad} ${-h - pad} ${w + 2 * pad} ${h + 2 * pad}" aria-hidden="true">
+    <path d="${polyPath(prof.room, 0, 0)}" fill="${shade(cfg.color, -0.18)}" fill-rule="evenodd"/>
+    <path d="${polyPath(prof.shell, 0, 0)}" fill="${cfg.color}" fill-rule="evenodd"/>${marks}</svg>`;
+}
+
+function renderPalette() {
+  const ul = $('palette');
+  ul.replaceChildren();
+  const entries = [
+    ...Object.entries(PRESETS).map(([key, t]) => ({ key, ...t, custom: false })),
+    ...customTypes.map((t) => ({ ...t, custom: true })),
+  ];
+  for (const t of entries) {
+    const { w, h } = blockSize(t.kind, t.cfg);
+    const li = document.createElement('li');
+        const btn = document.createElement('button');
+    btn.className = 'sh-card';
+    btn.type = 'button';
+    btn.innerHTML = `${thumb(t.kind, t.cfg)}<div><strong>${esc(t.name)}</strong><span>${t.kind === 'room' ? `${fmt(w)} × ${fmt(h)} mm` : 'Sits inside a room'}</span></div>`;
+    btn.setAttribute('aria-label', `Add ${t.name}`);
+    btn.addEventListener('pointerdown', (e) => startPaletteDrag(e, t.key));
+    btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); addBlock(t.key); } });
+    li.append(btn);
+    if (t.custom) {
+      const del = document.createElement('button');
+      del.className = 'sh-remove';
+      del.type = 'button';
+      del.textContent = '×';
+      del.title = `Remove “${t.name}” from the palette (placed blocks stay)`;
+      del.onclick = () => { customTypes = customTypes.filter((c) => c.key !== t.key); saveTypes(); renderPalette(); };
+      li.append(del);
+    }
+    ul.append(li);
+  }
+}
+
+function addBlock(typeKey) {
+  const layout = layoutCopy();
+  const id = nextId();
+  const block = { id, ...fromType(typeKey) };
+  if (block.kind === 'room') {
+    const ground = layout.items.filter((i) => isRoom(i) && i.y === 0);
+    block.x = ground.length ? Math.max(...ground.map((g) => g.x + sizeOf(g).w)) : 0;
+    block.y = 0;
+    layout.items.push(block);
+    settle(layout, id);
+  } else {
+    const sel = layout.items.find((i) => i.id === selectedId && isRoom(i));
+    const host = sel || layout.items.filter(isRoom).sort((a, b) => b.y - a.y)[0];
+    if (host) {
+      const [lo, hi] = furnitureRange(host, block);
+      Object.assign(block, { parent: host.id, x: Math.round((lo + hi) / 2) });
+    } else Object.assign(block, { parent: null, x: 0 });
+    layout.items.push(block);
+  }
+  selectedId = id;
+  commit(layout);
+}
+
+// ------------------------------------------------------------------ 2D mat
+
+const mat = $('mat');
+let viewBox = null;
+
+function fitViewBox(layout) {
+  let minX = 0, maxX = 360, maxY = 220, topH = 72;
+  for (const it of layout.items) {
+    const a = absPos(layout, it);
+    const s = sizeOf(it);
+    minX = Math.min(minX, a.x); maxX = Math.max(maxX, a.x + s.w); maxY = Math.max(maxY, a.y + s.h);
+    if (isRoom(it)) topH = Math.max(topH, s.h);
+  }
+  const m = 40;
+  return { x: minX - m, y: -(maxY + m + topH * 0.6), w: maxX - minX + 2 * m, h: maxY + 2 * m + topH * 0.6 };
+}
+
+function svgEl(tag, attrs = {}) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [a, v] of Object.entries(attrs)) el.setAttribute(a, v);
+  return el;
+}
+
+function renderMat(layout) {
+  if (!drag || !drag.moved) viewBox = fitViewBox(layout);
+  const vb = viewBox;
+  mat.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  mat.setAttribute('preserveAspectRatio', 'xMidYMax meet');
+  mat.replaceChildren();
+
+  const defs = svgEl('defs');
+  defs.innerHTML = `
+    <pattern id="g10" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M10 0H0V10" fill="none" stroke="var(--mat-minor)" stroke-width="0.5"/></pattern>
+    <pattern id="g50" width="50" height="50" patternUnits="userSpaceOnUse"><rect width="50" height="50" fill="url(#g10)"/><path d="M50 0H0V50" fill="none" stroke="var(--mat-major)" stroke-width="0.8"/></pattern>`;
+  mat.append(defs);
+  const big = { x: vb.x - 2000, y: vb.y - 2000, width: vb.w + 4000, height: vb.h + 4000 };
+  mat.append(svgEl('rect', { ...big, fill: 'var(--mat)' }));
+  mat.append(svgEl('rect', { ...big, fill: 'url(#g50)' }));
+  mat.append(svgEl('line', { x1: vb.x - 2000, x2: vb.x + vb.w + 2000, y1: 0, y2: 0, class: 'ground' }));
+  for (let x = Math.ceil((vb.x - 400) / 50) * 50; x < vb.x + vb.w + 400; x += 50) {
+    const t = svgEl('text', { x, y: 14, class: 'ruler', 'text-anchor': 'middle' });
+    t.textContent = x;
+    mat.append(t);
+  }
+
+  const order = [...layout.items].sort((a, b) => isRoom(b) - isRoom(a));
+  for (const it of order) {
+    const a = absPos(layout, it);
+    const prof = profileFor(it.kind, it.cfg);
+    const color = it.cfg.color;
+    const g = svgEl('g', { class: 'block', 'data-id': it.id });
+    if (drag && drag.moved && drag.id === it.id) {
+      g.classList.add('dragging');
+      g.append(svgEl('path', { d: polyPath(prof.shell, a.x + 2.5, a.y - 2.5) + polyPath(prof.room, a.x + 2.5, a.y - 2.5), class: 'shadow' }));
+    }
+    if (prof.room.length) g.append(svgEl('path', { d: polyPath(prof.room, a.x, a.y), fill: shade(color, -0.18), 'fill-rule': 'evenodd' }));
+    if (prof.holes.length) g.append(svgEl('path', { d: polyPath(prof.holes, a.x, a.y), fill: 'var(--sh-hole)' }));
+    g.append(svgEl('path', { d: polyPath(prof.shell, a.x, a.y), fill: color, 'fill-rule': 'evenodd', stroke: shade(color, -0.35), 'stroke-width': 0.6 }));
+    for (const [x0, y0, x1, y1] of prof.marks) {
+      g.append(svgEl('rect', { x: a.x + x0, y: -(a.y + y1), width: x1 - x0, height: y1 - y0, class: 'mark' }));
+    }
+    mat.append(g);
+  }
+
+  for (const it of layout.items) {
+    const a = absPos(layout, it);
+    const s = sizeOf(it);
+    if (layout.info?.get(it.id)?.tips) {
+      mat.append(svgEl('rect', { x: a.x - 1.5, y: -(a.y + s.h + 1.5), width: s.w + 3, height: s.h + 3, rx: 4, class: 'warn' }));
+      mat.append(svgEl('rect', { x: a.x + s.w / 2 - 15, y: -(a.y + s.h + 9), width: 30, height: 12, rx: 6, class: 'warn-tag' }));
+      const t = svgEl('text', { x: a.x + s.w / 2, y: -(a.y + s.h + 0.5), 'text-anchor': 'middle', class: 'warn-label' });
+      t.textContent = 'tips';
+      mat.append(t);
+    }
+    if (it.id === selectedId) {
+      mat.append(svgEl('rect', { x: a.x - 3.5, y: -(a.y + s.h + 3.5), width: s.w + 7, height: s.h + 7, rx: 5, class: 'sel' }));
+    }
+  }
+  $('empty').hidden = layout.items.length > 0;
+}
+
+function shade(hex, amt) {
+  const n = parseInt(String(hex).slice(1), 16) || 0;
+  const f = (c) => Math.round(clamp(amt < 0 ? c * (1 + amt) : c + (255 - c) * amt, 0, 255));
+  return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+
+function toWorld(e) {
+  const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(mat.getScreenCTM().inverse());
+  return { x: pt.x, y: -pt.y };
+}
+function mmPerPx() {
+  const ctm = mat.getScreenCTM();
+  return ctm ? 1 / ctm.a : 1;
+}
+function overMat(e) {
+  const r = mat.getBoundingClientRect();
+  return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+}
+
+function select(id) {
+  if (selectedId === id) return;
+  endEdit();
+  selectedId = id;
+  renderInspector();
+}
+
+mat.addEventListener('pointerdown', (e) => {
+  const g = e.target.closest('.block');
+  if (!g) { select(null); render(); return; }
+  const id = Number(g.dataset.id);
+  const it = state.items.find((i) => i.id === id);
+  const a = absPos(state, it);
+  const w = toWorld(e);
+  select(id);
+  drag = { id, grabX: w.x - a.x, grabY: w.y - a.y, sx: e.clientX, sy: e.clientY, moved: false, preview: null };
+  e.preventDefault();
+  render();
+});
+
+function startPaletteDrag(e, typeKey) {
+  if (e.button !== 0) return;
+  const t = typeDef(typeKey);
+  const s = blockSize(t.kind, t.cfg);
+  drag = { id: nextId(), typeKey, isNew: true, grabX: s.w / 2, grabY: s.h / 2, sx: e.clientX, sy: e.clientY, moved: false, preview: null };
+  e.preventDefault();
+}
+
+window.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 4) return;
+  drag.moved = true;
+  document.body.style.cursor = 'grabbing';
+  if (drag.isNew && !overMat(e)) { drag.preview = null; render(); return; }
+  const w = toWorld(e);
+  drag.preview = proposeMove(state, drag, w.x - drag.grabX, w.y - drag.grabY, w.x, w.y, 10 * mmPerPx());
+  render();
+});
+
+window.addEventListener('pointerup', () => {
+  if (!drag) return;
+  const d = drag;
+  drag = null;
+  document.body.style.cursor = '';
+  if (d.isNew && !d.moved) { addBlock(d.typeKey); return; }
+  if (d.moved && d.preview) {
+    selectedId = d.id;
+    commit({ items: d.preview.items });
+    return;
+  }
+  render();
+});
+window.addEventListener('pointercancel', () => { drag = null; document.body.style.cursor = ''; render(); });
+
+// ------------------------------------------------------------------ editing on the mat
+
+function removeSelected() {
+  if (selectedId == null) return;
+  const items = state.items.filter((i) => i.id !== selectedId && i.parent !== selectedId);
+  selectedId = null;
+  commit({ items: clone(items) });
+}
+
+function duplicateSelected() {
+  const it = selected();
+  if (!it) return;
+  const layout = layoutCopy();
+  const id = nextId();
+  if (isRoom(it)) {
+    layout.items.push({ ...clone(it), id, y: 1e6 });
+    settle(layout, id);
+  } else {
+    layout.items.push({ ...clone(it), id, x: it.x + 4 });
+  }
+  selectedId = id;
+  commit(layout);
+}
+
+// Arrow keys slide a block sideways, stopping against neighbours on its floor.
+function nudge(dx) {
+  if (!selected()) return;
+  const layout = layoutCopy();
+  const m = layout.items.find((i) => i.id === selectedId);
+  if (isRoom(m)) {
+    const w = sizeOf(m).w;
+    let x = m.x + dx;
+    for (const o of layout.items) {
+      if (o === m || !isRoom(o)) continue;
+      const vertical = Math.min(m.y + sizeOf(m).h, o.y + sizeOf(o).h) - Math.max(m.y, o.y);
+      if (vertical <= 0.01) continue;
+      const ow = sizeOf(o).w;
+      if (overlapX(x, w, o.x, ow) > 0.01) x = dx > 0 ? Math.min(x, o.x - w) : Math.max(x, o.x + ow);
+    }
+    m.x = x;
+    settle(layout, m.id);
+  } else {
+    const host = layout.items.find((h) => h.id === m.parent);
+    m.x = host ? clamp(m.x + dx, ...furnitureRange(host, m)) : m.x + dx;
+  }
+  commit(layout, { inspector: false });
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.target.closest?.('input, textarea, select')) return;
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+  if (selectedId == null || mod) return;
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(e.shiftKey ? -10 : -1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(e.shiftKey ? 10 : 1); }
+  else if (e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); }
+  else if (e.key === 'Escape') { select(null); render(); }
+});
+
+function renderSelection(layout) {
+  const box = $('selection');
+  const it = layout.items.find((i) => i.id === selectedId);
+  box.replaceChildren();
+  if (!it) {
+    const tips = [...(layout.info?.values() || [])].filter((v) => v.tips).length;
+    box.innerHTML = tips
+      ? `<span class="sh-warn">${tips === 1 ? 'One room overhangs' : `${tips} rooms overhang`} the room below. Move it back over its support or glue it.</span>`
+      : '<span>Click a block to tune it. Arrow keys move it, Delete removes it, D duplicates it.</span>';
+    return;
+  }
+  const a = absPos(layout, it);
+  const info = layout.info?.get(it.id);
+  const where = isRoom(it) ? `x ${fmt(a.x)} mm, floor ${(info?.level ?? 0) + 1}` : it.parent != null ? 'inside a room' : 'on the ground';
+  box.innerHTML = `<strong>${esc(it.name)}</strong><span class="spacer">${where}${info?.tips ? ', <span class="sh-warn">overhangs and will tip</span>' : ''}</span>`;
+  const mk = (label, fn, title) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = label; b.title = title || ''; b.onclick = fn; return b; };
+  box.append(
+    mk('◀ 10', () => nudge(-10), 'Move left 10 mm'),
+    mk('10 ▶', () => nudge(10), 'Move right 10 mm'),
+    mk('duplicate', duplicateSelected, 'Stack a copy on top (D)'),
+    mk('delete', removeSelected, 'Delete (Del)'),
+  );
+}
+
+// ------------------------------------------------------------------ inspector
+
+const insp = $('inspector');
+
+const WALL_LABEL = { back: 'Back wall', left: 'Left wall', right: 'Right wall', ceiling: 'Ceiling', floor: 'Floor' };
+const SHAPE_LABEL = { rect: 'Rectangle', arch: 'Arch', round: 'Round' };
+const CORNER_LABEL = { tl: 'top left', tr: 'top right', br: 'bottom right', bl: 'bottom left' };
+
+// One control per row, in the rail's label/value column. Lengths carry the
+// ruler ticks; counts do not.
+function num(label, path, value, { min = 0, max = 500, step = 0.5, hint = '', unit = 'mm' } = {}) {
+  const id = 'sh-' + path.replace(/\./g, '-');
+  return `<div class="field${unit === 'mm' ? ' field-measure' : ''}"><label for="${id}"${hint ? ` title="${esc(hint)}"` : ''}>${label}</label>
+    <span class="field-value"><input id="${id}" type="number" data-path="${path}" value="${fmt(value)}" min="${min}" max="${max}" step="${step}"${hint ? ` title="${esc(hint)}"` : ''}>${unit ? `<span class="unit">${unit}</span>` : ''}</span></div>`;
+}
+
+function pick(label, path, options, value, labels) {
+  const id = 'sh-' + path.replace(/\./g, '-');
+  return `<div class="field"><label for="${id}">${label}</label>
+    <span class="field-value"><select id="${id}" data-path="${path}">${options.map((v) => `<option value="${v}"${v === value ? ' selected' : ''}>${labels[v]}</option>`).join('')}</select></span></div>`;
+}
+
+const group = (title, body) => `<div class="rail-group"><h2>${title}</h2>${body}</div>`;
+
+function positionLabels(wall) {
+  if (wall === 'left' || wall === 'right') return ['Along depth', 'Sill height', 'Positive moves it toward the front'];
+  if (wall === 'ceiling' || wall === 'floor') return ['Across', 'Along depth', 'Positive moves it toward the front'];
+  return ['Across', 'Sill height', 'Positive moves it right'];
+}
+
+function openingHTML(o, i) {
+  const [xl, yl, xh] = positionLabels(o.wall);
+  const p = `cfg.openings.${i}`;
+  const centredY = o.wall === 'ceiling' || o.wall === 'floor';
+  const count = { unit: '', step: 1, min: 1, max: 12 };
+  return `<div class="sh-opening">
+    <div class="sh-opening-head"><span>Opening ${i + 1}</span><span class="chips">
+      <button type="button" class="chip" data-act="dup-opening" data-i="${i}" title="Duplicate opening">copy</button>
+      <button type="button" class="chip" data-act="del-opening" data-i="${i}" title="Remove opening">remove</button>
+    </span></div>
+    ${pick('Wall', `${p}.wall`, WALLS, o.wall, WALL_LABEL)}
+    ${pick('Shape', `${p}.shape`, SHAPES, o.shape, SHAPE_LABEL)}
+    ${num(xl, `${p}.x`, o.x, { min: -500, hint: xh })}
+    ${num(yl, `${p}.y`, o.y, { min: centredY ? -500 : 0 })}
+    ${num('Width', `${p}.w`, o.w, { min: 1 })}
+    ${num('Height', `${p}.h`, o.h, { min: 1 })}
+    ${o.shape === 'rect' ? num('Corner radius', `${p}.r`, o.r, { max: 100 }) : ''}
+    ${num('Panes across', `${p}.cols`, o.cols, count)}
+    ${num('Panes up', `${p}.rows`, o.rows, count)}
+    ${(o.cols > 1 || o.rows > 1) ? num('Bar width', `${p}.bar`, o.bar, { max: 20 }) : ''}
+    ${num('Copies', `${p}.count`, o.count, count)}
+    ${o.count > 1 ? num('Spacing', `${p}.pitch`, o.pitch, { min: 1, hint: 'Centre to centre' }) : ''}
+  </div>`;
+}
+
+function cornerPath(x0, y0, x1, y1, on, r) {
+  const c = (key) => (on[key] ? r : 0);
+  return `M${x0 + c('tl')},${y0} H${x1 - c('tr')} A${c('tr')},${c('tr')} 0 0 1 ${x1},${y0 + c('tr')}
+    V${y1 - c('br')} A${c('br')},${c('br')} 0 0 1 ${x1 - c('br')},${y1}
+    H${x0 + c('bl')} A${c('bl')},${c('bl')} 0 0 1 ${x0},${y1 - c('bl')}
+    V${y0 + c('tl')} A${c('tl')},${c('tl')} 0 0 1 ${x0 + c('tl')},${y0} Z`;
+}
+
+function cornersHTML(cfg) {
+  // Diagram in a 200 × 130 box: outer frame, inner opening, a toggle on each corner.
+  const O = [14, 10, 186, 120], I = [40, 34, 160, 96];
+  const pos = {
+    outer: { tl: [O[0], O[1]], tr: [O[2], O[1]], br: [O[2], O[3]], bl: [O[0], O[3]] },
+    inner: { tl: [I[0], I[1]], tr: [I[2], I[1]], br: [I[2], I[3]], bl: [I[0], I[3]] },
+  };
+  const btns = ['outer', 'inner'].flatMap((ring) => CORNERS.map((c) => {
+    const [x, y] = pos[ring][c];
+    const on = cfg[ring][c];
+    return `<button type="button" class="sh-corner${on ? ' on' : ''}" data-act="corner" data-ring="${ring}" data-c="${c}"
+      style="left:${(x / 200) * 100}%;top:${(y / 130) * 100}%" aria-pressed="${on}"
+      aria-label="${ring === 'outer' ? 'Outer' : 'Inner'} ${CORNER_LABEL[c]} corner rounded"
+      title="${ring === 'outer' ? 'Outer' : 'Inner'} ${CORNER_LABEL[c]} corner: ${on ? 'rounded' : 'square'}"></button>`;
+  })).join('');
+  return `<div class="sh-corners">
+      <svg viewBox="0 0 200 130" aria-hidden="true">
+        <path d="${cornerPath(...O, cfg.outer, 22)} ${cornerPath(...I, cfg.inner, 14)}" fill="${cfg.color}" fill-rule="evenodd" stroke="${shade(cfg.color, -0.35)}"/>
+      </svg>${btns}
+    </div>
+    <div class="chips">
+      <button type="button" class="chip" data-act="corners-all" data-v="1">round all</button>
+      <button type="button" class="chip" data-act="corners-all" data-v="0">square all</button>
+    </div>
+    ${num('Outer radius', 'cfg.outerR', cfg.outerR, { max: 100 })}
+    ${num('Inner radius', 'cfg.innerR', cfg.innerR, { max: 100 })}`;
+}
+
+function roomInspector(it) {
+  const c = it.cfg;
+  const wall = { min: 0.4, max: 30, step: 0.2 };
+  return group('Size', `
+      ${num('Width', 'cfg.w', c.w, { min: 10 })}
+      ${num('Height', 'cfg.h', c.h, { min: 10 })}
+      ${num('Depth', 'cfg.d', c.d, { min: 10 })}`)
+    + group('Wall thickness', `
+      ${num('Left wall', 'cfg.walls.left', c.walls.left, wall)}
+      ${num('Right wall', 'cfg.walls.right', c.walls.right, wall)}
+      ${num('Ceiling', 'cfg.walls.ceiling', c.walls.ceiling, wall)}
+      ${num('Floor', 'cfg.walls.floor', c.walls.floor, wall)}
+      ${num('Back wall', 'cfg.walls.back', c.walls.back, wall)}
+      <div class="chips"><button type="button" class="chip" data-act="walls-same">match all to left wall</button></div>`)
+    + group('Corners', `
+      <p class="rail-hint">Click a corner to switch it between rounded and square.</p>
+      ${cornersHTML(c)}`)
+    + group('Openings', `
+      ${c.openings.length ? '' : '<p class="rail-hint">No openings yet. Add a window, a doorway or a skylight.</p>'}
+      ${c.openings.map(openingHTML).join('')}
+      <div class="chips">
+        <button type="button" class="chip" data-act="add-opening" data-preset="window">+ window</button>
+        <button type="button" class="chip" data-act="add-opening" data-preset="doorway">+ doorway</button>
+        <button type="button" class="chip" data-act="add-opening" data-preset="skylight">+ skylight</button>
+      </div>`)
+    + blockActions(it);
+}
+
+function tableInspector(it) {
+  const c = it.cfg;
+  return group('Size', `
+      ${num('Top diameter', 'cfg.topD', c.topD, { min: 4 })}
+      ${num('Base diameter', 'cfg.baseD', c.baseD, { min: 4 })}
+      ${num('Stem diameter', 'cfg.stemD', c.stemD, { min: 1 })}
+      ${num('Height', 'cfg.height', c.height, { min: 8 })}`)
+    + blockActions(it);
+}
+
+function blockActions(it) {
+  const same = state.items.filter((o) => o.id !== it.id && o.kind === it.kind && o.name === it.name).length;
+  const base = typeDef(it.base);
+  return `<div class="rail-actions">
+      <button type="button" class="btn" data-act="download">Download STL</button>
+      <button type="button" class="btn" data-act="save-type">Save as block type</button>
+      ${same ? `<button type="button" class="btn" data-act="apply-same">Copy settings to ${same} other “${esc(it.name)}” block${same > 1 ? 's' : ''}</button>` : ''}
+      ${base ? `<button type="button" class="btn" data-act="reset">Reset to “${esc(base.name)}”</button>` : ''}
+    </div>`;
+}
+
+function renderInspector() {
+  const it = selected();
+  if (!it) {
+    insp.innerHTML = group('Selected block', `<p class="rail-hint">Click a block in the front view to tune it.
+      Each block has its own size, wall thickness, corners and openings, so two rooms of the same type can differ.</p>`);
+    return;
+  }
+  insp.innerHTML = group('Selected block', `
+      <div class="field"><label for="sh-name">Name</label>
+        <span class="field-value"><input id="sh-name" type="text" data-path="name" value="${esc(it.name)}" maxlength="40"></span></div>
+      <div class="field"><label for="sh-color">Colour</label>
+        <span class="field-value"><input id="sh-color" type="color" data-path="cfg.color" value="${it.cfg.color}"></span></div>`)
+    + (isRoom(it) ? roomInspector(it) : tableInspector(it));
+}
+
+// Inputs edit the selected block live; each field edit is one undo step.
+function setPath(obj, path, value) {
+  const keys = path.split('.');
+  let o = obj;
+  for (const key of keys.slice(0, -1)) o = o[key];
+  o[keys.at(-1)] = value;
+}
+
+function getPath(obj, path) {
+  return path.split('.').reduce((o, key) => o?.[key], obj);
+}
+
+function readInput(el) {
+  if (el.type === 'number') {
+    if (el.value === '') return undefined;
+    let v = Number(el.value);
+    if (!Number.isFinite(v)) return undefined;
+    v = clamp(v, Number(el.min), Number(el.max));
+    if (el.step === '1') v = Math.round(v);
+    return v;
+  }
+  return el.value;
+}
+
+function liveEdit(path, value) {
+  const it = selected();
+  if (!it || value === undefined) return;
+  if (!editSnapshot) editSnapshot = snap(state);
+  const old = new Map(state.items.map((i) => [i.id, sizeOf(i)]));
+  setPath(it, path, value);
+  // Moving an opening to the ceiling/floor changes what its y offset means.
+  const m = path.match(/^cfg\.openings\.(\d+)\.wall$/);
+  if (m && (value === 'ceiling' || value === 'floor')) it.cfg.openings[Number(m[1])].y = 0;
+  reflow(state, old);
+  persist();
+  render();
+}
+
+function endEdit() {
+  if (!editSnapshot) return;
+  pushUndo(editSnapshot);
+  editSnapshot = null;
+  updateHistoryButtons();
+}
+
+insp.addEventListener('input', (e) => {
+  const el = e.target.closest('[data-path]');
+  if (!el || el.tagName === 'SELECT') return;
+  // Typed numbers wait for Enter/blur (half-typed values would reshuffle the
+  // shelf); spinner arrows and the colour picker update live.
+  if (el.type === 'number' && e.inputType) return;
+  liveEdit(el.dataset.path, readInput(el));
+  if (el.dataset.path === 'cfg.color') insp.querySelector('.sh-corners path')?.setAttribute('fill', el.value);
+});
+
+insp.addEventListener('change', (e) => {
+  const el = e.target.closest('[data-path]');
+  if (!el) return;
+  if (el.type === 'number') {
+    const v = readInput(el);
+    if (v !== undefined) liveEdit(el.dataset.path, v);
+    el.value = fmt(getPath(selected(), el.dataset.path));
+  } else liveEdit(el.dataset.path, el.value);
+  endEdit();
+  // Some fields show or hide others (shape, panes, copies, wall).
+  if (/\.(shape|wall|cols|rows|count)$/.test(el.dataset.path) || el.dataset.path === 'name') renderInspector();
+});
+
+insp.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]');
+  const it = selected();
+  if (!b || !it) return;
+  const act = b.dataset.act;
+  if (act === 'download') { downloadItem(it); return; }
+  if (act === 'save-type') { saveAsType(it); return; }
+
+  const layout = layoutCopy();
+  const m = layout.items.find((i) => i.id === it.id);
+  const old = new Map(state.items.map((i) => [i.id, sizeOf(i)]));
+  const c = m.cfg;
+  const i = Number(b.dataset.i);
+  if (act === 'corner') c[b.dataset.ring][b.dataset.c] = !c[b.dataset.ring][b.dataset.c];
+  else if (act === 'corners-all') for (const ring of ['outer', 'inner']) for (const key of CORNERS) c[ring][key] = b.dataset.v === '1';
+  else if (act === 'walls-same') for (const w of WALLS) c.walls[w] = c.walls.left;
+  else if (act === 'add-opening') c.openings.push(OPENING_PRESETS[b.dataset.preset]());
+  else if (act === 'del-opening') c.openings.splice(i, 1);
+  else if (act === 'dup-opening') {
+    const o = clone(c.openings[i]);
+    o.x += Math.min(o.w + 6, 40);
+    c.openings.splice(i + 1, 0, o);
+  } else if (act === 'reset') {
+    const t = typeDef(m.base);
+    if (!t) return;
+    m.cfg = clone(t.cfg);
+    m.name = t.name;
+  } else if (act === 'apply-same') {
+    for (const o of layout.items) if (o.kind === m.kind && o.name === m.name) o.cfg = clone(m.cfg);
+  } else return;
+  reflow(layout, old);
+  commit(layout);
+  // Keep keyboard focus on the corner that was just toggled.
+  if (act === 'corner') insp.querySelector(`[data-act="corner"][data-ring="${b.dataset.ring}"][data-c="${b.dataset.c}"]`)?.focus();
+});
+
+function saveAsType(it) {
+  let name = it.name;
+  const taken = (n) => Object.values(PRESETS).some((p) => p.name === n) || customTypes.some((t) => t.name === n);
+  if (taken(name)) {
+    let i = 2;
+    while (taken(`${it.name} ${i}`)) i++;
+    name = `${it.name} ${i}`;
+  }
+  const key = `custom_${Date.now().toString(36)}`;
+  customTypes.push({ key, name, kind: it.kind, cfg: clone(it.cfg) });
+  saveTypes();
+  renderPalette();
+  const layout = layoutCopy();
+  Object.assign(layout.items.find((i) => i.id === it.id), { name, base: key });
+  commit(layout);
+  flash(`Saved “${name}” to the palette.`);
+}
+
+function flash(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(flash.t);
+  flash.t = setTimeout(() => { el.hidden = true; }, 2600);
+}
+
+// ------------------------------------------------------------------ 3D view
+
+const viewEl = $('view');
+// Without WebGL the 3D pane says so and everything else keeps working: the
+// layout, the inspector and the STL export need only manifold.
+let renderer = null;
+try { renderer = new THREE.WebGLRenderer({ antialias: true }); } catch { /* no WebGL */ }
+if (renderer) {
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  $('loading').remove();
+  viewEl.append(renderer.domElement);
+} else {
+  $('loading').textContent = 'This browser has no WebGL, so there is no 3D preview. Everything else works.';
+}
+
+const scene = new THREE.Scene();
+const css = getComputedStyle(document.documentElement);
+const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+scene.background = new THREE.Color(token('--paper', '#ffffff'));
+const camera = new THREE.PerspectiveCamera(35, 1, 1, 10000);
+const controls = renderer && new OrbitControls(camera, renderer.domElement);
+if (controls) {
+  controls.enableDamping = true;
+  controls.maxPolarAngle = Math.PI * 0.495;
+}
+
+scene.add(new THREE.HemisphereLight('#ffffff', '#8a9a90', 1.6));
+const sun = new THREE.DirectionalLight('#fff6e8', 2.2);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.bias = -0.0005;
+scene.add(sun, sun.target);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(20000, 20000), new THREE.ShadowMaterial({ opacity: 0.18 }));
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const materials = new Map();
+function materialFor(color, isSelected) {
+  const key = color + (isSelected ? ':sel' : '');
+  if (!materials.has(key)) {
+    const m = new THREE.MeshStandardMaterial({ color, roughness: 0.65, metalness: 0 });
+    if (isSelected) m.emissive = new THREE.Color(token('--reg', '#0b6e72')).multiplyScalar(0.45);
+    materials.set(key, m);
+  }
+  return materials.get(key);
+}
+
+const meshes = new Map();
+let fitted = false;
+let fittedKey = '';
+let lastBounds = null;
+
+function render3D(layout) {
+  if (!renderer) return;
+  const explode = Number($('explode').value);
+  const seen = new Set();
+  let cx = 0, n = 0;
+  for (const it of layout.items) if (isRoom(it)) { cx += it.x + sizeOf(it).w / 2; n++; }
+  cx = n ? cx / n : 0;
+
+  const box = new THREE.Box3();
+  for (const it of layout.items) {
+    seen.add(it.id);
+    let mesh = meshes.get(it.id);
+    const geo = geometryFor(it.kind, it.cfg);
+    if (!mesh) {
+      mesh = new THREE.Mesh(geo);
+      mesh.castShadow = mesh.receiveShadow = true;
+      scene.add(mesh);
+      meshes.set(it.id, mesh);
+    }
+    mesh.geometry = geo;
+    mesh.material = materialFor(it.cfg.color, it.id === selectedId);
+    const s = sizeOf(it);
+    const a = absPos(layout, it);
+    const host = isRoom(it) ? it : layout.items.find((m) => m.id === it.parent);
+    const level = host ? (layout.info?.get(host.id)?.level ?? 0) : 0;
+    const hostCx = host ? host.x + sizeOf(host).w / 2 : a.x;
+    const ex = ((hostCx - cx) * explode) / 120;
+    const ey = level * explode;
+    if (isRoom(it)) {
+      mesh.rotation.set(0, 0, 0);
+      mesh.position.set(a.x + ex, a.y + ey, 0);
+    } else {
+      mesh.rotation.set(-Math.PI / 2, 0, 0);
+      const z = host ? host.cfg.walls.back + (host.cfg.d - host.cfg.walls.back) / 2 : s.d / 2;
+      mesh.position.set(a.x + s.w / 2 + ex, a.y + ey, z);
+    }
+    mesh.updateMatrixWorld();
+    box.expandByObject(mesh);
+  }
+  for (const [id, mesh] of meshes) {
+    if (!seen.has(id)) { scene.remove(mesh); meshes.delete(id); }
+  }
+
+  if (box.isEmpty()) box.set(new THREE.Vector3(-100, 0, 0), new THREE.Vector3(100, 80, 60));
+  lastBounds = box;
+  const size = box.getSize(new THREE.Vector3());
+  const c = box.getCenter(new THREE.Vector3());
+  const r = Math.max(size.x, size.y, size.z);
+  sun.position.set(c.x + r * 0.6, c.y + r * 1.6, c.z + r * 1.4);
+  sun.target.position.copy(c);
+  const sc = sun.shadow.camera;
+  sc.left = sc.bottom = -r * 1.2; sc.right = sc.top = r * 1.2; sc.near = 1; sc.far = r * 5;
+  sc.updateProjectionMatrix();
+
+  // Re-frame when the shelf itself changes size, but not mid-drag or mid-edit.
+  const key = [box.min.toArray(), box.max.toArray()].flat().map((v) => Math.round(v / 10)).join();
+  if (!fitted) { fitCamera(); fitted = true; fittedKey = key; }
+  else if (!drag?.moved && !editSnapshot && key !== fittedKey && explode === 0) { fitCamera(true); fittedKey = key; }
+}
+
+function fitCamera(keepDirection = false) {
+  if (!lastBounds) return;
+  const sphere = lastBounds.getBoundingSphere(new THREE.Sphere());
+  const vFov = THREE.MathUtils.degToRad(camera.fov);
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+  const dist = (Math.max(sphere.radius, 60) / Math.sin(Math.min(vFov, hFov) / 2)) * 0.95;
+  const dir = keepDirection
+    ? camera.position.clone().sub(controls.target).normalize()
+    : new THREE.Vector3(0.45, 0.35, 1).normalize();
+  camera.position.copy(sphere.center).addScaledVector(dir, dist);
+  controls.target.copy(sphere.center);
+  controls.update();
+}
+
+function resize3D() {
+  if (!renderer) return;
+  const { clientWidth: w, clientHeight: h } = viewEl;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+if (renderer) {
+  new ResizeObserver(resize3D).observe(viewEl);
+  renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+}
+
+$('fit').onclick = () => fitCamera();
+$('explode').oninput = () => render3D(currentView());
+
+// ------------------------------------------------------------------ print list & export
+
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'block';
+
+// Identical blocks print from the same file; blocks that share a name but
+// were tuned differently become separate variants.
+function printGroups(layout) {
+  const groups = new Map();
+  for (const it of layout.items) {
+    const key = cfgKey(it.kind, it.cfg);
+    if (!groups.has(key)) groups.set(key, { key, kind: it.kind, cfg: it.cfg, name: it.name, qty: 0, ids: [] });
+    const g = groups.get(key);
+    g.qty++;
+    g.ids.push(it.id);
+  }
+  const list = [...groups.values()];
+  const byName = new Map();
+  for (const g of list) {
+    g.variant = (byName.get(g.name) || 0) + 1;
+    byName.set(g.name, g.variant);
+  }
+  for (const g of list) {
+    const multi = byName.get(g.name) > 1;
+    g.label = multi ? `${g.name} (variant ${g.variant})` : g.name;
+    g.file = `${g.kind === 'room' ? 'room' : 'furniture'}_${slug(g.name)}${multi ? `_v${g.variant}` : ''}`;
+  }
+  return list;
+}
+
+function renderBom() {
+  const tbody = $('bom');
+  tbody.replaceChildren();
+  let grams = 0, parts = 0;
+  const groups = printGroups(state);
+  for (const g of groups) {
+    const st = statsFor(g.kind, g.cfg);
+    grams += st.grams * g.qty; parts += g.qty;
+    const tr = document.createElement('tr');
+    if (g.ids.includes(selectedId)) tr.className = 'current';
+    tr.innerHTML = `
+      <td><span class="sh-swatch" style="background:${g.cfg.color}"></span>${esc(g.label)}</td>
+      <td class="num">${g.qty}</td>
+      <td class="sh-size">${st.size.map(fmt).join(' × ')} mm</td>
+      <td class="num">${Math.round(st.grams)} g</td>
+      <td></td>`;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.textContent = 'stl';
+    b.title = `Download ${g.file}.stl`;
+    b.onclick = () => downloadGroup(g);
+    tr.lastElementChild.append(b);
+    tbody.append(tr);
+  }
+  if (!groups.length) tbody.innerHTML = '<tr><td colspan="5">Add blocks to the shelf and the parts to print appear here.</td></tr>';
+  $('bom-total').textContent = parts ? `${parts} part${parts > 1 ? 's' : ''} in ${groups.length} file${groups.length > 1 ? 's' : ''}, about ${Math.round(grams)} g of PLA at 100% infill` : '';
+  $('zip').disabled = $('assembly').disabled = !parts;
+}
+
+const stlFor = (g) => toSTL(meshArrays(manifoldFor(g.kind, g.cfg)), g.file);
+
+function save(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+function downloadGroup(g) {
+  save(new Blob([stlFor(g)], { type: 'model/stl' }), `${g.file}.stl`);
+}
+function downloadItem(it) {
+  const g = printGroups(state).find((x) => x.ids.includes(it.id));
+  if (g) downloadGroup(g);
+}
+
+$('zip').onclick = () => {
+  const files = {};
+  const lines = ['Shelf House print list', '', 'Print each file the number of times shown. Rooms print lying on their back (no supports).', ''];
+  for (const g of printGroups(state)) {
+    files[`${g.file}_x${g.qty}.stl`] = new Uint8Array(stlFor(g));
+    lines.push(`${g.qty} x ${g.file}.stl  (${g.label})`);
+  }
+  files['print_list.txt'] = new TextEncoder().encode(lines.join('\n'));
+  files['layout.json'] = new TextEncoder().encode(JSON.stringify({ items: state.items, types: customTypes }, null, 2));
+  save(new Blob([zipSync(files, { level: 6 })], { type: 'application/zip' }), 'shelf_house.zip');
+};
+
+$('assembly').onclick = () => {
+  const parts = [];
+  for (const it of state.items) {
+    const a = absPos(state, it);
+    // Z-up STL with the open fronts facing -y. Rooms are modelled lying on
+    // their back, so stand them up; furniture is already upright.
+    if (isRoom(it)) {
+      parts.push(manifoldFor(it.kind, it.cfg).rotate([90, 0, 0]).translate([a.x, 0, a.y]));
+    } else {
+      const host = state.items.find((m) => m.id === it.parent);
+      const z = host ? host.cfg.walls.back + (host.cfg.d - host.cfg.walls.back) / 2 : sizeOf(it).d / 2;
+      parts.push(manifoldFor(it.kind, it.cfg).translate([a.x + sizeOf(it).w / 2, -z, a.y]));
+    }
+  }
+  const all = k.Manifold.union(parts);
+  save(new Blob([toSTL(meshArrays(all), 'shelf_house_assembly')], { type: 'model/stl' }), 'shelf_house_assembly.stl');
+  all.delete();
+  parts.forEach((m) => m.delete());
+};
+
+// ------------------------------------------------------------------ toolbar
+
+$('undo').onclick = undo;
+$('redo').onclick = redo;
+$('clear').onclick = () => { selectedId = null; commit({ items: [] }); };
+const loadExample = () => { selectedId = null; fitted = false; commit(makeExample()); };
+$('example').onclick = loadExample;
+$('empty-example').onclick = loadExample;
+$('save').onclick = () => save(new Blob([JSON.stringify({ items: state.items, types: customTypes }, null, 2)], { type: 'application/json' }), 'shelf_house_layout.json');
+$('open').onchange = async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    const next = sanitize(data);
+    if (Array.isArray(data.types)) {
+      for (const t of data.types) if (t?.key && t.cfg && !customTypes.some((c) => c.key === t.key)) customTypes.push(t);
+      saveTypes();
+      renderPalette();
+    }
+    selectedId = null;
+    fitted = false;
+    commit(next);
+  } catch {
+    flash(`${f.name} is not a Shelf House layout. Choose a .json file saved with “Save layout”.`);
+  }
+};
+
+// ------------------------------------------------------------------ render
+
+const currentView = () => (drag?.moved && drag.preview ? drag.preview : state);
+
+function updateHistoryButtons() {
+  $('undo').disabled = !undoStack.length && !editSnapshot;
+  $('redo').disabled = !redoStack.length;
+}
+
+function render() {
+  const view = currentView();
+  settle(view);
+  renderMat(view);
+  render3D(view);
+  renderSelection(view);
+  renderBom();
+  updateHistoryButtons();
+  let maxX = -Infinity, minX = Infinity, maxY = 0, maxD = 0;
+  for (const it of view.items.filter(isRoom)) {
+    const s = sizeOf(it);
+    minX = Math.min(minX, it.x); maxX = Math.max(maxX, it.x + s.w); maxY = Math.max(maxY, it.y + s.h); maxD = Math.max(maxD, s.d);
+  }
+  $('overall').textContent = maxY ? `Overall ${fmt(maxX - minX)} × ${fmt(maxY)} × ${fmt(maxD)} mm` : '';
+  pruneCache();
+}
+
+state = load() || settle(makeExample());
+renderPalette();
+render();
+renderInspector();
