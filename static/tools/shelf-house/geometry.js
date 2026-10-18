@@ -14,9 +14,14 @@ export const SHAPES = ['rect', 'arch', 'round'];
 
 const SEG = 16; // segments per quarter circle
 
+// Factory sizes of the two room widths, the height and the depth. Rooms
+// follow the page's settings, which start from these, on every size the user
+// has not set themselves.
+export const ROOM_DEFAULTS = { wide: 120, narrow: 78, h: 72, d: 56 };
+
 export function defaultRoom(over = {}) {
   return {
-    w: 120, h: 72, d: 56,
+    w: ROOM_DEFAULTS.wide, h: ROOM_DEFAULTS.h, d: ROOM_DEFAULTS.d,
     walls: { left: 3, right: 3, ceiling: 3, floor: 3, back: 3 },
     outerR: 8, innerR: 5,
     outer: { tl: true, tr: true, br: true, bl: true },
@@ -27,24 +32,24 @@ export function defaultRoom(over = {}) {
   };
 }
 
-// An opening cut through one wall. Position meaning depends on the wall:
-//  back, left, right: x = centre offset from the wall's middle,
-//                     y = sill height above the floor (0 = doorway)
-//  ceiling, floor:    x = offset across the width, y = offset front/back
-//                     (both from the middle)
+// An opening cut through one wall, positioned from the wall's middle:
+//  back, left, right: x = along the wall; y = up from the middle of the
+//                     interior height (anchor 'centre', a window) or up from
+//                     the floor (anchor 'floor', a doorway, normally 0)
+//  ceiling, floor:    x = across the width, y = front/back
 // The shape is split by `cols` × `rows` glazing bars of width `bar`, and
 // repeated `count` times, `pitch` mm apart (centre to centre).
 export function defaultOpening(over = {}) {
   return {
-    wall: 'back', shape: 'rect', x: 0, y: 20, w: 30, h: 30, r: 0,
+    wall: 'back', anchor: 'centre', shape: 'rect', x: 0, y: 0, w: 30, h: 30, r: 0,
     cols: 1, rows: 1, bar: 2.5, count: 1, pitch: 40,
     ...over,
   };
 }
 
 export const OPENING_PRESETS = {
-  window: () => defaultOpening({ wall: 'back', shape: 'rect', y: 20, w: 34, h: 30, cols: 2, rows: 2 }),
-  doorway: () => defaultOpening({ wall: 'left', shape: 'arch', y: 0, w: 24, h: 50 }),
+  window: () => defaultOpening({ wall: 'back', shape: 'rect', y: 2, w: 34, h: 30, cols: 2, rows: 2 }),
+  doorway: () => defaultOpening({ wall: 'left', anchor: 'floor', shape: 'arch', y: 0, w: 24, h: 50 }),
   skylight: () => defaultOpening({ wall: 'ceiling', shape: 'round', y: 0, w: 30, h: 30, cols: 2, rows: 2 }),
 };
 
@@ -61,54 +66,66 @@ export function defaultStairs(over = {}) {
 
 export const isStairs = (cfg) => cfg.form === 'stairs';
 
+const onWall = (o) => o.wall === 'back' || o.wall === 'left' || o.wall === 'right';
+
+// Openings saved before anchors measured y on a wall as the sill height. A
+// sill of 0 was a doorway; anything else becomes a window measured from the
+// middle of this room's interior, so it cuts exactly the same hole.
+export function migrateOpening(cfg, o) {
+  if (o.anchor || !onWall(o)) return defaultOpening({ ...o });
+  if (!o.y) return defaultOpening({ ...o, anchor: 'floor', y: 0 });
+  const b = innerBox(cfg);
+  return defaultOpening({ ...o, anchor: 'centre', y: o.y + o.h / 2 - (b.y1 - b.y0) / 2 });
+}
+
 const op = defaultOpening;
 export const PRESETS = {
   wide_6pane: {
-    name: 'Wide · 6-pane', kind: 'room',
-    cfg: defaultRoom({ color: '#e9c46a', openings: [op({ y: 19, w: 46, h: 36, cols: 2, rows: 3 })] }),
+    name: 'Wide · 6-pane', kind: 'room', size: 'wide',
+    cfg: defaultRoom({ color: '#e9c46a', openings: [op({ y: 4, w: 46, h: 36, cols: 2, rows: 3 })] }),
   },
   wide_arched: {
-    name: 'Wide · arched', kind: 'room',
-    cfg: defaultRoom({ color: '#f4a261', openings: [op({ shape: 'arch', y: 16, w: 22, h: 40, rows: 2, count: 3, pitch: 28 })] }),
+    name: 'Wide · arched', kind: 'room', size: 'wide',
+    cfg: defaultRoom({ color: '#f4a261', openings: [op({ shape: 'arch', y: 3, w: 22, h: 40, rows: 2, count: 3, pitch: 28 })] }),
   },
   wide_porthole: {
-    name: 'Wide · portholes', kind: 'room',
+    name: 'Wide · portholes', kind: 'room', size: 'wide',
     cfg: defaultRoom({
       color: '#8ab17d',
       openings: [
-        op({ shape: 'round', x: -26, y: 20, w: 34, h: 34, cols: 2, rows: 2 }),
-        op({ shape: 'round', x: 20, y: 20, w: 34, h: 34, cols: 2, rows: 2 }),
-        op({ x: 45, y: 27, w: 7, h: 20, r: 3.5 }),
+        op({ shape: 'round', x: -26, y: 4, w: 34, h: 34, cols: 2, rows: 2 }),
+        op({ shape: 'round', x: 20, y: 4, w: 34, h: 34, cols: 2, rows: 2 }),
+        op({ x: 45, y: 4, w: 7, h: 20, r: 3.5 }),
       ],
     }),
   },
   wide_doorways: {
-    name: 'Wide · doorways', kind: 'room',
+    name: 'Wide · doorways', kind: 'room', size: 'wide',
     cfg: defaultRoom({
       color: '#cdb4db',
       openings: [
-        op({ wall: 'left', shape: 'arch', y: 0, w: 24, h: 50 }),
-        op({ wall: 'right', shape: 'arch', y: 0, w: 24, h: 50 }),
-        op({ y: 22, w: 40, h: 26, r: 4, cols: 3 }),
+        op({ wall: 'left', anchor: 'floor', shape: 'arch', y: 0, w: 24, h: 50 }),
+        op({ wall: 'right', anchor: 'floor', shape: 'arch', y: 0, w: 24, h: 50 }),
+        op({ y: 2, w: 40, h: 26, r: 4, cols: 3 }),
       ],
     }),
   },
   narrow_4pane: {
-    name: 'Narrow · 4-pane', kind: 'room',
-    cfg: defaultRoom({ w: 78, color: '#7fb7be', openings: [op({ y: 24, w: 34, h: 30, cols: 2, rows: 2 })] }),
+    name: 'Narrow · 4-pane', kind: 'room', size: 'narrow',
+    cfg: defaultRoom({ w: ROOM_DEFAULTS.narrow, color: '#7fb7be', openings: [op({ y: 6, w: 34, h: 30, cols: 2, rows: 2 })] }),
   },
   narrow_skylight: {
-    name: 'Narrow · skylight', kind: 'room',
+    name: 'Narrow · skylight', kind: 'room', size: 'narrow',
     cfg: defaultRoom({
-      w: 78, color: '#a8dadc',
+      w: ROOM_DEFAULTS.narrow, color: '#a8dadc',
       outer: { tl: true, tr: true, br: false, bl: false },
       inner: { tl: true, tr: true, br: false, bl: false },
       openings: [op({ wall: 'ceiling', shape: 'rect', y: 0, w: 44, h: 30, r: 3, cols: 2 })],
     }),
   },
   narrow_blank: {
-    name: 'Narrow · blank', kind: 'room',
-    cfg: defaultRoom({ w: 78 }),
+    name: 'Narrow · blank', kind: 'room', size: 'narrow',
+    cfg: defaultRoom({ w: ROOM_DEFAULTS.narrow }),
   },
   round_table: {
     name: 'Round table', kind: 'furniture',
@@ -216,9 +233,9 @@ function wallFrame(cfg, wall) {
   const t = cfg.walls, b = innerBox(cfg);
   const zMid = (t.back + cfg.d) / 2;
   switch (wall) {
-    case 'back': return { uMid: cfg.w / 2, vBase: b.y0, clip: [b.x0, b.y0, b.x1, b.y1] };
+    case 'back': return { uMid: cfg.w / 2, vBase: b.y0, vMid: (b.y0 + b.y1) / 2, clip: [b.x0, b.y0, b.x1, b.y1] };
     case 'left':
-    case 'right': return { uMid: zMid, vBase: b.y0, clip: [t.back, b.y0, cfg.d + 1, b.y1] };
+    case 'right': return { uMid: zMid, vBase: b.y0, vMid: (b.y0 + b.y1) / 2, clip: [t.back, b.y0, cfg.d + 1, b.y1] };
     default: {
       // Ceiling/floor openings are centred, so shift the base down by half the height.
       return { uMid: cfg.w / 2, vBase: zMid, clip: [b.x0, t.back, b.x1, cfg.d + 1], centred: true };
@@ -230,8 +247,9 @@ function wallHoles(k, cfg, wall) {
   const list = [...cfg.openings, ...(cfg.stairwells || [])].filter((o) => o.wall === wall);
   if (!list.length) return null;
   const f = wallFrame(cfg, wall);
-  const cs = k.CrossSection.union(list.map((o) =>
-    openingSection(k, o, f.uMid, f.centred ? f.vBase - o.h / 2 : f.vBase)));
+  // Centred openings put their middle on the wall's; doorways stand on the floor.
+  const v = (o) => (f.centred ? f.vBase - o.h / 2 : o.anchor === 'floor' ? f.vBase : f.vMid - o.h / 2);
+  const cs = k.CrossSection.union(list.map((o) => openingSection(k, o, f.uMid, v(o))));
   const [x0, y0, x1, y1] = f.clip;
   const clipped = wall === 'back' ? cs.intersect(innerSection(k, cfg)) : cs.intersect(rect(k, x0, y0, x1, y1));
   return clipped.isEmpty() ? null : clipped;

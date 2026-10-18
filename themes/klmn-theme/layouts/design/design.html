@@ -411,6 +411,33 @@
                 </div>
             </div>
 
+            <div class="ds-block">
+                <p class="ds-name">.rail-band &rsaquo; .rail-band-head + .rail-band-fields</p>
+                <div class="rail-band">
+                    <div class="rail-band-head">
+                        <h2>Shelf settings</h2>
+                        <span class="seg" role="group" aria-label="Units">
+                            <button type="button" class="is-on">mm</button>
+                            <button type="button">in</button>
+                        </span>
+                    </div>
+                    <div class="rail-band-fields">
+                        <div class="field field-measure">
+                            <label for="ds-band-w">Wide rooms</label>
+                            <span class="field-value"><input id="ds-band-w" type="number" value="120"
+                                  min="10" max="500" step="0.5"><span class="unit">mm</span></span>
+                        </div>
+                        <div class="field field-measure">
+                            <label for="ds-band-n">Narrow rooms</label>
+                            <span class="field-value"><input id="ds-band-n" type="number" value="78"
+                                  min="10" max="500" step="0.5"><span class="unit">mm</span></span>
+                        </div>
+                    </div>
+                    <p class="rail-hint">Every room takes these sizes, except the ones you set on the
+                       room itself.</p>
+                </div>
+            </div>
+
             <dl class="ds-ledger">
                 <dt>.rail-group</dt>
                 <dd><span class="ds-role">A set of controls under a ruled heading. Sentence case —
@@ -462,6 +489,16 @@
                 <dt>.toggle-row</dt>
                 <dd><span class="ds-role">A switch for a setting that turns a whole group on. The
                     real checkbox stays in the DOM and keeps the keyboard.</span></dd>
+                <dt>.rail-band</dt>
+                <dd><span class="ds-role">The rail laid across the top of the bed, for the few
+                    settings that apply to the whole job rather than to one part of it. Its inputs
+                    are scoped like the rail's, so the same fields work in it.</span></dd>
+                <dt>.rail-band-head</dt>
+                <dd><span class="ds-role">The band's ruled heading. It can carry one control that
+                    changes how the job reads rather than what it is, such as its units.</span></dd>
+                <dt>.rail-band-fields</dt>
+                <dd><span class="ds-role">The band's fields in as many columns as fit, each one a
+                    normal <span class="ds-code">.field</span>.</span></dd>
                 <dt>.chips / .chip</dt>
                 <dd><span class="ds-role">The handful of values worth one tap, under the field they
                     fill in. The unit is on that field, so a chip carries a bare value.</span></dd>

@@ -5,14 +5,16 @@ import { zipSync } from 'fflate';
 import {
   PRESETS, OPENING_PRESETS, CORNERS, WALLS, SHAPES,
   blockSize, buildBlock, frontProfile, meshArrays, toSTL, innerBox,
-  defaultStairs, isStairs, stairwell,
+  defaultStairs, isStairs, stairwell, ROOM_DEFAULTS, migrateOpening,
 } from './geometry.js';
 
 const k = await Module();
 k.setup();
 
-const STORAGE_KEY = 'shelf-house-layout-v2';
+const STORAGE_KEY = 'shelf-house-layout-v3';
+const LEGACY_KEY = 'shelf-house-layout-v2';
 const TYPES_KEY = 'shelf-house-types-v1';
+const UNITS_KEY = 'shelf-house-units';
 const PLA_DENSITY = 1.24; // g/cm³
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const $ = (id) => document.getElementById(id);
@@ -21,6 +23,25 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const fmt = (v) => (Math.round(v * 10) / 10).toString();
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// ------------------------------------------------------------------ units
+
+// Everything is stored, built and exported in millimetres; inches only change
+// what the page shows and how typed lengths are read.
+const MM_PER_IN = 25.4;
+let units = loadUnits();
+
+function loadUnits() {
+  try { return localStorage.getItem(UNITS_KEY) === 'in' ? 'in' : 'mm'; } catch { return 'mm'; }
+}
+const inches = () => units === 'in';
+const unitName = () => (inches() ? 'in' : 'mm');
+const toUnit = (mm) => (inches() ? mm / MM_PER_IN : mm);
+const fromUnit = (v) => (inches() ? v * MM_PER_IN : v);
+const fmtLen = (mm) => (inches() ? (Math.round((mm / MM_PER_IN) * 100) / 100).toString() : fmt(mm));
+const len = (mm) => `${fmtLen(mm)} ${unitName()}`;
+// The sideways step of the nudge chips and Shift+arrow: 10 mm, or half an inch.
+const bigStep = () => (inches() ? MM_PER_IN / 2 : 10);
+
 // ------------------------------------------------------------------ block types
 
 let customTypes = loadTypes();
@@ -28,7 +49,7 @@ let customTypes = loadTypes();
 function loadTypes() {
   try {
     const t = JSON.parse(localStorage.getItem(TYPES_KEY));
-    if (Array.isArray(t)) return t.filter((x) => x && x.key && x.cfg);
+    if (Array.isArray(t)) return t.filter((x) => x && x.key && x.cfg).map(migrateItem);
   } catch { /* storage unavailable */ }
   return [];
 }
@@ -40,7 +61,52 @@ function typeDef(key) {
 }
 function fromType(key) {
   const t = typeDef(key);
-  return { kind: t.kind, name: t.name, base: key, cfg: clone(t.cfg) };
+  const block = { kind: t.kind, name: t.name, base: key, cfg: clone(t.cfg) };
+  if (t.kind === 'room') Object.assign(block, { size: t.size || 'wide', own: clone(t.own || {}) });
+  return block;
+}
+
+// ------------------------------------------------------------------ sizes
+
+// A room follows the page's settings on every size the user has not set:
+// `size` says which of the two widths it takes, `own` which sizes are its own.
+// cfg.w/h/d always hold the resolved numbers, so geometry never needs to know.
+function resolveSize(it, s) {
+  const own = it.own || (it.own = {});
+  if (!own.w) it.cfg.w = it.size === 'narrow' ? s.narrow : s.wide;
+  if (!own.h) it.cfg.h = s.h;
+  if (!own.d) it.cfg.d = s.d;
+  return it;
+}
+
+function applyDefaults(layout) {
+  const s = layout.settings = { ...ROOM_DEFAULTS, ...(layout.settings || state?.settings) };
+  for (const it of layout.items) if (isRoom(it)) resolveSize(it, s);
+  return layout;
+}
+
+const defaultFor = (it, dim, s = state.settings) => (dim === 'w' ? s[it.size === 'narrow' ? 'narrow' : 'wide'] : s[dim]);
+
+// Rooms and room types saved before settings existed were made at the factory
+// sizes: anything else was set by hand. Their wall openings move to anchors.
+function migrateItem(it) {
+  if (it.kind !== 'room') return it;
+  const c = it.cfg;
+  if (it.size !== 'wide' && it.size !== 'narrow') it.size = c.w <= (ROOM_DEFAULTS.wide + ROOM_DEFAULTS.narrow) / 2 ? 'narrow' : 'wide';
+  if (!it.own || typeof it.own !== 'object') {
+    it.own = {};
+    if (c.w !== ROOM_DEFAULTS[it.size]) it.own.w = true;
+    if (c.h !== ROOM_DEFAULTS.h) it.own.h = true;
+    if (c.d !== ROOM_DEFAULTS.d) it.own.d = true;
+  }
+  c.openings = (c.openings || []).map((o) => migrateOpening(c, o));
+  return it;
+}
+
+function sanitizeSettings(s) {
+  const out = { ...ROOM_DEFAULTS };
+  for (const key of Object.keys(out)) if (Number.isFinite(s?.[key]) && s[key] >= 10) out[key] = s[key];
+  return out;
 }
 
 function makeExample() {
@@ -69,18 +135,19 @@ const redoStack = [];
 
 function load() {
   try {
-    const s = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY));
     if (s && Array.isArray(s.items)) return sanitize(s);
   } catch { /* storage unavailable or corrupt */ }
   return null;
 }
 
 function sanitize(s) {
-  const items = s.items.filter((it) => it && (it.kind === 'room' || it.kind === 'furniture') && it.cfg && Number.isFinite(it.x));
-  return settle({ items });
+  const items = s.items.filter((it) => it && (it.kind === 'room' || it.kind === 'furniture') && it.cfg && Number.isFinite(it.x)).map(migrateItem);
+  return settle({ items, settings: sanitizeSettings(s.settings) });
 }
 
-const snap = (s) => JSON.stringify({ items: s.items });
+const snap = (s) => JSON.stringify({ settings: s.settings, items: s.items });
+const layoutFile = () => JSON.stringify({ version: 3, settings: state.settings, items: state.items, types: customTypes }, null, 2);
 
 function persist() {
   try { localStorage.setItem(STORAGE_KEY, snap(state)); } catch { /* ignore */ }
@@ -121,13 +188,15 @@ function afterHistory() {
   persist();
   render();
   renderInspector();
+  renderSettings();
+  renderPalette();
 }
 
 const nextId = () => Math.max(0, ...state.items.map((i) => i.id)) + 1;
 const isRoom = (it) => it.kind === 'room';
 const sizeOf = (it) => blockSize(it.kind, it.cfg);
 const selected = () => state.items.find((i) => i.id === selectedId);
-const layoutCopy = () => ({ items: clone(state.items) });
+const layoutCopy = () => ({ items: clone(state.items), settings: { ...state.settings } });
 
 // Absolute bottom-left of an item in a layout.
 function absPos(layout, it) {
@@ -143,6 +212,7 @@ function absPos(layout, it) {
 // room. Rooms are processed bottom-up; the one being moved yields to rooms
 // already at the same height so it lands on top rather than shoving them.
 function settle(layout, movedId = null) {
+  applyDefaults(layout);
   const rooms = layout.items.filter(isRoom);
   rooms.sort((a, b) => a.y - b.y || (a.id === movedId) - (b.id === movedId) || a.x - b.x);
   const placed = [];
@@ -251,7 +321,7 @@ function placeFurniture(layout, it, ax, px, py) {
 
 // Layout with one item moved to (ax, ay); px/py is the pointer.
 function proposeMove(base, d, ax, ay, px, py, tol) {
-  const layout = { items: clone(base.items) };
+  const layout = { items: clone(base.items), settings: base.settings };
   let it = layout.items.find((i) => i.id === d.id);
   if (!it) { it = { id: d.id, ...fromType(d.typeKey), x: 0, y: 0 }; layout.items.push(it); }
   if (isRoom(it)) {
@@ -378,12 +448,13 @@ function renderPalette() {
     ...customTypes.map((t) => ({ ...t, custom: true })),
   ];
   for (const t of entries) {
+    if (t.kind === 'room') t.cfg = resolveSize({ size: t.size, own: { ...t.own }, cfg: clone(t.cfg) }, state.settings).cfg;
     const { w, h } = blockSize(t.kind, t.cfg);
     const li = document.createElement('li');
         const btn = document.createElement('button');
     btn.className = 'sh-card';
     btn.type = 'button';
-    btn.innerHTML = `${thumb(t.kind, t.cfg)}<div><strong>${esc(t.name)}</strong><span>${t.kind === 'room' ? `${fmt(w)} × ${fmt(h)} mm` : 'Sits inside a room'}</span></div>`;
+    btn.innerHTML = `${thumb(t.kind, t.cfg)}<div><strong>${esc(t.name)}</strong><span>${t.kind === 'room' ? `${fmtLen(w)} × ${fmtLen(h)} ${unitName()}` : 'Sits inside a room'}</span></div>`;
     btn.setAttribute('aria-label', `Add ${t.name}`);
     btn.addEventListener('pointerdown', (e) => startPaletteDrag(e, t.key));
     btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); addBlock(t.key); } });
@@ -454,18 +525,21 @@ function renderMat(layout) {
   mat.setAttribute('preserveAspectRatio', 'xMidYMax meet');
   mat.replaceChildren();
 
+  // A 10/50 mm grid, or quarter inches under whole ones; the ruler counts
+  // every 50 mm or every 2 in.
+  const [minor, major, every] = inches() ? [MM_PER_IN / 4, MM_PER_IN, MM_PER_IN * 2] : [10, 50, 50];
   const defs = svgEl('defs');
   defs.innerHTML = `
-    <pattern id="g10" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M10 0H0V10" fill="none" stroke="var(--mat-minor)" stroke-width="0.5"/></pattern>
-    <pattern id="g50" width="50" height="50" patternUnits="userSpaceOnUse"><rect width="50" height="50" fill="url(#g10)"/><path d="M50 0H0V50" fill="none" stroke="var(--mat-major)" stroke-width="0.8"/></pattern>`;
+    <pattern id="g10" width="${minor}" height="${minor}" patternUnits="userSpaceOnUse"><path d="M${minor} 0H0V${minor}" fill="none" stroke="var(--mat-minor)" stroke-width="0.5"/></pattern>
+    <pattern id="g50" width="${major}" height="${major}" patternUnits="userSpaceOnUse"><rect width="${major}" height="${major}" fill="url(#g10)"/><path d="M${major} 0H0V${major}" fill="none" stroke="var(--mat-major)" stroke-width="0.8"/></pattern>`;
   mat.append(defs);
   const big = { x: vb.x - 2000, y: vb.y - 2000, width: vb.w + 4000, height: vb.h + 4000 };
   mat.append(svgEl('rect', { ...big, fill: 'var(--mat)' }));
   mat.append(svgEl('rect', { ...big, fill: 'url(#g50)' }));
   mat.append(svgEl('line', { x1: vb.x - 2000, x2: vb.x + vb.w + 2000, y1: 0, y2: 0, class: 'ground' }));
-  for (let x = Math.ceil((vb.x - 400) / 50) * 50; x < vb.x + vb.w + 400; x += 50) {
-    const t = svgEl('text', { x, y: 14, class: 'ruler', 'text-anchor': 'middle' });
-    t.textContent = x;
+  for (let i = Math.ceil((vb.x - 400) / every); i * every < vb.x + vb.w + 400; i++) {
+    const t = svgEl('text', { x: i * every, y: 14, class: 'ruler', 'text-anchor': 'middle' });
+    t.textContent = Math.round(toUnit(i * every));
     mat.append(t);
   }
 
@@ -633,8 +707,8 @@ window.addEventListener('keydown', (e) => {
   if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
   if (selectedId == null || mod) return;
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected(); }
-  else if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(e.shiftKey ? -10 : -1); }
-  else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(e.shiftKey ? 10 : 1); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(e.shiftKey ? -bigStep() : -1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(e.shiftKey ? bigStep() : 1); }
   else if (e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); }
   else if (e.key === 'Escape') { select(null); render(); }
 });
@@ -652,12 +726,12 @@ function renderSelection(layout) {
   }
   const a = absPos(layout, it);
   const info = layout.info?.get(it.id);
-  const where = isRoom(it) ? `x ${fmt(a.x)} mm, floor ${(info?.level ?? 0) + 1}` : it.parent != null ? 'inside a room' : 'on the ground';
+  const where = isRoom(it) ? `x ${len(a.x)}, floor ${(info?.level ?? 0) + 1}` : it.parent != null ? 'inside a room' : 'on the ground';
   box.innerHTML = `<strong>${esc(it.name)}</strong><span class="spacer">${where}${info?.tips ? ', <span class="sh-warn">overhangs and will tip</span>' : ''}</span>`;
   const mk = (label, fn, title) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = label; b.title = title || ''; b.onclick = fn; return b; };
   box.append(
-    mk('◀ 10', () => nudge(-10), 'Move left 10 mm'),
-    mk('10 ▶', () => nudge(10), 'Move right 10 mm'),
+    mk(`◀ ${fmtLen(bigStep())}`, () => nudge(-bigStep()), `Move left ${len(bigStep())}`),
+    mk(`${fmtLen(bigStep())} ▶`, () => nudge(bigStep()), `Move right ${len(bigStep())}`),
     mk('duplicate', duplicateSelected, 'Stack a copy on top (D)'),
     mk('delete', removeSelected, 'Delete (Del)'),
   );
@@ -672,11 +746,30 @@ const SHAPE_LABEL = { rect: 'Rectangle', arch: 'Arch', round: 'Round' };
 const CORNER_LABEL = { tl: 'top left', tr: 'top right', br: 'bottom right', bl: 'bottom left' };
 
 // One control per row, in the rail's label/value column. Lengths carry the
-// ruler ticks; counts do not.
-function num(label, path, value, { min = 0, max = 500, step = 0.5, hint = '', unit = 'mm' } = {}) {
+// ruler ticks and show in the page's units; counts do not. `fine` lengths
+// (walls, bars, radii) step by a hundredth of an inch rather than five.
+function num(label, path, value, { min = 0, max = 500, step = 0.5, hint = '', unit = 'mm', fine = false, after = '' } = {}) {
   const id = 'sh-' + path.replace(/\./g, '-');
-  return `<div class="field${unit === 'mm' ? ' field-measure' : ''}"><label for="${id}"${hint ? ` title="${esc(hint)}"` : ''}>${label}</label>
-    <span class="field-value"><input id="${id}" type="number" data-path="${path}" value="${fmt(value)}" min="${min}" max="${max}" step="${step}"${hint ? ` title="${esc(hint)}"` : ''}>${unit ? `<span class="unit">${unit}</span>` : ''}</span></div>`;
+  const measure = unit === 'mm';
+  const attrs = measure && inches()
+    ? { value: fmtLen(value), min: Math.round(toUnit(min) * 100) / 100, max: Math.round(toUnit(max) * 100) / 100, step: fine ? 0.01 : 0.05 }
+    : { value: fmt(value), min, max, step };
+  return `<div class="field${measure ? ' field-measure' : ''}"><label for="${id}"${hint ? ` title="${esc(hint)}"` : ''}>${label}</label>
+    <span class="field-value"><input id="${id}" type="number" data-path="${path}"${measure ? ' data-measure' : ''} value="${attrs.value}" min="${attrs.min}" max="${attrs.max}" step="${attrs.step}"${hint ? ` title="${esc(hint)}"` : ''}>${unit ? `<span class="unit">${measure ? unitName() : unit}</span>` : ''}${after}</span></div>`;
+}
+
+// The ↺ beside a size that no longer follows its default.
+const RESET_ICON = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6a3.5 3.5 0 1 0 1.1-2.55" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M2 1.6v2.6h2.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const resetChip = (act, attrs, what, to) =>
+  `<button type="button" class="sh-reset" data-act="${act}" ${attrs} title="Back to the default, ${len(to)}" aria-label="${what} back to the default, ${len(to)}">${RESET_ICON}</button>`;
+
+function sizeField(it, label, dim) {
+  const own = it.own?.[dim];
+  return num(label, `cfg.${dim}`, it.cfg[dim], {
+    min: 10,
+    hint: own ? 'Set for this block' : 'Follows the shelf settings',
+    after: own ? resetChip('size-default', `data-dim="${dim}"`, label, defaultFor(it, dim)) : '',
+  });
 }
 
 function pick(label, path, options, value, labels) {
@@ -687,16 +780,19 @@ function pick(label, path, options, value, labels) {
 
 const group = (title, body) => `<div class="rail-group"><h2>${title}</h2>${body}</div>`;
 
+// Every opening is placed from the middle of its wall.
 function positionLabels(wall) {
-  if (wall === 'left' || wall === 'right') return ['Along depth', 'Sill height', 'Positive moves it toward the front'];
-  if (wall === 'ceiling' || wall === 'floor') return ['Across', 'Along depth', 'Positive moves it toward the front'];
-  return ['Across', 'Sill height', 'Positive moves it right'];
+  if (wall === 'left' || wall === 'right') return ['Along depth', 'Up from centre', 'From the middle of the wall; positive moves it toward the front'];
+  if (wall === 'ceiling' || wall === 'floor') return ['Across', 'Along depth', 'From the middle; positive moves it toward the front'];
+  return ['Across', 'Up from centre', 'From the middle of the wall; positive moves it right'];
 }
+const ANCHORS = ['centre', 'floor'];
+const ANCHOR_LABEL = { centre: 'Centre of the wall', floor: 'Floor (doorway)' };
 
 function openingHTML(o, i) {
   const [xl, yl, xh] = positionLabels(o.wall);
   const p = `cfg.openings.${i}`;
-  const centredY = o.wall === 'ceiling' || o.wall === 'floor';
+  const onWall = !(o.wall === 'ceiling' || o.wall === 'floor');
   const count = { unit: '', step: 1, min: 1, max: 12 };
   return `<div class="sh-opening">
     <div class="sh-opening-head"><span>Opening ${i + 1}</span><span class="chips">
@@ -704,15 +800,16 @@ function openingHTML(o, i) {
       <button type="button" class="chip" data-act="del-opening" data-i="${i}" title="Remove opening">remove</button>
     </span></div>
     ${pick('Wall', `${p}.wall`, WALLS, o.wall, WALL_LABEL)}
+    ${onWall ? pick('Sits on', `${p}.anchor`, ANCHORS, o.anchor, ANCHOR_LABEL) : ''}
     ${pick('Shape', `${p}.shape`, SHAPES, o.shape, SHAPE_LABEL)}
     ${num(xl, `${p}.x`, o.x, { min: -500, hint: xh })}
-    ${num(yl, `${p}.y`, o.y, { min: centredY ? -500 : 0 })}
+    ${onWall && o.anchor === 'floor' ? '' : num(yl, `${p}.y`, o.y, { min: -500, hint: onWall ? 'From the middle of the wall; positive moves it up' : '' })}
     ${num('Width', `${p}.w`, o.w, { min: 1 })}
     ${num('Height', `${p}.h`, o.h, { min: 1 })}
-    ${o.shape === 'rect' ? num('Corner radius', `${p}.r`, o.r, { max: 100 }) : ''}
+    ${o.shape === 'rect' ? num('Corner radius', `${p}.r`, o.r, { max: 100, fine: true }) : ''}
     ${num('Panes across', `${p}.cols`, o.cols, count)}
     ${num('Panes up', `${p}.rows`, o.rows, count)}
-    ${(o.cols > 1 || o.rows > 1) ? num('Bar width', `${p}.bar`, o.bar, { max: 20 }) : ''}
+    ${(o.cols > 1 || o.rows > 1) ? num('Bar width', `${p}.bar`, o.bar, { max: 20, fine: true }) : ''}
     ${num('Copies', `${p}.count`, o.count, count)}
     ${o.count > 1 ? num('Spacing', `${p}.pitch`, o.pitch, { min: 1, hint: 'Centre to centre' }) : ''}
   </div>`;
@@ -756,11 +853,11 @@ function cornersHTML(cfg) {
 
 function roomInspector(it) {
   const c = it.cfg;
-  const wall = { min: 0.4, max: 30, step: 0.2 };
+  const wall = { min: 0.4, max: 30, step: 0.2, fine: true };
   return group('Size', `
-      ${num('Width', 'cfg.w', c.w, { min: 10 })}
-      ${num('Height', 'cfg.h', c.h, { min: 10 })}
-      ${num('Depth', 'cfg.d', c.d, { min: 10 })}`)
+      ${sizeField(it, it.size === 'narrow' ? 'Width (narrow)' : 'Width (wide)', 'w')}
+      ${sizeField(it, 'Height', 'h')}
+      ${sizeField(it, 'Depth', 'd')}`)
     + group('Wall thickness', `
       ${num('Left wall', 'cfg.walls.left', c.walls.left, wall)}
       ${num('Right wall', 'cfg.walls.right', c.walls.right, wall)}
@@ -845,20 +942,31 @@ function readInput(el) {
     if (!Number.isFinite(v)) return undefined;
     v = clamp(v, Number(el.min), Number(el.max));
     if (el.step === '1') v = Math.round(v);
-    return v;
+    return 'measure' in el.dataset ? fromUnit(v) : v;
   }
   return el.value;
 }
+
+const shown = (el, v) => ('measure' in el.dataset ? fmtLen(v) : fmt(v));
 
 function liveEdit(path, value) {
   const it = selected();
   if (!it || value === undefined) return;
   if (!editSnapshot) editSnapshot = snap(state);
   const old = new Map(state.items.map((i) => [i.id, sizeOf(i)]));
+  const before = getPath(it, path);
   setPath(it, path, value);
-  // Moving an opening to the ceiling/floor changes what its y offset means.
-  const m = path.match(/^cfg\.openings\.(\d+)\.wall$/);
-  if (m && (value === 'ceiling' || value === 'floor')) it.cfg.openings[Number(m[1])].y = 0;
+  // A size typed into a room is its own from now on.
+  const dim = path.match(/^cfg\.([whd])$/);
+  if (dim && isRoom(it)) it.own = { ...it.own, [dim[1]]: true };
+  // Moving an opening between a wall and the ceiling/floor, or onto the floor
+  // as a doorway, changes what its y offset means: start it from the middle.
+  const m = path.match(/^cfg\.openings\.(\d+)\.(wall|anchor)$/);
+  if (m) {
+    const o = it.cfg.openings[Number(m[1])];
+    const flat = (w) => w === 'ceiling' || w === 'floor';
+    if (m[2] === 'anchor' || flat(value) !== flat(before)) o.y = 0;
+  }
   reflow(state, old);
   persist();
   render();
@@ -887,11 +995,12 @@ insp.addEventListener('change', (e) => {
   if (el.type === 'number') {
     const v = readInput(el);
     if (v !== undefined) liveEdit(el.dataset.path, v);
-    el.value = fmt(getPath(selected(), el.dataset.path));
+    el.value = shown(el, getPath(selected(), el.dataset.path));
   } else liveEdit(el.dataset.path, el.value);
   endEdit();
-  // Some fields show or hide others (shape, panes, copies, wall).
-  if (/\.(shape|wall|cols|rows|count)$/.test(el.dataset.path) || el.dataset.path === 'name') renderInspector();
+  // Some fields show or hide others (shape, panes, copies, wall, anchor), and
+  // a typed room size gains its ↺.
+  if (/\.(shape|wall|anchor|cols|rows|count)$/.test(el.dataset.path) || /^(name|cfg\.[whd])$/.test(el.dataset.path)) renderInspector();
 });
 
 insp.addEventListener('click', (e) => {
@@ -910,6 +1019,7 @@ insp.addEventListener('click', (e) => {
   if (act === 'corner') c[b.dataset.ring][b.dataset.c] = !c[b.dataset.ring][b.dataset.c];
   else if (act === 'corners-all') for (const ring of ['outer', 'inner']) for (const key of CORNERS) c[ring][key] = b.dataset.v === '1';
   else if (act === 'flip') c.flip = !c.flip;
+  else if (act === 'size-default') delete m.own[b.dataset.dim];
   else if (act === 'walls-same') for (const w of WALLS) c.walls[w] = c.walls.left;
   else if (act === 'add-opening') c.openings.push(OPENING_PRESETS[b.dataset.preset]());
   else if (act === 'del-opening') c.openings.splice(i, 1);
@@ -922,8 +1032,13 @@ insp.addEventListener('click', (e) => {
     if (!t) return;
     m.cfg = clone(t.cfg);
     m.name = t.name;
+    if (isRoom(m)) Object.assign(m, { size: t.size || m.size, own: clone(t.own || {}) });
   } else if (act === 'apply-same') {
-    for (const o of layout.items) if (o.kind === m.kind && o.name === m.name) o.cfg = clone(m.cfg);
+    for (const o of layout.items) {
+      if (o.kind !== m.kind || o.name !== m.name) continue;
+      o.cfg = clone(m.cfg);
+      if (isRoom(m)) Object.assign(o, { size: m.size, own: clone(m.own) });
+    }
   } else return;
   reflow(layout, old);
   commit(layout);
@@ -942,7 +1057,7 @@ function saveAsType(it) {
   const key = `custom_${Date.now().toString(36)}`;
   const cfg = clone(it.cfg);
   delete cfg.stairwells; // belongs to where this room stands, not to the type
-  customTypes.push({ key, name, kind: it.kind, cfg });
+  customTypes.push(isRoom(it) ? { key, name, kind: it.kind, cfg, size: it.size, own: clone(it.own || {}) } : { key, name, kind: it.kind, cfg });
   saveTypes();
   renderPalette();
   const layout = layoutCopy();
@@ -958,6 +1073,60 @@ function flash(msg) {
   clearTimeout(flash.t);
   flash.t = setTimeout(() => { el.hidden = true; }, 2600);
 }
+
+// ------------------------------------------------------------------ shelf settings
+
+const SETTING_LABEL = { wide: 'Wide rooms', narrow: 'Narrow rooms', h: 'Height', d: 'Depth' };
+const settingsEl = $('settings');
+
+function renderSettings() {
+  const s = state.settings;
+  settingsEl.innerHTML = Object.keys(SETTING_LABEL).map((key) => num(SETTING_LABEL[key], key, s[key], {
+    min: 10,
+    hint: key === 'wide' || key === 'narrow' ? 'Width' : '',
+    after: s[key] !== ROOM_DEFAULTS[key] ? resetChip('setting-default', `data-key="${key}"`, SETTING_LABEL[key], ROOM_DEFAULTS[key]) : '',
+  })).join('');
+  for (const b of $('units').children) {
+    b.classList.toggle('is-on', b.dataset.units === units);
+    b.setAttribute('aria-pressed', b.dataset.units === units);
+  }
+}
+
+// Every room that has not set a size of its own follows, and rooms that
+// touched or stood on each other keep doing so.
+function setSetting(key, value) {
+  if (state.settings[key] === value) return;
+  const layout = layoutCopy();
+  const old = new Map(state.items.map((i) => [i.id, sizeOf(i)]));
+  layout.settings[key] = value;
+  reflow(layout, old);
+  commit(layout);
+  renderPalette();
+  renderSettings();
+}
+
+settingsEl.addEventListener('change', (e) => {
+  const el = e.target.closest('[data-path]');
+  if (!el) return;
+  const v = readInput(el);
+  if (v !== undefined) setSetting(el.dataset.path, v);
+  el.value = shown(el, state.settings[el.dataset.path]);
+});
+settingsEl.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act="setting-default"]');
+  if (b) setSetting(b.dataset.key, ROOM_DEFAULTS[b.dataset.key]);
+});
+
+$('units').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-units]');
+  if (!b || b.dataset.units === units) return;
+  units = b.dataset.units;
+  try { localStorage.setItem(UNITS_KEY, units); } catch { /* ignore */ }
+  renderSettings();
+  renderPalette();
+  renderInspector();
+  render();
+});
 
 // ------------------------------------------------------------------ 3D view
 
@@ -1149,7 +1318,7 @@ function renderBom() {
     tr.innerHTML = `
       <td><span class="sh-swatch" style="background:${g.cfg.color}"></span>${esc(g.label)}</td>
       <td class="num">${g.qty}</td>
-      <td class="sh-size">${st.size.map(fmt).join(' × ')} mm</td>
+      <td class="sh-size">${st.size.map(fmtLen).join(' × ')} ${unitName()}</td>
       <td class="num">${Math.round(st.grams)} g</td>
       <td></td>`;
     const b = document.createElement('button');
@@ -1192,7 +1361,7 @@ $('zip').onclick = () => {
     lines.push(`${g.qty} x ${g.file}.stl  (${g.label})`);
   }
   files['print_list.txt'] = new TextEncoder().encode(lines.join('\n'));
-  files['layout.json'] = new TextEncoder().encode(JSON.stringify({ items: state.items, types: customTypes }, null, 2));
+  files['layout.json'] = new TextEncoder().encode(layoutFile());
   save(new Blob([zipSync(files, { level: 6 })], { type: 'application/zip' }), 'shelf_house.zip');
 };
 
@@ -1225,7 +1394,7 @@ $('clear').onclick = () => { selectedId = null; commit({ items: [] }); };
 const loadExample = () => { selectedId = null; fitted = false; commit(makeExample()); };
 $('example').onclick = loadExample;
 $('empty-example').onclick = loadExample;
-$('save').onclick = () => save(new Blob([JSON.stringify({ items: state.items, types: customTypes }, null, 2)], { type: 'application/json' }), 'shelf_house_layout.json');
+$('save').onclick = () => save(new Blob([layoutFile()], { type: 'application/json' }), 'shelf_house_layout.json');
 $('open').onchange = async (e) => {
   const f = e.target.files[0];
   e.target.value = '';
@@ -1234,13 +1403,15 @@ $('open').onchange = async (e) => {
     const data = JSON.parse(await f.text());
     const next = sanitize(data);
     if (Array.isArray(data.types)) {
-      for (const t of data.types) if (t?.key && t.cfg && !customTypes.some((c) => c.key === t.key)) customTypes.push(t);
+      for (const t of data.types) if (t?.key && t.cfg && !customTypes.some((c) => c.key === t.key)) customTypes.push(migrateItem(t));
       saveTypes();
       renderPalette();
     }
     selectedId = null;
     fitted = false;
     commit(next);
+    renderSettings();
+    renderPalette();
   } catch {
     flash(`${f.name} is not a Shelf House layout. Choose a .json file saved with “Save layout”.`);
   }
@@ -1268,11 +1439,12 @@ function render() {
     const s = sizeOf(it);
     minX = Math.min(minX, it.x); maxX = Math.max(maxX, it.x + s.w); maxY = Math.max(maxY, it.y + s.h); maxD = Math.max(maxD, s.d);
   }
-  $('overall').textContent = maxY ? `Overall ${fmt(maxX - minX)} × ${fmt(maxY)} × ${fmt(maxD)} mm` : '';
+  $('overall').textContent = maxY ? `Overall ${fmtLen(maxX - minX)} × ${fmtLen(maxY)} × ${fmtLen(maxD)} ${unitName()}` : '';
   pruneCache();
 }
 
 state = load() || settle(makeExample());
+renderSettings();
 renderPalette();
 render();
 renderInspector();

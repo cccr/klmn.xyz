@@ -174,3 +174,21 @@
     background: var(--ink); color: var(--paper);
 }
 .sh-toast[hidden] { display: none; }
+
+/* ── Shelf settings ────────────────────────────────────────────────────── */
+
+.sh-settings { margin-bottom: 1.5rem; }
+
+/* The way back to a default, beside a size that has left it. */
+.sh-reset {
+    align-self: center;
+    margin-left: .25rem;
+    padding: 0 .2rem;
+    line-height: 0;
+    background: none; border: 0;
+    color: var(--ink-soft);
+    cursor: pointer;
+}
+.sh-reset svg { width: .75rem; height: .75rem; }
+.sh-reset:hover { color: var(--reg); }
+.sh-reset:focus-visible { outline: 1px solid var(--reg); outline-offset: 2px; }

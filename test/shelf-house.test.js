@@ -70,6 +70,44 @@ test('a room cuts its stairwells and shows them edge-on in the front view', asyn
   assert.deepStrictEqual(g.frontProfile(k, 'room', wide).marks, [[90, 0, cfg.w - cfg.walls.right, cfg.walls.floor]]);
 });
 
+test('a centred window stays in the middle of its wall when the room gets shorter', async () => {
+  const { g, k } = await geometry();
+  const win = g.defaultOpening({ anchor: 'centre', y: 0, w: 30, h: 30 });
+  for (const h of [72, 50]) {
+    const cfg = g.defaultRoom({ h, openings: [win] });
+    const b = g.innerBox(cfg);
+    const ys = g.frontProfile(k, 'room', cfg).holes.flat().map(([, y]) => y);
+    assert.ok(Math.abs((Math.min(...ys) + Math.max(...ys)) / 2 - (b.y0 + b.y1) / 2) < 0.01, `h ${h}`);
+    assert.ok(Math.max(...ys) < b.y1);
+  }
+});
+
+test('a doorway stands on the floor whatever the room height', async () => {
+  const { g, k } = await geometry();
+  const door = g.OPENING_PRESETS.doorway();
+  assert.strictEqual(door.anchor, 'floor');
+  for (const h of [72, 90]) {
+    const cfg = g.defaultRoom({ h, openings: [door] });
+    const [mark] = g.frontProfile(k, 'room', cfg).marks;
+    assert.ok(Math.abs(mark[1] - cfg.walls.floor) < 0.01, `h ${h}`);
+  }
+});
+
+test('an opening saved before anchors cuts the same hole after migration', async () => {
+  const { g, k } = await geometry();
+  const cfg = g.defaultRoom({ h: 80 });
+  const legacy = { wall: 'back', shape: 'rect', x: 5, y: 19, w: 46, h: 36, r: 0, cols: 2, rows: 3, bar: 2.5, count: 1, pitch: 40 };
+  const asSill = g.defaultOpening({ ...legacy, anchor: 'floor' });
+  const migrated = g.migrateOpening(cfg, legacy);
+  assert.strictEqual(migrated.anchor, 'centre');
+  assert.ok(Math.abs(migrated.y - (19 + 18 - 37)) < 1e-9);
+  const vol = (o) => g.buildRoom(k, { ...cfg, openings: [o] }).volume();
+  assert.ok(Math.abs(vol(asSill) - vol(migrated)) < 1e-6);
+  assert.strictEqual(g.migrateOpening(cfg, { ...legacy, y: 0 }).anchor, 'floor');
+  assert.strictEqual(g.migrateOpening(cfg, { ...legacy, wall: 'ceiling' }).anchor, 'centre');
+  assert.strictEqual(g.migrateOpening(cfg, { ...legacy, wall: 'ceiling' }).y, 19);
+});
+
 test('stairs added to a room open its ceiling and the floor of the room on top',
   { skip: !CHROME && 'no Chrome' }, async () => {
   await withPage('/tools/shelf-house/', async (p) => {
@@ -100,5 +138,119 @@ test('stairs added to a room open its ceiling and the floor of the room on top',
     assert.deepStrictEqual([await p.evalJson(marks(1)), await p.evalJson(marks(3))], [before[0] + 1, before[1] + 1]);
     await p.evalJson("(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' })), true)");
     assert.deepStrictEqual([await p.evalJson(marks(1)), await p.evalJson(marks(3))], before);
+  });
+});
+
+// Page helpers: wait for the engine, then drive the page from inside it.
+const ready = async (p) => {
+  for (let i = 0; i < 200 && !(await p.evalJson("!!document.querySelector('#mat .block')")); i++) await new Promise((r) => setTimeout(r, 50));
+};
+const PAGE_HELPERS = `(window.__sh = {
+    pick(id) {
+      const g = document.querySelector('#mat .block[data-id="' + id + '"] path');
+      const r = g.getBoundingClientRect();
+      const at = { bubbles: true, clientX: r.left + r.width / 2, clientY: r.bottom - 4, button: 0 };
+      g.dispatchEvent(new PointerEvent('pointerdown', at));
+      window.dispatchEvent(new PointerEvent('pointerup', at));
+    },
+    set(id, v) {
+      const el = document.getElementById(id);
+      el.value = v;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    },
+    sizes() {
+      const s = JSON.parse(localStorage.getItem('shelf-house-layout-v3'));
+      return Object.fromEntries(s.items.filter((i) => i.kind === 'room').map((i) => [i.id, [i.cfg.w, i.cfg.h, i.cfg.d]]));
+    },
+  }, true)`;
+
+test('rooms follow the shelf settings on every size they have not set themselves',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(localStorage.removeItem('shelf-house-units'), document.getElementById('example').click(), ${PAGE_HELPERS})`);
+    // Every room takes a new height and depth.
+    await p.evalJson("(__sh.set('sh-h', 80), __sh.set('sh-d', 60), true)");
+    let sizes = await p.evalJson('__sh.sizes()');
+    assert.deepStrictEqual(Object.values(sizes).map(([, h, d]) => [h, d]), Array(5).fill([80, 60]));
+    assert.deepStrictEqual(sizes[2], [78, 80, 60]);
+
+    // A width typed into room 1 stays its own; its height still follows.
+    await p.evalJson("(__sh.pick(1), __sh.set('sh-cfg-w', 110), true)");
+    assert.ok(await p.evalJson("!!document.querySelector('[data-act=\"size-default\"][data-dim=\"w\"]')"));
+    await p.evalJson("(__sh.set('sh-wide', 130), __sh.set('sh-h', 70), true)");
+    sizes = await p.evalJson('__sh.sizes()');
+    assert.deepStrictEqual(sizes[1], [110, 70, 60]);
+    assert.deepStrictEqual(sizes[3], [130, 70, 60]);
+    assert.deepStrictEqual(sizes[2], [78, 70, 60]);
+
+    // Its ↺ puts it back on the default, and undo takes that back.
+    await p.evalJson("(document.querySelector('[data-act=\"size-default\"][data-dim=\"w\"]').click(), true)");
+    assert.deepStrictEqual((await p.evalJson('__sh.sizes()'))[1], [130, 70, 60]);
+    await p.evalJson("(document.getElementById('undo').click(), true)");
+    assert.deepStrictEqual((await p.evalJson('__sh.sizes()'))[1], [110, 70, 60]);
+
+    // Undo also walks back a shelf setting, and the band shows it.
+    await p.evalJson("(document.getElementById('undo').click(), true)");
+    assert.deepStrictEqual((await p.evalJson('__sh.sizes()'))[3], [130, 80, 60]);
+    assert.strictEqual(await p.evalJson("document.getElementById('sh-h').value"), '80');
+  });
+});
+
+test('inches change what the page shows and reads, never what it stores',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(document.getElementById('example').click(), ${PAGE_HELPERS})`);
+    // Start from the factory settings, whatever an earlier test left behind.
+    await p.evalJson("(__sh.set('sh-wide', 120), __sh.set('sh-h', 72), __sh.set('sh-d', 56), true)");
+    await p.evalJson("(document.querySelector('[data-units=\"in\"]').click(), true)");
+    try {
+      assert.strictEqual(await p.evalJson("document.getElementById('sh-wide').value"), '4.72');
+      await p.evalJson("(__sh.set('sh-wide', 5), true)");
+      assert.strictEqual((await p.evalJson('__sh.sizes()'))[1][0], 127);
+      assert.ok(await p.evalJson("[...document.querySelectorAll('#bom .sh-size')].some((td) => td.textContent.trim() === '5 × 2.83 × 2.2 in')"));
+      assert.match(await p.evalJson("document.getElementById('overall').textContent"), / in$/);
+    } finally {
+      await p.evalJson("(localStorage.removeItem('shelf-house-units'), true)");
+    }
+  });
+});
+
+test('a layout saved before shelf settings loads at exactly its old sizes',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    const v2 = {
+      items: [
+        { id: 1, kind: 'room', name: 'Wide · doorways', base: 'wide_doorways', x: 0, y: 0, cfg: {
+          w: 120, h: 90, d: 56, walls: { left: 3, right: 3, ceiling: 3, floor: 3, back: 3 },
+          outerR: 8, innerR: 5, outer: { tl: true, tr: true, br: true, bl: true }, inner: { tl: true, tr: true, br: true, bl: true },
+          color: '#cdb4db',
+          openings: [
+            { wall: 'left', shape: 'arch', x: 0, y: 0, w: 24, h: 50, r: 0, cols: 1, rows: 1, bar: 2.5, count: 1, pitch: 40 },
+            { wall: 'back', shape: 'rect', x: 0, y: 22, w: 40, h: 26, r: 4, cols: 3, rows: 1, bar: 2.5, count: 1, pitch: 40 },
+          ] } },
+        { id: 2, kind: 'room', name: 'Narrow · blank', base: 'narrow_blank', x: 120, y: 0, cfg: {
+          w: 78, h: 72, d: 56, walls: { left: 3, right: 3, ceiling: 3, floor: 3, back: 3 },
+          outerR: 8, innerR: 5, outer: { tl: true, tr: true, br: true, bl: true }, inner: { tl: true, tr: true, br: true, bl: true },
+          color: '#d8b4a0', openings: [] } },
+      ],
+    };
+    await p.evalJson(`(localStorage.removeItem('shelf-house-layout-v3'), localStorage.setItem('shelf-house-layout-v2', ${JSON.stringify(JSON.stringify(v2))}), true)`);
+    await p.evalJson('(location.reload(), true)');
+    await new Promise((r) => setTimeout(r, 300));
+    await ready(p);
+    await p.evalJson(PAGE_HELPERS);
+    // Nothing is committed on load, so read the sizes off the print list.
+    const rows = await p.evalJson("[...document.querySelectorAll('#bom .sh-size')].map((td) => td.textContent.trim())");
+    assert.deepStrictEqual(rows.sort(), ['120 × 90 × 56 mm', '78 × 72 × 56 mm']);
+    // Room 1 owns its height; room 2 follows everything. The window kept its hole.
+    await p.evalJson("(__sh.set('sh-h', 60), true)");
+    const after = await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items");
+    assert.deepStrictEqual(after.map((i) => [i.cfg.w, i.cfg.h]), [[120, 90], [78, 60]]);
+    const [door, win] = after[0].cfg.openings;
+    assert.deepStrictEqual([door.anchor, door.y], ['floor', 0]);
+    assert.deepStrictEqual([win.anchor, win.y], ['centre', 22 + 13 - 42]);
   });
 });

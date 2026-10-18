@@ -49,6 +49,18 @@
     </div>
 
     <div class="bed">
+        <section class="rail-band sh-settings no-print" aria-labelledby="settings-head">
+            <div class="rail-band-head">
+                <h2 id="settings-head">Shelf settings</h2>
+                <span class="seg" role="group" aria-label="Units" id="units">
+                    <button type="button" data-units="mm">mm</button>
+                    <button type="button" data-units="in">in</button>
+                </span>
+            </div>
+            <div class="rail-band-fields" id="settings"></div>
+            <p class="rail-hint">Every room takes these sizes, except the ones you set on the room itself.</p>
+        </section>
+
         <div class="sh-bar no-print">
             <div class="chips">
                 <button type="button" class="chip" id="undo" title="Undo (Ctrl+Z)">undo</button>

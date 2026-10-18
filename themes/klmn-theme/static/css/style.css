@@ -194,7 +194,7 @@ body > footer > div {
 
 /* Sentence case with a rule, not a tracked-out all-caps eyebrow. */
 .rail-group { margin-top: 1.75rem; }
-.rail-group > h2 {
+.rail-group > h2, .rail-band-head > h2 {
     font-family: var(--cond);
     font-size: var(--fs-group); font-weight: 600; letter-spacing: .01em;
     color: var(--ink);
@@ -234,10 +234,29 @@ body > footer > div {
         to bottom, var(--rule) 0 1px, transparent 1px 5px);
 }
 
+/* A rail laid across the top of the bed, for the few settings that apply to
+   the whole job rather than to one part of it. Same fields, set in columns;
+   the heading's rule can carry one control that changes how the job reads
+   rather than what it is, such as its units. */
+.rail-band-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding-bottom: .375rem;
+    border-bottom: 1px solid var(--rule);
+}
+.rail-band-head > h2 { padding-bottom: 0; border-bottom: 0; }
+.rail-band-head .seg { margin-top: 0; min-width: 5.5rem; }
+.rail-band-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+    column-gap: 2.5rem;
+    padding-left: 1rem;
+}
+.rail-band-fields > * { min-width: 0; }
+
 /* Inputs on the rail read as values, not as boxes. */
-.rail input[type="number"],
-.rail input[type="text"],
-.rail select {
+:is(.rail, .rail-band) input[type="number"],
+:is(.rail, .rail-band) input[type="text"],
+:is(.rail, .rail-band) select {
     font-family: var(--mono); font-variant-numeric: tabular-nums;
     font-size: var(--fs-label);
     color: var(--ink);
@@ -248,7 +267,7 @@ body > footer > div {
     cursor: pointer;
     transition: border-color .12s, color .12s;
 }
-.rail input[type="number"] { width: 4.5rem; }
+:is(.rail, .rail-band) input[type="number"] { width: 4.5rem; }
 .rail select {
     -webkit-appearance: none; appearance: none;
     text-align-last: right;
@@ -257,8 +276,8 @@ body > footer > div {
     background-repeat: no-repeat;
     background-position: right center;
 }
-.rail input:hover, .rail select:hover { border-bottom-color: var(--ink-soft); }
-.rail input:focus, .rail select:focus {
+:is(.rail, .rail-band) :is(input, select):hover { border-bottom-color: var(--ink-soft); }
+:is(.rail, .rail-band) :is(input, select):focus {
     outline: none; color: var(--reg); border-bottom-color: var(--reg);
 }
 .rail select option { color: var(--ink); background: var(--paper); }
