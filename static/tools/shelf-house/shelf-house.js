@@ -62,20 +62,26 @@ function typeDef(key) {
 function fromType(key) {
   const t = typeDef(key);
   const block = { kind: t.kind, name: t.name, base: key, cfg: clone(t.cfg) };
-  if (t.kind === 'room') Object.assign(block, { size: t.size || 'wide', own: clone(t.own || {}) });
+  if (t.kind === 'room') Object.assign(block, { size: t.size || 'wide', own: clone(t.own || {}), walls: clone(t.walls || ALL_THICK) });
   return block;
 }
 
 // ------------------------------------------------------------------ sizes
 
 // A room follows the page's settings on every size the user has not set:
-// `size` says which of the two widths it takes, `own` which sizes are its own.
-// cfg.w/h/d always hold the resolved numbers, so geometry never needs to know.
+// `size` says which of the two widths it takes, `own` which sizes are its own,
+// and `walls` whether each wall is thick, thin or missing. cfg.w/h/d and
+// cfg.walls always hold the resolved millimetres, so geometry never needs to know.
+const WALL_KINDS = ['thick', 'thin', 'none'];
+const ALL_THICK = Object.fromEntries(WALLS.map((w) => [w, 'thick']));
+
 function resolveSize(it, s) {
   const own = it.own || (it.own = {});
   if (!own.w) it.cfg.w = it.size === 'narrow' ? s.narrow : s.wide;
   if (!own.h) it.cfg.h = s.h;
   if (!own.d) it.cfg.d = s.d;
+  const walls = it.walls || (it.walls = { ...ALL_THICK });
+  it.cfg.walls = Object.fromEntries(WALLS.map((w) => [w, walls[w] === 'none' ? 0 : walls[w] === 'thin' ? s.thin : s.thick]));
   return it;
 }
 
@@ -99,13 +105,28 @@ function migrateItem(it) {
     if (c.h !== ROOM_DEFAULTS.h) it.own.h = true;
     if (c.d !== ROOM_DEFAULTS.d) it.own.d = true;
   }
+  // Walls used to be any thickness: each becomes the nearer of thick and thin.
+  if (!it.walls || typeof it.walls !== 'object') {
+    const mid = (ROOM_DEFAULTS.thick + ROOM_DEFAULTS.thin) / 2;
+    it.walls = Object.fromEntries(WALLS.map((w) => {
+      const t = c.walls?.[w];
+      return [w, !(t > 0) && t != null ? 'none' : t != null && t < mid ? 'thin' : 'thick'];
+    }));
+  }
+  for (const w of WALLS) if (!WALL_KINDS.includes(it.walls[w])) it.walls[w] = 'thick';
   c.openings = (c.openings || []).map((o) => migrateOpening(c, o));
   return it;
 }
 
+const SETTING_MIN = { thick: 0.4, thin: 0.4 };
+const SETTING_MAX = { thick: 30, thin: 30 };
+
 function sanitizeSettings(s) {
   const out = { ...ROOM_DEFAULTS };
-  for (const key of Object.keys(out)) if (Number.isFinite(s?.[key]) && s[key] >= 10) out[key] = s[key];
+  for (const key of Object.keys(out)) {
+    const v = s?.[key];
+    if (Number.isFinite(v) && v >= (SETTING_MIN[key] ?? 10) && v <= (SETTING_MAX[key] ?? 500)) out[key] = v;
+  }
   return out;
 }
 
@@ -453,7 +474,7 @@ function renderPalette() {
     ...customTypes.map((t) => ({ ...t, custom: true })),
   ];
   for (const t of entries) {
-    if (t.kind === 'room') t.cfg = resolveSize({ size: t.size, own: { ...t.own }, cfg: clone(t.cfg) }, state.settings).cfg;
+    if (t.kind === 'room') t.cfg = resolveSize({ size: t.size, own: { ...t.own }, walls: { ...(t.walls || ALL_THICK) }, cfg: clone(t.cfg) }, state.settings).cfg;
     const { w, h } = blockSize(t.kind, t.cfg);
     const li = document.createElement('li');
         const btn = document.createElement('button');
@@ -747,6 +768,7 @@ function renderSelection(layout) {
 const insp = $('inspector');
 
 const WALL_LABEL = { back: 'Back wall', left: 'Left wall', right: 'Right wall', ceiling: 'Ceiling', floor: 'Floor' };
+const WALL_ORDER = ['left', 'right', 'ceiling', 'floor', 'back'];
 const SHAPE_LABEL = { rect: 'Rectangle', arch: 'Arch', round: 'Round' };
 const CORNER_LABEL = { tl: 'top left', tr: 'top right', br: 'bottom right', bl: 'bottom left' };
 
@@ -858,18 +880,19 @@ function cornersHTML(cfg) {
 
 function roomInspector(it) {
   const c = it.cfg;
-  const wall = { min: 0.4, max: 30, step: 0.2, fine: true };
+  const s = state.settings;
+  const wallLabels = { thick: `Thick, ${len(s.thick)}`, thin: `Thin, ${len(s.thin)}`, none: 'No wall' };
   return group('Size', `
       ${sizeField(it, it.size === 'narrow' ? 'Width (narrow)' : 'Width (wide)', 'w')}
       ${sizeField(it, 'Height', 'h')}
       ${sizeField(it, 'Depth', 'd')}`)
-    + group('Wall thickness', `
-      ${num('Left wall', 'cfg.walls.left', c.walls.left, wall)}
-      ${num('Right wall', 'cfg.walls.right', c.walls.right, wall)}
-      ${num('Ceiling', 'cfg.walls.ceiling', c.walls.ceiling, wall)}
-      ${num('Floor', 'cfg.walls.floor', c.walls.floor, wall)}
-      ${num('Back wall', 'cfg.walls.back', c.walls.back, wall)}
-      <div class="chips"><button type="button" class="chip" data-act="walls-same">match all to left wall</button></div>`)
+    + group('Walls', `
+      ${WALL_ORDER.map((w) => pick(WALL_LABEL[w], `walls.${w}`, WALL_KINDS, it.walls[w], wallLabels)).join('')}
+      <div class="chips">
+        <button type="button" class="chip" data-act="walls-all" data-v="thick">all thick</button>
+        <button type="button" class="chip" data-act="walls-all" data-v="thin">all thin</button>
+      </div>
+      <p class="rail-hint">Thick and thin come from the shelf settings. A room with no wall is open on that side.</p>`)
     + group('Corners', `
       <p class="rail-hint">Click a corner to switch it between rounded and square.</p>
       ${cornersHTML(c)}`)
@@ -1025,7 +1048,7 @@ insp.addEventListener('click', (e) => {
   else if (act === 'corners-all') for (const ring of ['outer', 'inner']) for (const key of CORNERS) c[ring][key] = b.dataset.v === '1';
   else if (act === 'flip') c.flip = !c.flip;
   else if (act === 'size-default') delete m.own[b.dataset.dim];
-  else if (act === 'walls-same') for (const w of WALLS) c.walls[w] = c.walls.left;
+  else if (act === 'walls-all') for (const w of WALLS) m.walls[w] = b.dataset.v;
   else if (act === 'add-opening') c.openings.push(OPENING_PRESETS[b.dataset.preset]());
   else if (act === 'del-opening') c.openings.splice(i, 1);
   else if (act === 'dup-opening') {
@@ -1037,12 +1060,12 @@ insp.addEventListener('click', (e) => {
     if (!t) return;
     m.cfg = clone(t.cfg);
     m.name = t.name;
-    if (isRoom(m)) Object.assign(m, { size: t.size || m.size, own: clone(t.own || {}) });
+    if (isRoom(m)) Object.assign(m, { size: t.size || m.size, own: clone(t.own || {}), walls: clone(t.walls || ALL_THICK) });
   } else if (act === 'apply-same') {
     for (const o of layout.items) {
       if (o.kind !== m.kind || o.name !== m.name) continue;
       o.cfg = clone(m.cfg);
-      if (isRoom(m)) Object.assign(o, { size: m.size, own: clone(m.own) });
+      if (isRoom(m)) Object.assign(o, { size: m.size, own: clone(m.own), walls: clone(m.walls) });
     }
   } else return;
   reflow(layout, old);
@@ -1062,7 +1085,7 @@ function saveAsType(it) {
   const key = `custom_${Date.now().toString(36)}`;
   const cfg = clone(it.cfg);
   delete cfg.stairwells; // belongs to where this room stands, not to the type
-  customTypes.push(isRoom(it) ? { key, name, kind: it.kind, cfg, size: it.size, own: clone(it.own || {}) } : { key, name, kind: it.kind, cfg });
+  customTypes.push(isRoom(it) ? { key, name, kind: it.kind, cfg, size: it.size, own: clone(it.own || {}), walls: clone(it.walls) } : { key, name, kind: it.kind, cfg });
   saveTypes();
   renderPalette();
   const layout = layoutCopy();
@@ -1081,13 +1104,16 @@ function flash(msg) {
 
 // ------------------------------------------------------------------ shelf settings
 
-const SETTING_LABEL = { wide: 'Wide rooms', narrow: 'Narrow rooms', h: 'Height', d: 'Depth' };
+const SETTING_LABEL = { wide: 'Wide rooms', narrow: 'Narrow rooms', h: 'Height', d: 'Depth', thick: 'Thick walls', thin: 'Thin walls' };
 const settingsEl = $('settings');
 
 function renderSettings() {
   const s = state.settings;
   settingsEl.innerHTML = Object.keys(SETTING_LABEL).map((key) => num(SETTING_LABEL[key], key, s[key], {
-    min: 10,
+    min: SETTING_MIN[key] ?? 10,
+    max: SETTING_MAX[key] ?? 500,
+    step: key in SETTING_MIN ? 0.1 : 0.5,
+    fine: key in SETTING_MIN,
     hint: key === 'wide' || key === 'narrow' ? 'Width' : '',
     after: s[key] !== ROOM_DEFAULTS[key] ? resetChip('setting-default', `data-key="${key}"`, SETTING_LABEL[key], ROOM_DEFAULTS[key]) : '',
   })).join('');

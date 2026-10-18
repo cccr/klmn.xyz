@@ -14,10 +14,11 @@ export const SHAPES = ['rect', 'arch', 'round'];
 
 const SEG = 16; // segments per quarter circle
 
-// Factory sizes of the two room widths, the height and the depth. Rooms
-// follow the page's settings, which start from these, on every size the user
-// has not set themselves.
-export const ROOM_DEFAULTS = { wide: 120, narrow: 78, h: 72, d: 56 };
+// Factory sizes of the two room widths, the height, the depth and the two
+// wall thicknesses. Rooms follow the page's settings, which start from these,
+// on every size the user has not set themselves; each wall is thick, thin or
+// missing, and takes its thickness from the settings.
+export const ROOM_DEFAULTS = { wide: 120, narrow: 78, h: 72, d: 56, thick: 3, thin: 1.5 };
 
 export function defaultRoom(over = {}) {
   return {
@@ -169,7 +170,12 @@ function cornerRect(k, x0, y0, x1, y1, radii) {
   return k.CrossSection.ofPolygons([pts]);
 }
 
-const radii = (on, r) => Object.fromEntries(CORNERS.map((c) => [c, on[c] ? r : 0]));
+// A wall of thickness 0 is no wall: that side of the room is open, and the
+// two corners beside it are square so the walls either side end cleanly.
+const CORNER_WALLS = { tl: ['left', 'ceiling'], tr: ['right', 'ceiling'], br: ['right', 'floor'], bl: ['left', 'floor'] };
+const missing = (cfg, wall) => !(cfg.walls[wall] > 0);
+const radii = (cfg, on, r) => Object.fromEntries(CORNERS.map((c) =>
+  [c, on[c] && !CORNER_WALLS[c].some((w) => missing(cfg, w)) ? r : 0]));
 
 export function innerBox(cfg) {
   const t = cfg.walls;
@@ -177,12 +183,16 @@ export function innerBox(cfg) {
 }
 
 function outerSection(k, cfg) {
-  return cornerRect(k, 0, 0, cfg.w, cfg.h, radii(cfg.outer, cfg.outerR));
+  return cornerRect(k, 0, 0, cfg.w, cfg.h, radii(cfg, cfg.outer, cfg.outerR));
 }
 
+// The interior runs 1 mm past any missing wall, so subtracting it leaves no
+// skin of zero thickness behind.
 function innerSection(k, cfg) {
   const b = innerBox(cfg);
-  return cornerRect(k, b.x0, b.y0, b.x1, b.y1, radii(cfg.inner, cfg.innerR));
+  const out = (wall) => (missing(cfg, wall) ? 1 : 0);
+  return cornerRect(k, b.x0 - out('left'), b.y0 - out('floor'), b.x1 + out('right'), b.y1 + out('ceiling'),
+    radii(cfg, cfg.inner, cfg.innerR));
 }
 
 // One opening outline, centred on x = 0 with its bottom on y = 0.
@@ -244,6 +254,7 @@ function wallFrame(cfg, wall) {
 }
 
 function wallHoles(k, cfg, wall) {
+  if (missing(cfg, wall)) return null;
   const list = [...cfg.openings, ...(cfg.stairwells || [])].filter((o) => o.wall === wall);
   if (!list.length) return null;
   const f = wallFrame(cfg, wall);
@@ -262,8 +273,8 @@ export function buildRoom(k, cfg) {
   const outer = outerSection(k, cfg);
   const walls = outer.subtract(innerSection(k, cfg)).extrude(cfg.d);
   const backHoles = wallHoles(k, cfg, 'back');
-  const back = (backHoles ? outer.subtract(backHoles) : outer).extrude(cfg.walls.back);
-  let body = Manifold.union([walls, back]);
+  let body = missing(cfg, 'back') ? walls
+    : Manifold.union([walls, (backHoles ? outer.subtract(backHoles) : outer).extrude(cfg.walls.back)]);
 
   // Side, ceiling and floor openings: extrude the 2D holes through the wall.
   const t = cfg.walls;
@@ -371,7 +382,7 @@ export function frontProfile(k, kind, cfg) {
   }
   return {
     shell: outer.subtract(inner).toPolygons(),
-    room: (holes ? inner.subtract(holes) : inner).toPolygons(),
+    room: (holes ? inner.subtract(holes) : inner).intersect(outer).toPolygons(),
     holes: holes ? holes.toPolygons() : [],
     marks,
   };

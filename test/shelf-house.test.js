@@ -108,6 +108,26 @@ test('an opening saved before anchors cuts the same hole after migration', async
   assert.strictEqual(g.migrateOpening(cfg, { ...legacy, wall: 'ceiling' }).y, 19);
 });
 
+test('a room with no wall on a side is open there and still one clean solid', async () => {
+  const { g, k } = await geometry();
+  const full = g.defaultRoom();
+  // Square corners, so the volume left is exact.
+  const square = { tl: false, tr: false, br: false, bl: false };
+  const open = g.defaultRoom({ walls: { ...full.walls, left: 0, back: 0 }, outer: square, inner: square, openings: [g.OPENING_PRESETS.doorway()] });
+  const m = g.buildRoom(k, open);
+  assert.strictEqual(m.status(), 'NoError');
+  assert.deepStrictEqual(m.boundingBox().min.map(Math.round), [0, 0, 0]);
+  assert.deepStrictEqual(m.boundingBox().max.map(Math.round), [120, 72, 56]);
+  // Nothing of the left wall or the back is left, and the doorway on the
+  // missing wall cuts nothing: what remains is ceiling, floor and right wall.
+  const t = full.walls;
+  const solid = (120 * (t.ceiling + t.floor) + (72 - t.ceiling - t.floor) * t.right) * 56;
+  assert.ok(Math.abs(m.volume() - solid) < 1e-6, `${m.volume()} vs ${solid}`);
+  // The front view draws the room's interior no wider than the room.
+  const xs = g.frontProfile(k, 'room', open).room.flat().map(([x]) => x);
+  assert.ok(Math.min(...xs) >= 0 && Math.max(...xs) <= 120);
+});
+
 test('stairs added to a room open its ceiling and the floor of the room on top',
   { skip: !CHROME && 'no Chrome' }, async () => {
   await withPage('/tools/shelf-house/', async (p) => {
@@ -232,7 +252,7 @@ test('a layout saved before shelf settings loads at exactly its old sizes',
             { wall: 'back', shape: 'rect', x: 0, y: 22, w: 40, h: 26, r: 4, cols: 3, rows: 1, bar: 2.5, count: 1, pitch: 40 },
           ] } },
         { id: 2, kind: 'room', name: 'Narrow · blank', base: 'narrow_blank', x: 120, y: 0, cfg: {
-          w: 78, h: 72, d: 56, walls: { left: 3, right: 3, ceiling: 3, floor: 3, back: 3 },
+          w: 78, h: 72, d: 56, walls: { left: 0, right: 1.2, ceiling: 2.6, floor: 3, back: 3 },
           outerR: 8, innerR: 5, outer: { tl: true, tr: true, br: true, bl: true }, inner: { tl: true, tr: true, br: true, bl: true },
           color: '#d8b4a0', openings: [] } },
       ],
@@ -249,6 +269,9 @@ test('a layout saved before shelf settings loads at exactly its old sizes',
     await p.evalJson("(__sh.set('sh-h', 60), true)");
     const after = await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items");
     assert.deepStrictEqual(after.map((i) => [i.cfg.w, i.cfg.h]), [[120, 90], [78, 60]]);
+    // Walls of any thickness became the nearer of thick and thin, or none.
+    assert.deepStrictEqual(after[1].walls, { back: 'thick', left: 'none', right: 'thin', ceiling: 'thick', floor: 'thick' });
+    assert.deepStrictEqual(after[1].cfg.walls, { back: 3, left: 0, right: 1.5, ceiling: 3, floor: 3 });
     const [door, win] = after[0].cfg.openings;
     assert.deepStrictEqual([door.anchor, door.y], ['floor', 0]);
     assert.deepStrictEqual([win.anchor, win.y], ['centre', 22 + 13 - 42]);
@@ -271,6 +294,30 @@ test('the example is laid out for the sizes in the shelf settings',
       assert.strictEqual(table.x, (140 - 36) / 2);
     } finally {
       await p.evalJson("(__sh.set('sh-wide', 120), __sh.set('sh-narrow', 78), __sh.set('sh-h', 72), true)");
+    }
+  });
+});
+
+test('walls are thick, thin or missing, and take their thickness from the shelf settings',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, document.getElementById('example').click(), true)`);
+    const walls = async (id) => (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items"))
+      .find((i) => i.id === id).cfg.walls;
+    try {
+      await p.evalJson("(__sh.pick(1), __sh.set('sh-walls-left', 'thin'), __sh.set('sh-walls-back', 'none'), true)");
+      assert.deepStrictEqual(await walls(1), { left: 1.5, right: 3, ceiling: 3, floor: 3, back: 0 });
+      // Changing a thickness in the settings changes every wall of that kind.
+      await p.evalJson("(__sh.set('sh-thin', 2), __sh.set('sh-thick', 4), true)");
+      assert.deepStrictEqual(await walls(1), { left: 2, right: 4, ceiling: 4, floor: 4, back: 0 });
+      assert.deepStrictEqual(await walls(2), { left: 4, right: 4, ceiling: 4, floor: 4, back: 4 });
+      // The inspector offers only the three choices.
+      assert.deepStrictEqual(await p.evalJson("[...document.getElementById('sh-walls-left').options].map((o) => o.value)"), ['thick', 'thin', 'none']);
+      await p.evalJson("(document.querySelector('[data-act=\"walls-all\"][data-v=\"thin\"]').click(), true)");
+      assert.deepStrictEqual(await walls(1), { left: 2, right: 2, ceiling: 2, floor: 2, back: 2 });
+    } finally {
+      await p.evalJson("(__sh.set('sh-thin', 1.5), __sh.set('sh-thick', 3), true)");
     }
   });
 });
