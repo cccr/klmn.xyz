@@ -35,6 +35,7 @@
         btnSvg:     document.getElementById('btnSvg'),
         btnGcode:   document.getElementById('btnGcode'),
         btnPrint:   document.getElementById('btnPrint'),
+        btnWiggle:  document.getElementById('btnWiggle'),
         btnReset:   document.getElementById('btnReset'),
         bed:        document.getElementById('bed'),
         canvas:     document.getElementById('canvas'),
@@ -429,6 +430,30 @@
             'stroke-linejoin="round" stroke-linecap="round">' + parts.join('') + '</g></svg>';
     }
 
+    /* ── Wiggle ────────────────────────────────────────────────── */
+
+    // Hands the drawing to /tools/wiggler/ through localStorage: same origin,
+    // so the wiggler reads it on load and removes it. The SVG is built here
+    // rather than fetched from the engine so that window.open runs inside the
+    // click and is not taken for a popup.
+    var WIGGLER_KEY = 'klmn:wiggler-handoff';
+
+    function sendToWiggler() {
+        if (!lastFrame) return;
+        try {
+            localStorage.setItem(WIGGLER_KEY, JSON.stringify({
+                svg: frameToSVG(lastFrame, 0.3),
+                name: els.patch.value + '-' + els.seed.value + '.svg',
+                at: Date.now()
+            }));
+        } catch (e) {
+            showError(new Error('Could not hand the drawing to the Wiggler (' + e.message +
+                '). Download the SVG and open it there instead.'));
+            return;
+        }
+        if (!window.open('../wiggler/', '_blank')) location.href = '../wiggler/';
+    }
+
     function preparePrint() { if (lastFrame) els.printArea.innerHTML = frameToSVG(lastFrame, 0.3); }
     function clearPrint() { els.printArea.innerHTML = ''; }
 
@@ -466,6 +491,7 @@
     els.btnSvg.addEventListener('click', function () { download('svg'); });
     els.btnGcode.addEventListener('click', function () { download('gcode'); });
     els.btnPrint.addEventListener('click', function () { window.print(); });
+    els.btnWiggle.addEventListener('click', sendToWiggler);
 
     var resizeTimer;
     window.addEventListener('resize', function () {

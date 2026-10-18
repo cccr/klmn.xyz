@@ -121,6 +121,30 @@ test('SVG and G-code downloads carry the drawing and its settings', { skip }, as
   });
 });
 
+test('Wiggle hands the drawing to the Wiggler, which loads it once', { skip }, async () => {
+  await withPage('/tools/adraw/?patch=hatch&seed=9', async (p) => {
+    await waitFor(p, drawn('hatch'), 'the drawing');
+    const h = await p.evalJson(`(function () {
+      var opened = null;
+      window.open = function (url) { opened = url; return {}; };
+      document.getElementById('btnWiggle').click();
+      var h = JSON.parse(localStorage.getItem('klmn:wiggler-handoff'));
+      return { opened: opened, name: h.name, svg: h.svg };
+    })()`);
+    assert.equal(h.opened, '../wiggler/');
+    assert.equal(h.name, 'hatch-9.svg');
+    assert.match(h.svg, /^<svg[^>]+viewBox/);
+    assert.match(h.svg, /<path d="M/);
+  });
+  await withPage('/tools/wiggler/', async (p) => {
+    await waitFor(p, "document.getElementById('filenameEl').textContent === 'hatch-9.svg'", 'the handoff');
+    const m = await p.evalJson(`({ run: document.getElementById('btnRun').disabled,
+      left: localStorage.getItem('klmn:wiggler-handoff') })`);
+    assert.equal(m.run, false, 'Run is enabled');
+    assert.equal(m.left, null, 'the handoff is taken once');
+  });
+});
+
 test('every thumbnail is drawn, and picking one switches the pattern', { skip }, async () => {
   await withPage('/tools/adraw/', async (p) => {
     await waitFor(p, drawnFirst, 'the first drawing');

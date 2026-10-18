@@ -104,6 +104,27 @@
 
     window.WigglerExamples.setup(loadSvgString);
 
+    // A drawing sent from /tools/adraw/'s Wiggle button. It is taken once and
+    // removed; one left behind by a tab that never opened is ignored when stale.
+    (function takeHandoff() {
+        var KEY = "klmn:wiggler-handoff";
+        var raw = null;
+        try {
+            raw = localStorage.getItem(KEY);
+            localStorage.removeItem(KEY);
+        } catch (e) {
+            return;
+        }
+        if (!raw) return;
+        try {
+            var h = JSON.parse(raw);
+            if (h && h.svg && Date.now() - h.at < 60000)
+                loadSvgString(h.svg, h.name || "drawing.svg");
+        } catch (e) {
+            /* malformed — nothing to load */
+        }
+    })();
+
     /* ── SVG dimension helpers ── */
     function svgDims(svgEl) {
         const vb = svgEl.getAttribute("viewBox");
