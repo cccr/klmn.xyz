@@ -71,3 +71,9 @@ Two constraints that came from rejected work, so they do not get re-proposed:
   and a test asserts no third-party host is needed.
 - `@page` may set `margin` but never `size` — WebKit ignores the size
   descriptor, which is what broke printing in Safari.
+- `/tools/adraw/` runs adraw (github.com/cccr/adraw) compiled to WebAssembly.
+  `adraw.wasm`, `wasm_exec.js`, `wasm.js` and `adraw.json` there are build
+  output, overwritten by adraw's `make deploy-klmn` — change them in adraw,
+  not here. The page itself (layout, `adraw.js`, `adraw.css`,
+  `test/adraw.test.js`) is ordinary site code and lives here. Its tests are
+  real-Chrome only: jsdom cannot run the engine.

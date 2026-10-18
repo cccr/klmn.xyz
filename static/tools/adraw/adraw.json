@@ -1,0 +1,37 @@
+{
+  "_comment": "Gallery configuration. Re-read on every request, so edit and refresh to see changes - no restart needed. Everything is optional: a patch not listed here still appears, in the default category, previewed with its own defaults.",
+
+  "defaultCategory": "other",
+
+  "categories": [
+    {
+      "id": "cells",
+      "name": "Cell patterns",
+      "description": "The page is divided into convex cells and each one is filled independently. Blue-noise sampling keeps the cells evenly sized, so there are no slivers and no awkward leftovers. Cell size is the main control; the fill decides the character."
+    },
+    {
+      "id": "fields",
+      "name": "Field patterns",
+      "description": "A noise landscape is sampled across the whole sheet and traced directly, with no subdivision at all. The result is a few long flowing curves rather than many short strokes, which plots quickly and reads as organic rather than constructed."
+    },
+    {
+      "id": "other",
+      "name": "Other",
+      "description": "Patches that have not been placed in a category yet."
+    }
+  ],
+
+  "patches": {
+    "tangle":     { "category": "cells",  "preview": { "seed": 3,  "values": { "cell": 46, "spacing": 1.9, "merge": 0.3 } } },
+    "vortex":     { "category": "cells",  "preview": { "seed": 5,  "values": { "cell": 46, "spacing": 1.9 } } },
+    "contour":    { "category": "cells",  "preview": { "seed": 4,  "values": { "cell": 46, "spacing": 2.2 } } },
+    "cellwall":   { "category": "cells",  "preview": { "seed": 5,  "values": { "cell": 46, "spacing": 2.2 } } },
+    "fan":        { "category": "cells",  "preview": { "seed": 3,  "values": { "cell": 50, "spacing": 6.0 } } },
+    "hatch":      { "category": "cells",  "preview": { "seed": 3,  "values": { "cell": 46, "spacing": 2.4 } } },
+    "crosshatch": { "category": "cells",  "preview": { "seed": 3,  "values": { "cell": 50, "spacing": 5.0 } } },
+    "stipple":    { "category": "cells",  "preview": { "seed": 3,  "values": { "cell": 40, "spacing": 1.6 } } },
+
+    "topo":       { "category": "fields", "preview": { "seed": 2,  "values": { "scale": 250, "levels": 14, "octaves": 2, "detail": 1.2 } } },
+    "flow":       { "category": "fields", "preview": { "seed": 8,  "values": { "scale": 300, "separation": 3.4, "curl": 0.2 } } }
+  }
+}

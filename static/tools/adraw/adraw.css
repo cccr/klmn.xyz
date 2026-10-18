@@ -1,0 +1,78 @@
+/* ══ Abstract Drawing ══════════════════════════════════════════════════════
+   The console is the rail; the drawing is the artifact, on paper of the
+   size you set. style.css owns the reset, the chrome, the rail, .chips,
+   .spec and .notice — this file is the canvas, the sheet of pattern
+   thumbnails under it, and the print page.
+
+   Everything else in this directory except this file and adraw.js belongs
+   to the engine and is overwritten by adraw's `make deploy-klmn`.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* The script sizes the canvas from the bed's width and the window's height
+   — never from the canvas's own box, which would feed each redraw's size
+   into the next — and sets only its width. The cap and the auto height keep
+   it inside the column while a narrowing window waits for the redraw;
+   without them the last drawing's width pushes the page sideways. */
+#canvas { display: block; max-width: 100%; height: auto; }
+
+/* ── Patterns ──────────────────────────────────────────────────────────
+   Every pattern, drawn by itself at coarse settings, as a contact sheet.
+   A thumbnail is the pattern's real output, so it cannot go stale. */
+.patterns { margin-top: 3rem; }
+.patterns-group + .patterns-group { margin-top: 2rem; }
+.patterns-group > h2 {
+    font-family: var(--cond);
+    font-size: var(--fs-head); font-weight: 600;
+    padding-bottom: .375rem;
+    border-bottom: 1px solid var(--rule);
+}
+.patterns-group > p {
+    margin-top: .5rem;
+    font-size: var(--fs-fine); line-height: 1.5; color: var(--ink-soft);
+    max-width: 68ch;
+}
+.patterns-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.pattern-tile {
+    display: block; width: 100%;
+    padding: 0;
+    text-align: left;
+    background: none; border: 0;
+    cursor: pointer;
+}
+.pattern-tile canvas {
+    width: 100%; height: auto;
+    aspect-ratio: 297 / 210;
+    outline: 1px solid transparent; outline-offset: 3px;
+    transition: outline-color .12s;
+}
+.pattern-tile:hover canvas { outline-color: var(--ink-soft); }
+.pattern-tile.is-on canvas { outline-color: var(--reg); }
+.pattern-tile span {
+    display: block;
+    margin-top: .5rem;
+    font-family: var(--mono); font-size: var(--fs-note); color: var(--ink-soft);
+}
+.pattern-tile.is-on span { color: var(--reg); }
+
+/* ── Print ─────────────────────────────────────────────────────────────
+   The printed page is the drawing alone, as vector SVG at its true size in
+   millimetres — a canvas would print as soft raster at screen resolution.
+   The SVG is built on beforeprint and dropped afterwards, because a few
+   thousand <path>s on every slider tick would cost what the canvas saves.
+
+   @page sets the margin and never the size: WebKit ignores the size
+   descriptor, so the paper is whatever the print dialog says it is. */
+.print-area { display: none; }
+
+@media print {
+    @page { margin: 0; }
+    body > main, .bed { padding: 0 !important; max-width: none; }
+    .press { display: block; }
+    .print-area { display: block; padding: 0 !important; max-width: none !important; }
+    .print-area svg { display: block; }
+}

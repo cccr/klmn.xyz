@@ -1,0 +1,90 @@
+{{ define "head" }}
+<link rel="stylesheet" href="/tools/adraw/adraw.css">
+{{ end }}
+
+{{ define "main" }}
+{{- /* The controls under "Drawing" are generated from the parameter list each
+       pattern reports about itself, so a pattern added to the engine appears
+       here with working sliders without this file changing. The engine is
+       adraw (github.com/cccr/adraw) compiled to WebAssembly; its files under
+       /tools/adraw/ are replaced wholesale by adraw's `make deploy-klmn`. */ -}}
+<div class="press">
+    <div class="rail no-print">
+        <h1>Abstract Drawing</h1>
+        <p>Line art for a pen plotter, generated as you drag. Save it as SVG, or as
+           G-code with the pen-up travel already shortened.</p>
+
+        <div class="rail-group">
+            <h2>Drawing</h2>
+            <div class="field">
+                <label for="patch">Pattern</label>
+                <span class="field-value"><select id="patch"></select></span>
+            </div>
+            <p class="rail-hint" id="patchDesc"></p>
+            <div class="field">
+                <label for="seed">Seed</label>
+                <span class="field-value"><input id="seed" type="number" step="1" value="1"
+                      aria-label="Random seed" /></span>
+            </div>
+            <div class="chips">
+                <button type="button" class="chip" id="btnShuffle">shuffle</button>
+            </div>
+            <div id="params"></div>
+        </div>
+
+        <div class="rail-group">
+            <h2>Paper</h2>
+            <div class="field">
+                <label for="pagePreset">Size</label>
+                <span class="field-value"><select id="pagePreset"></select></span>
+            </div>
+            <div class="field field-measure">
+                <label for="pageW">Width</label>
+                <span class="field-value"><input id="pageW" type="number" min="10" max="2000" step="1"
+                      aria-label="Page width in millimetres" /><span class="unit">mm</span></span>
+            </div>
+            <div class="field field-measure">
+                <label for="pageH">Height</label>
+                <span class="field-value"><input id="pageH" type="number" min="10" max="2000" step="1"
+                      aria-label="Page height in millimetres" /><span class="unit">mm</span></span>
+            </div>
+            <div class="chips">
+                <button type="button" class="chip" id="btnRotate">rotate</button>
+            </div>
+        </div>
+
+        <div class="rail-actions">
+            <button type="button" class="btn btn-go" id="btnSvg">Download SVG</button>
+            <button type="button" class="btn" id="btnGcode">G-code</button>
+            <button type="button" class="btn" id="btnPrint">Print</button>
+            <button type="button" class="btn" id="btnReset">Reset</button>
+        </div>
+        <p class="rail-note">Print at 100% scale: the drawing is sent as vector lines at
+           its true size in millimetres.</p>
+        <p class="rail-credit">Engine: <a href="https://github.com/cccr/adraw">adraw</a>,
+           running in your browser.</p>
+    </div>
+
+    <div class="bed" id="bed">
+        <div class="trim trim-fit no-print">
+            <canvas id="canvas" class="artifact" width="0" height="0"></canvas>
+        </div>
+
+        <dl class="spec no-print">
+            <dt>pattern</dt><dd id="specPatch">&mdash;</dd>
+            <dt>paths</dt><dd id="specPaths">&mdash;</dd>
+            <dt>page</dt><dd id="specPage">&mdash;</dd>
+            <dt>drawn in</dt><dd id="specTime">&mdash;</dd>
+        </dl>
+        <p class="notice notice-alert hidden no-print" id="notice" role="alert"></p>
+
+        <div class="patterns no-print" id="patterns"></div>
+
+        <div id="printArea" class="print-area" aria-hidden="true"></div>
+    </div>
+</div>
+
+<script src="/tools/adraw/wasm_exec.js"></script>
+<script src="/tools/adraw/wasm.js"></script>
+<script src="/tools/adraw/adraw.js"></script>
+{{ end }}
