@@ -254,3 +254,23 @@ test('a layout saved before shelf settings loads at exactly its old sizes',
     assert.deepStrictEqual([win.anchor, win.y], ['centre', 22 + 13 - 42]);
   });
 });
+
+test('the example is laid out for the sizes in the shelf settings',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, __sh.set('sh-wide', 140), __sh.set('sh-narrow', 60), __sh.set('sh-h', 90), document.getElementById('example').click(), true)`);
+    try {
+      const items = await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items");
+      const at = Object.fromEntries(items.map((i) => [i.id, [i.x, i.y]]));
+      // Two columns side by side, two floors high, the arched room centred on top.
+      assert.deepStrictEqual([at[1], at[2], at[3], at[4], at[5]], [[0, 0], [140, 0], [0, 90], [140, 90], [30, 180]]);
+      // The table stands in the middle of the top room.
+      const table = items.find((i) => i.id === 6);
+      assert.strictEqual(table.parent, 5);
+      assert.strictEqual(table.x, (140 - 36) / 2);
+    } finally {
+      await p.evalJson("(__sh.set('sh-wide', 120), __sh.set('sh-narrow', 78), __sh.set('sh-h', 72), true)");
+    }
+  });
+});

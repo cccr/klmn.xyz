@@ -109,18 +109,23 @@ function sanitizeSettings(s) {
   return out;
 }
 
+// Laid out for the current shelf settings: a wide and a narrow column two
+// floors high, a wide room centred on top, a table in the middle of it.
 function makeExample() {
+  const s = { ...ROOM_DEFAULTS, ...state?.settings };
+  const table = blockSize('furniture', PRESETS.round_table.cfg).w;
   let id = 0;
   const at = (key, x, y, extra = {}) => ({ id: ++id, ...fromType(key), x, y, ...extra });
   return {
     items: [
       at('wide_porthole', 0, 0),
-      at('narrow_4pane', 120, 0),
-      at('wide_doorways', 0, 72),
-      at('narrow_skylight', 120, 72),
-      at('wide_arched', 39, 144),
-      at('round_table', 42, 0, { parent: 5 }),
+      at('narrow_4pane', s.wide, 0),
+      at('wide_doorways', 0, s.h),
+      at('narrow_skylight', s.wide, s.h),
+      at('wide_arched', Math.round(s.narrow / 2), 2 * s.h),
+      at('round_table', Math.round((s.wide - table) / 2), 0, { parent: 5 }),
     ],
+    settings: s,
   };
 }
 
