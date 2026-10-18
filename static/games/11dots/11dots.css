@@ -1,0 +1,131 @@
+/* 11 Dots — what only this page has: the board, its stones, and the solver's
+   readouts. Everything else (rail, seg, buttons, spec, notice, trim) comes
+   from /css/style.css.
+
+   The two sides need two colours, and the site palette deliberately has none
+   to spare (--alert means "will not come out right", --reg is for live values
+   and trim marks). So the stone colours are local to this page and live on
+   the paper only. Results stay in ink: W, D and L are spelled out, and their
+   weight — solid, outlined, faded — carries the difference. */
+
+.press { --dots-red: #9E1F2E; --dots-blue: #1F4E79; }
+.bed { --trim-width: 46rem; }
+
+/* ── The board ─────────────────────────────────────────────────────────── */
+
+#board { width: 100%; height: auto; user-select: none; -webkit-user-select: none; }
+.dots-edge { stroke: var(--paper-rule); stroke-width: 2; }
+.dots-dot { fill: var(--ink-soft); }
+.dots-label { fill: var(--ink-soft); font: var(--fs-note) var(--mono); text-anchor: middle; }
+.dots-goal { fill: none; stroke-width: 1; stroke-dasharray: 3 4; }
+.dots-goal.is-red { stroke: var(--dots-red); }
+.dots-goal.is-blue { stroke: var(--dots-blue); }
+
+.dots-stone { transition: transform .2s ease; }
+.dots-stone circle { stroke: rgba(20, 24, 26, .15); stroke-width: 1; }
+.dots-stone.is-red circle { fill: var(--dots-red); }
+.dots-stone.is-blue circle { fill: var(--dots-blue); }
+.dots-stone.is-sel circle { stroke: var(--reg); stroke-width: 3; }
+
+#hints { pointer-events: none; }
+.dots-target { fill: var(--paper); stroke-width: 2; }
+.dots-target.is-w { stroke: var(--ink); }
+.dots-target.is-d { stroke: var(--ink-soft); stroke-dasharray: 4 3; }
+.dots-target.is-l { stroke: var(--rule); }
+.dots-badge { font: 600 10px var(--mono); text-anchor: middle; fill: var(--ink); }
+.dots-badge.is-l { fill: var(--ink-soft); }
+.dots-hit { fill: transparent; cursor: pointer; }
+
+/* ── Side colours in text ──────────────────────────────────────────────── */
+
+.bed .is-red, .rail .is-red { color: var(--dots-red); }
+.bed .is-blue, .rail .is-blue { color: var(--dots-blue); }
+
+/* ── Rail ──────────────────────────────────────────────────────────────── */
+
+.dots-seg { width: 9rem; margin-top: 0; }
+.dots-transport { display: flex; flex-wrap: wrap; gap: .375rem; margin: .5rem 0 .75rem; }
+.dots-transport .btn { padding: .375rem .625rem; font-family: var(--mono); font-size: var(--fs-fine); }
+
+/* ── Readouts on the bed ───────────────────────────────────────────────── */
+
+.dots-readout { margin-top: 1rem; }
+.dots-status { font-family: var(--cond); font-size: var(--fs-head); font-weight: 600; color: var(--ink); }
+
+.dots-history {
+    display: flex; flex-wrap: wrap; gap: .125rem .25rem;
+    margin-top: .75rem; max-height: 6rem; overflow: auto; position: relative;
+}
+.dots-history button,
+.dots-moves button,
+.dots-mv {
+    font-family: var(--mono); font-size: var(--fs-fine);
+    padding: .0625rem .375rem;
+    background: transparent; border: 1px solid transparent; cursor: pointer;
+}
+.dots-history button:hover, .dots-mv:hover, .dots-moves button:hover:not(:disabled) { border-color: var(--rule); }
+.dots-history button.is-cur { border-color: var(--ink); }
+.dots-moves button:disabled { cursor: default; }
+
+.dots-panel { margin-top: 2rem; }
+.dots-panel > h2 {
+    font-family: var(--cond); font-size: var(--fs-group); font-weight: 600;
+    padding-bottom: .375rem; border-bottom: 1px solid var(--rule);
+}
+.dots-panel .spec { margin-top: .75rem; }
+
+.dots-moves { margin-top: .75rem; }
+.dots-row {
+    display: grid; grid-template-columns: 1fr auto 1.25rem; gap: .75rem; align-items: center;
+    padding: .125rem 0 .125rem .625rem; margin-bottom: .125rem;
+    border-left: 3px solid var(--rule);
+}
+.dots-row.is-w { border-left-color: var(--ink); }
+.dots-row.is-d { border-left-color: var(--ink-soft); }
+.dots-row.is-l { border-left-color: var(--paper-rule); }
+.dots-row button { justify-self: start; }
+.dots-star { color: var(--ink-soft); font-size: var(--fs-fine); }
+
+/* W solid, D outlined, L faded: the outcome reads by weight, not by colour. */
+.dots-val {
+    font-family: var(--mono); font-size: var(--fs-note);
+    padding: 0 .4375rem; border: 1px solid transparent; border-radius: 1rem;
+}
+.dots-val.is-w { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.dots-val.is-d { border-color: var(--ink-soft); color: var(--ink); }
+.dots-val.is-l { background: var(--ground-sunk); color: var(--ink-soft); }
+
+.dots-line, .dots-note {
+    margin-top: .75rem;
+    font-size: var(--fs-fine); line-height: 1.6; color: var(--ink-soft);
+}
+.dots-line span { font-family: var(--mono); }
+
+/* ── Tree ──────────────────────────────────────────────────────────────── */
+
+.dots-tree { max-height: 26rem; overflow: auto; margin-top: .75rem; }
+.dots-root { font-size: var(--fs-fine); color: var(--ink-soft); margin-bottom: .25rem; }
+.dots-tree ul { padding-left: 1rem; border-left: 1px solid var(--rule); }
+.dots-tree > ul { padding-left: 0; border-left: 0; }
+.dots-node { display: flex; gap: .375rem; align-items: center; padding: .0625rem 0; }
+.dots-tog {
+    width: 1.25rem; padding: 0; background: none; border: 0; cursor: pointer;
+    font-family: var(--mono); font-size: var(--fs-fine); color: var(--ink-soft);
+}
+.dots-tog:disabled { cursor: default; }
+
+/* ── Findings ──────────────────────────────────────────────────────────── */
+
+.dots-findings {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem;
+    margin-top: .75rem;
+}
+.dots-card {
+    background: var(--paper); padding: 1rem 1.125rem;
+    box-shadow: 0 0 0 1px var(--rule);
+    font-size: var(--fs-fine); line-height: 1.55;
+}
+.dots-card > * + * { margin-top: .5rem; }
+.dots-card h3 { font-family: var(--cond); font-size: var(--fs-group); font-weight: 600; }
+.dots-result { font-family: var(--cond); font-size: var(--fs-head); font-weight: 600; color: var(--ink); }
+.dots-card .btn { margin-top: .75rem; }

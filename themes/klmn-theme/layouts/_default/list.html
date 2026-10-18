@@ -1,8 +1,8 @@
 {{ define "main" }}
-{{- /* The home page lists the tools themselves rather than the one section
-       that contains them; /tools/ lists its own children. */ -}}
+{{- /* The home page lists the tools and games themselves rather than the
+       sections that contain them; /tools/ and /games/ list their own children. */ -}}
 {{ $items := .Pages.ByTitle }}
-{{ if .IsHome }}{{ $items = (where site.RegularPages "Section" "tools").ByTitle }}{{ end }}
+{{ if .IsHome }}{{ $items = (where site.RegularPages "Section" "in" (slice "tools" "games")).ByTitle }}{{ end }}
 
 <div class="index">
     <header class="index-head">

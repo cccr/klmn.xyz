@@ -1,0 +1,80 @@
+{{ define "head" }}
+<link rel="stylesheet" href="/games/11dots/11dots.css">
+{{ end }}
+
+{{ define "main" }}
+<div class="press">
+    <div class="rail">
+        <h1>11 Dots</h1>
+        <p>Red starts on A, B, C and Blue on I, J, K. Each turn one stone steps along a line to a free
+           dot, with no jumping. The first player to fill the other side's three dots wins. Red moves first.</p>
+
+        <div class="rail-group">
+            <h2>When a player cannot move</h2>
+            <div class="seg" id="rule" role="group" aria-label="When a player has no legal move">
+                <button type="button" data-v="lose">lose</button><button type="button" data-v="pass">pass</button><button type="button" data-v="draw">draw</button>
+            </div>
+        </div>
+
+        <div class="rail-group">
+            <h2>Players</h2>
+            <div class="field field-tight">
+                <span class="field-name">Red</span>
+                <span class="field-value"><span class="seg dots-seg" id="p0" role="group" aria-label="Red player">
+                    <button type="button" data-v="human">Human</button><button type="button" data-v="cpu">CPU</button></span></span>
+            </div>
+            <div class="field field-tight">
+                <span class="field-name">Blue</span>
+                <span class="field-value"><span class="seg dots-seg" id="p1" role="group" aria-label="Blue player">
+                    <button type="button" data-v="human">Human</button><button type="button" data-v="cpu">CPU</button></span></span>
+            </div>
+        </div>
+
+        <div class="rail-group">
+            <h2>Playback</h2>
+            <div class="dots-transport">
+                <button type="button" class="btn" id="first" title="Start" aria-label="Start">⏮</button>
+                <button type="button" class="btn" id="back" title="Back" aria-label="Back">◀</button>
+                <button type="button" class="btn" id="play" title="Pause" aria-label="Pause">❚❚</button>
+                <button type="button" class="btn" id="step" title="Step (best move)" aria-label="Step">▶|</button>
+                <button type="button" class="btn" id="last" title="Latest" aria-label="Latest">⏭</button>
+            </div>
+            <label class="rail-legend" for="speed">Speed</label>
+            <input class="rail-range" id="speed" type="range" min="1" max="20" value="5" />
+        </div>
+
+        <div class="rail-actions">
+            <button type="button" class="btn btn-go" id="reset">New game</button>
+        </div>
+    </div>
+
+    <div class="bed">
+        <div class="trim">
+            <svg id="board" class="artifact" viewBox="0 0 600 320" role="img" aria-label="11 Dots board"></svg>
+        </div>
+
+        <div class="dots-readout">
+            <p id="status" class="dots-status"></p>
+            <p id="notice" class="notice hidden"></p>
+            <ol id="history" class="dots-history"></ol>
+        </div>
+
+        <section class="dots-panel">
+            <h2>Moves</h2>
+            <div id="moves"></div>
+        </section>
+
+        <section class="dots-panel">
+            <h2>Tree</h2>
+            <div id="tree" class="dots-tree"></div>
+        </section>
+
+        <section class="dots-panel">
+            <h2>Findings</h2>
+            <div id="findings"></div>
+        </section>
+    </div>
+</div>
+
+<script src="/games/11dots/11dots.js"></script>
+{{ end }}

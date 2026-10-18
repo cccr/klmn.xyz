@@ -1,12 +1,12 @@
 # klmn.xyz
 
-A Hugo site of small, single-purpose browser tools. No build step beyond
+A Hugo site of small, single-purpose browser tools, and a few games. No build step beyond
 `hugo`, no framework, no runtime dependencies — every tool runs entirely in
 the visitor's browser and ships as plain HTML, CSS and ES5-flavoured JS.
 
 ```
 hugo --quiet          # build to public/
-cd test && npm test   # 82 tests: jsdom for behaviour, headless Chrome for layout
+cd test && npm test   # 120 tests: jsdom for behaviour, headless Chrome for layout
 ```
 
 ## The design system is at /design/
@@ -61,9 +61,10 @@ Two constraints that came from rejected work, so they do not get re-proposed:
 
 - Page scripts are browser-ready ES5: `'use strict'`, `var`, function
   declarations, wrapped in an IIFE. No bundler, no modules.
-- A tool page is a layout in `themes/klmn-theme/layouts/tools/<name>.html`
-  with a `{{ define "head" }}` block linking its own stylesheet, plus files
-  under `static/tools/<name>/`.
+- A tool or game page is a layout in
+  `themes/klmn-theme/layouts/<section>/<name>.html` (`tools` or `games`) with a
+  `{{ define "head" }}` block linking its own stylesheet, plus files under
+  `static/<section>/<name>/`. The home page lists both sections.
 - `baseof.html` is deliberately class-free; the chrome is styled with element
   selectors.
 - Nothing loads from a CDN. `test/harness.js` throws on a remote `<script>`,
