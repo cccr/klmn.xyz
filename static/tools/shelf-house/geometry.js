@@ -52,6 +52,15 @@ export function defaultTable(over = {}) {
   return { topD: 36, baseD: 26, stemD: 10, height: 26.5, color: '#b5838d', ...over };
 }
 
+// A straight flight of stairs. `rise` and `depth` follow the room the stairs
+// stand in (its interior height, half its depth) and are set by the layout;
+// `flip` makes it rise to the left instead of the right.
+export function defaultStairs(over = {}) {
+  return { form: 'stairs', run: 56, steps: 8, flip: false, rise: 66, depth: 26.5, color: '#a98467', ...over };
+}
+
+export const isStairs = (cfg) => cfg.form === 'stairs';
+
 const op = defaultOpening;
 export const PRESETS = {
   wide_6pane: {
@@ -105,9 +114,14 @@ export const PRESETS = {
     name: 'Round table', kind: 'furniture',
     cfg: defaultTable(),
   },
+  stairs: {
+    name: 'Stairs', kind: 'furniture',
+    cfg: defaultStairs(),
+  },
 };
 
 export function blockSize(kind, cfg) {
+  if (kind === 'furniture' && isStairs(cfg)) return { w: cfg.run, h: cfg.rise, d: cfg.depth };
   if (kind === 'furniture') return { w: Math.max(cfg.topD, cfg.baseD), h: cfg.height, d: Math.max(cfg.topD, cfg.baseD) };
   return { w: cfg.w, h: cfg.h, d: cfg.d };
 }
@@ -213,7 +227,7 @@ function wallFrame(cfg, wall) {
 }
 
 function wallHoles(k, cfg, wall) {
-  const list = cfg.openings.filter((o) => o.wall === wall);
+  const list = [...cfg.openings, ...(cfg.stairwells || [])].filter((o) => o.wall === wall);
   if (!list.length) return null;
   const f = wallFrame(cfg, wall);
   const cs = k.CrossSection.union(list.map((o) =>
@@ -266,8 +280,42 @@ export function buildTable(k, cfg) {
   return Manifold.union([base, stem, top]);
 }
 
+// Side profile of the stairs, in room coordinates (x along the run, y up):
+// the steps on top and an underside parallel to them, one riser lower.
+function stairsSection(k, cfg) {
+  const n = Math.max(2, Math.round(cfg.steps));
+  const g = cfg.run / n, r = cfg.rise / n;
+  const pts = [[0, 0]];
+  for (let i = 0; i < n; i++) pts.push([i * g, (i + 1) * r], [(i + 1) * g, (i + 1) * r]);
+  pts.push([cfg.run, cfg.rise - r], [g, 0]);
+  const s = k.CrossSection.ofPolygons([pts.reverse()]); // counter-clockwise
+  return cfg.flip ? s.mirror([1, 0]).translate([cfg.run, 0]) : s;
+}
+
+// Built standing in room coordinates, so it prints lying on its side.
+export function buildStairs(k, cfg) {
+  return stairsSection(k, cfg).extrude(cfg.depth);
+}
+
 export function buildBlock(k, kind, cfg) {
-  return kind === 'furniture' ? buildTable(k, cfg) : buildRoom(k, cfg);
+  if (kind === 'room') return buildRoom(k, cfg);
+  return isStairs(cfg) ? buildStairs(k, cfg) : buildTable(k, cfg);
+}
+
+// A ceiling or floor opening in `room` over an absolute x span and a z span
+// measured from the back face, or null when it misses the room's interior.
+// The cut itself is still clipped to the interior when the room is built.
+export function stairwell(room, x0, x1, z0, z1, wall) {
+  const cfg = room.cfg, b = innerBox(cfg);
+  const lo = Math.max(x0 - room.x, b.x0), hi = Math.min(x1 - room.x, b.x1);
+  if (hi - lo < 0.5) return null;
+  const w = x1 - x0, h = z1 - z0;
+  return defaultOpening({
+    wall, shape: 'rect', w, h,
+    x: (x0 + x1) / 2 - room.x - cfg.w / 2,
+    y: (z0 + z1) / 2 - (cfg.walls.back + cfg.d) / 2,
+    bar: 0,
+  });
 }
 
 // ---------------------------------------------------------------- 2D front view
@@ -276,6 +324,9 @@ export function buildBlock(k, kind, cfg) {
 // bottom-left. `marks` are side/ceiling/floor openings seen edge-on, drawn
 // on the wall they pass through so you can line doorways up between rooms.
 export function frontProfile(k, kind, cfg) {
+  if (kind === 'furniture' && isStairs(cfg)) {
+    return { shell: stairsSection(k, cfg).toPolygons(), room: [], holes: [], marks: [] };
+  }
   if (kind === 'furniture') {
     const { w } = blockSize(kind, cfg);
     const c = w / 2;

@@ -5,6 +5,7 @@ import { zipSync } from 'fflate';
 import {
   PRESETS, OPENING_PRESETS, CORNERS, WALLS, SHAPES,
   blockSize, buildBlock, frontProfile, meshArrays, toSTL, innerBox,
+  defaultStairs, isStairs, stairwell,
 } from './geometry.js';
 
 const k = await Module();
@@ -168,8 +169,41 @@ function settle(layout, movedId = null) {
     if (isRoom(it) || it.parent == null) continue;
     if (!layout.items.some((m) => m.id === it.parent)) it.parent = null;
   }
+  cutStairwells(layout, rooms);
   layout.info = info;
   return layout;
+}
+
+// Stairs take their height and depth from the room they stand in, and open
+// a hole the size of their footprint in its ceiling and in the floor of every
+// room resting on it. Recomputed from scratch on every settle.
+function cutStairwells(layout, rooms) {
+  for (const m of rooms) m.cfg.stairwells = [];
+  for (const it of layout.items) {
+    if (isRoom(it) || !isStairs(it.cfg)) continue;
+    const host = it.parent != null && rooms.find((m) => m.id === it.parent);
+    if (!host) {
+      const d = defaultStairs();
+      Object.assign(it.cfg, { rise: d.rise, depth: d.depth });
+      continue;
+    }
+    const b = innerBox(host.cfg);
+    it.cfg.rise = b.y1 - b.y0;
+    it.cfg.depth = (host.cfg.d - host.cfg.walls.back) / 2;
+    const x0 = host.x + it.x, x1 = x0 + it.cfg.run;
+    const z0 = host.cfg.walls.back, z1 = z0 + it.cfg.depth;
+    const top = host.y + sizeOf(host).h;
+    const add = (m, wall) => { const o = stairwell(m, x0, x1, z0, z1, wall); if (o) m.cfg.stairwells.push(o); };
+    add(host, 'ceiling');
+    for (const o of rooms) if (Math.abs(o.y - top) < 0.01 && overlapX(x0, x1 - x0, o.x, sizeOf(o).w) > 0.01) add(o, 'floor');
+  }
+}
+
+// Depth (z) of a furniture item's origin: stairs stand against the back wall,
+// anything else in the middle of the room.
+function furnitureZ(host, it) {
+  if (isStairs(it.cfg)) return host ? host.cfg.walls.back : 0;
+  return host ? host.cfg.walls.back + (host.cfg.d - host.cfg.walls.back) / 2 : sizeOf(it).d / 2;
 }
 
 function overlapX(ax, aw, bx, bw) {
@@ -748,8 +782,16 @@ function roomInspector(it) {
     + blockActions(it);
 }
 
-function tableInspector(it) {
+function furnitureInspector(it) {
   const c = it.cfg;
+  if (isStairs(c)) {
+    return group('Size', `
+      <p class="rail-hint">Height and depth follow the room. The ceiling above and the floor of the room on top open up to fit.</p>
+      ${num('Run length', 'cfg.run', c.run, { min: 10 })}
+      ${num('Steps', 'cfg.steps', c.steps, { unit: '', step: 1, min: 2, max: 40 })}
+      <div class="chips"><button type="button" class="chip" data-act="flip" title="Rise to the ${c.flip ? 'right' : 'left'} instead">turn ⇄</button></div>`)
+      + blockActions(it);
+  }
   return group('Size', `
       ${num('Top diameter', 'cfg.topD', c.topD, { min: 4 })}
       ${num('Base diameter', 'cfg.baseD', c.baseD, { min: 4 })}
@@ -781,7 +823,7 @@ function renderInspector() {
         <span class="field-value"><input id="sh-name" type="text" data-path="name" value="${esc(it.name)}" maxlength="40"></span></div>
       <div class="field"><label for="sh-color">Colour</label>
         <span class="field-value"><input id="sh-color" type="color" data-path="cfg.color" value="${it.cfg.color}"></span></div>`)
-    + (isRoom(it) ? roomInspector(it) : tableInspector(it));
+    + (isRoom(it) ? roomInspector(it) : furnitureInspector(it));
 }
 
 // Inputs edit the selected block live; each field edit is one undo step.
@@ -867,6 +909,7 @@ insp.addEventListener('click', (e) => {
   const i = Number(b.dataset.i);
   if (act === 'corner') c[b.dataset.ring][b.dataset.c] = !c[b.dataset.ring][b.dataset.c];
   else if (act === 'corners-all') for (const ring of ['outer', 'inner']) for (const key of CORNERS) c[ring][key] = b.dataset.v === '1';
+  else if (act === 'flip') c.flip = !c.flip;
   else if (act === 'walls-same') for (const w of WALLS) c.walls[w] = c.walls.left;
   else if (act === 'add-opening') c.openings.push(OPENING_PRESETS[b.dataset.preset]());
   else if (act === 'del-opening') c.openings.splice(i, 1);
@@ -897,7 +940,9 @@ function saveAsType(it) {
     name = `${it.name} ${i}`;
   }
   const key = `custom_${Date.now().toString(36)}`;
-  customTypes.push({ key, name, kind: it.kind, cfg: clone(it.cfg) });
+  const cfg = clone(it.cfg);
+  delete cfg.stairwells; // belongs to where this room stands, not to the type
+  customTypes.push({ key, name, kind: it.kind, cfg });
   saveTypes();
   renderPalette();
   const layout = layoutCopy();
@@ -1001,10 +1046,12 @@ function render3D(layout) {
     if (isRoom(it)) {
       mesh.rotation.set(0, 0, 0);
       mesh.position.set(a.x + ex, a.y + ey, 0);
+    } else if (isStairs(it.cfg)) {
+      mesh.rotation.set(0, 0, 0);
+      mesh.position.set(a.x + ex, a.y + ey, furnitureZ(host, it));
     } else {
       mesh.rotation.set(-Math.PI / 2, 0, 0);
-      const z = host ? host.cfg.walls.back + (host.cfg.d - host.cfg.walls.back) / 2 : s.d / 2;
-      mesh.position.set(a.x + s.w / 2 + ex, a.y + ey, z);
+      mesh.position.set(a.x + s.w / 2 + ex, a.y + ey, furnitureZ(host, it));
     }
     mesh.updateMatrixWorld();
     box.expandByObject(mesh);
@@ -1153,14 +1200,15 @@ $('assembly').onclick = () => {
   const parts = [];
   for (const it of state.items) {
     const a = absPos(state, it);
-    // Z-up STL with the open fronts facing -y. Rooms are modelled lying on
-    // their back, so stand them up; furniture is already upright.
+    // Z-up STL with the open fronts facing -y. Rooms and stairs are modelled
+    // lying on their back, so stand them up; the table is already upright.
+    const host = state.items.find((m) => m.id === it.parent);
     if (isRoom(it)) {
       parts.push(manifoldFor(it.kind, it.cfg).rotate([90, 0, 0]).translate([a.x, 0, a.y]));
+    } else if (isStairs(it.cfg)) {
+      parts.push(manifoldFor(it.kind, it.cfg).rotate([90, 0, 0]).translate([a.x, -furnitureZ(host, it), a.y]));
     } else {
-      const host = state.items.find((m) => m.id === it.parent);
-      const z = host ? host.cfg.walls.back + (host.cfg.d - host.cfg.walls.back) / 2 : sizeOf(it).d / 2;
-      parts.push(manifoldFor(it.kind, it.cfg).translate([a.x + sizeOf(it).w / 2, -z, a.y]));
+      parts.push(manifoldFor(it.kind, it.cfg).translate([a.x + sizeOf(it).w / 2, -furnitureZ(host, it), a.y]));
     }
   }
   const all = k.Manifold.union(parts);
