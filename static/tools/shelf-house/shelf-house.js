@@ -82,6 +82,8 @@ function resolveSize(it, s) {
   if (!own.d) it.cfg.d = s.d;
   const walls = it.walls || (it.walls = { ...ALL_THICK });
   it.cfg.walls = Object.fromEntries(WALLS.map((w) => [w, walls[w] === 'none' ? 0 : walls[w] === 'thin' ? s.thin : s.thick]));
+  it.cfg.outerR = s.outerR;
+  it.cfg.innerR = s.innerR;
   return it;
 }
 
@@ -118,8 +120,8 @@ function migrateItem(it) {
   return it;
 }
 
-const SETTING_MIN = { thick: 0.4, thin: 0.4 };
-const SETTING_MAX = { thick: 30, thin: 30 };
+const SETTING_MIN = { thick: 0.4, thin: 0.4, outerR: 0, innerR: 0 };
+const SETTING_MAX = { thick: 30, thin: 30, outerR: 100, innerR: 100 };
 
 function sanitizeSettings(s) {
   const out = { ...ROOM_DEFAULTS };
@@ -814,21 +816,26 @@ function renderSelection(layout) {
 const insp = $('inspector');
 
 const WALL_LABEL = { back: 'Back wall', left: 'Left wall', right: 'Right wall', ceiling: 'Ceiling', floor: 'Floor' };
-const WALL_ORDER = ['left', 'right', 'ceiling', 'floor', 'back'];
 const SHAPE_LABEL = { rect: 'Rectangle', arch: 'Arch', round: 'Round' };
 const CORNER_LABEL = { tl: 'top left', tr: 'top right', br: 'bottom right', bl: 'bottom left' };
 
 // One control per row, in the rail's label/value column. Lengths carry the
 // ruler ticks and show in the page's units; counts do not. `fine` lengths
 // (walls, bars, radii) step by a hundredth of an inch rather than five.
-function num(label, path, value, { min = 0, max = 500, step = 0.5, hint = '', unit = 'mm', fine = false, after = '' } = {}) {
+function num(label, path, value, opts = {}) {
+  const { hint = '', unit = 'mm' } = opts;
   const id = 'sh-' + path.replace(/\./g, '-');
+  return `<div class="field${unit === 'mm' ? ' field-measure' : ''}"><label for="${id}"${hint ? ` title="${esc(hint)}"` : ''}>${label}</label>
+    <span class="field-value">${numInput(path, value, { ...opts, id })}</span></div>`;
+}
+
+// The input and its unit, for a field or for a panel on the front view.
+function numInput(path, value, { min = 0, max = 500, step = 0.5, hint = '', unit = 'mm', fine = false, after = '', id = '', extra = '' } = {}) {
   const measure = unit === 'mm';
   const attrs = measure && inches()
     ? { value: fmtLen(value), min: Math.round(toUnit(min) * 100) / 100, max: Math.round(toUnit(max) * 100) / 100, step: fine ? 0.01 : 0.05 }
     : { value: fmt(value), min, max, step };
-  return `<div class="field${measure ? ' field-measure' : ''}"><label for="${id}"${hint ? ` title="${esc(hint)}"` : ''}>${label}</label>
-    <span class="field-value"><input id="${id}" type="number" data-path="${path}"${measure ? ' data-measure' : ''} value="${attrs.value}" min="${attrs.min}" max="${attrs.max}" step="${attrs.step}"${hint ? ` title="${esc(hint)}"` : ''}>${unit ? `<span class="unit">${measure ? unitName() : unit}</span>` : ''}${after}</span></div>`;
+  return `<input${id ? ` id="${id}"` : ''} type="number" data-path="${path}"${measure ? ' data-measure' : ''} value="${attrs.value}" min="${attrs.min}" max="${attrs.max}" step="${attrs.step}"${hint ? ` title="${esc(hint)}"` : ''}${extra}>${unit ? `<span class="unit">${measure ? unitName() : unit}</span>` : ''}${after}`;
 }
 
 // The ↺ beside a size that no longer follows its default.
@@ -888,60 +895,12 @@ function openingHTML(o, i) {
   </div>`;
 }
 
-function cornerPath(x0, y0, x1, y1, on, r) {
-  const c = (key) => (on[key] ? r : 0);
-  return `M${x0 + c('tl')},${y0} H${x1 - c('tr')} A${c('tr')},${c('tr')} 0 0 1 ${x1},${y0 + c('tr')}
-    V${y1 - c('br')} A${c('br')},${c('br')} 0 0 1 ${x1 - c('br')},${y1}
-    H${x0 + c('bl')} A${c('bl')},${c('bl')} 0 0 1 ${x0},${y1 - c('bl')}
-    V${y0 + c('tl')} A${c('tl')},${c('tl')} 0 0 1 ${x0 + c('tl')},${y0} Z`;
-}
-
-function cornersHTML(cfg) {
-  // Diagram in a 200 × 130 box: outer frame, inner opening, a toggle on each corner.
-  const O = [14, 10, 186, 120], I = [40, 34, 160, 96];
-  const pos = {
-    outer: { tl: [O[0], O[1]], tr: [O[2], O[1]], br: [O[2], O[3]], bl: [O[0], O[3]] },
-    inner: { tl: [I[0], I[1]], tr: [I[2], I[1]], br: [I[2], I[3]], bl: [I[0], I[3]] },
-  };
-  const btns = ['outer', 'inner'].flatMap((ring) => CORNERS.map((c) => {
-    const [x, y] = pos[ring][c];
-    const on = cfg[ring][c];
-    return `<button type="button" class="sh-corner${on ? ' on' : ''}" data-act="corner" data-ring="${ring}" data-c="${c}"
-      style="left:${(x / 200) * 100}%;top:${(y / 130) * 100}%" aria-pressed="${on}"
-      aria-label="${ring === 'outer' ? 'Outer' : 'Inner'} ${CORNER_LABEL[c]} corner rounded"
-      title="${ring === 'outer' ? 'Outer' : 'Inner'} ${CORNER_LABEL[c]} corner: ${on ? 'rounded' : 'square'}"></button>`;
-  })).join('');
-  return `<div class="sh-corners">
-      <svg viewBox="0 0 200 130" aria-hidden="true">
-        <path d="${cornerPath(...O, cfg.outer, 22)} ${cornerPath(...I, cfg.inner, 14)}" fill="${cfg.color}" fill-rule="evenodd" stroke="${shade(cfg.color, -0.35)}"/>
-      </svg>${btns}
-    </div>
-    <div class="chips">
-      <button type="button" class="chip" data-act="corners-all" data-v="1">round all</button>
-      <button type="button" class="chip" data-act="corners-all" data-v="0">square all</button>
-    </div>
-    ${num('Outer radius', 'cfg.outerR', cfg.outerR, { max: 100 })}
-    ${num('Inner radius', 'cfg.innerR', cfg.innerR, { max: 100 })}`;
-}
-
 function roomInspector(it) {
   const c = it.cfg;
-  const s = state.settings;
-  const wallLabels = { thick: `Thick, ${len(s.thick)}`, thin: `Thin, ${len(s.thin)}`, none: 'No wall' };
   return group('Size', `
       ${sizeField(it, it.size === 'narrow' ? 'Width (narrow)' : 'Width (wide)', 'w')}
       ${sizeField(it, 'Height', 'h')}
       ${sizeField(it, 'Depth', 'd')}`)
-    + group('Walls', `
-      ${WALL_ORDER.map((w) => pick(WALL_LABEL[w], `walls.${w}`, WALL_KINDS, it.walls[w], wallLabels)).join('')}
-      <div class="chips">
-        <button type="button" class="chip" data-act="walls-all" data-v="thick">all thick</button>
-        <button type="button" class="chip" data-act="walls-all" data-v="thin">all thin</button>
-      </div>
-      <p class="rail-hint">Thick and thin come from the shelf settings. A room with no wall is open on that side.</p>`)
-    + group('Corners', `
-      <p class="rail-hint">Click a corner to switch it between rounded and square.</p>
-      ${cornersHTML(c)}`)
     + group('Openings', `
       ${c.openings.length ? '' : '<p class="rail-hint">No openings yet. Add a window, a doorway or a skylight.</p>'}
       ${c.openings.map(openingHTML).join('')}
@@ -953,22 +912,10 @@ function roomInspector(it) {
     + blockActions(it);
 }
 
+// A table's or a flight's sizes are set from the panels around it on the
+// front view; the rail keeps what has no place there.
 function furnitureInspector(it) {
-  const c = it.cfg;
-  if (isStairs(c)) {
-    return group('Size', `
-      <p class="rail-hint">Height and depth follow the room. The ceiling above and the floor of the room on top open up to fit.</p>
-      ${num('Run length', 'cfg.run', c.run, { min: 10 })}
-      ${num('Steps', 'cfg.steps', c.steps, { unit: '', step: 1, min: 2, max: 40 })}
-      <div class="chips"><button type="button" class="chip" data-act="flip" title="Rise to the ${c.flip ? 'right' : 'left'} instead">turn ⇄</button></div>`)
-      + blockActions(it);
-  }
-  return group('Size', `
-      ${num('Top diameter', 'cfg.topD', c.topD, { min: 4 })}
-      ${num('Base diameter', 'cfg.baseD', c.baseD, { min: 4 })}
-      ${num('Stem diameter', 'cfg.stemD', c.stemD, { min: 1 })}
-      ${num('Height', 'cfg.height', c.height, { min: 8 })}`)
-    + blockActions(it);
+  return blockActions(it);
 }
 
 function blockActions(it) {
@@ -986,14 +933,17 @@ function renderInspector() {
   const it = selected();
   if (!it) {
     insp.innerHTML = group('Selected block', `<p class="rail-hint">Click a block in the front view to tune it.
-      Each block has its own size, wall thickness, corners and openings, so two rooms of the same type can differ.</p>`);
+      Each block has its own size, walls, corners and openings, so two rooms of the same type can differ.</p>`);
     return;
   }
   insp.innerHTML = group('Selected block', `
       <div class="field"><label for="sh-name">Name</label>
         <span class="field-value"><input id="sh-name" type="text" data-path="name" value="${esc(it.name)}" maxlength="40"></span></div>
       <div class="field"><label for="sh-color">Colour</label>
-        <span class="field-value"><input id="sh-color" type="color" data-path="cfg.color" value="${it.cfg.color}"></span></div>`)
+        <span class="field-value"><input id="sh-color" type="color" data-path="cfg.color" value="${it.cfg.color}"></span></div>
+      <p class="rail-hint">${isRoom(it)
+        ? 'Set its walls and openings from the tabs around it on the front view, and round or square a corner with the dot beside it.'
+        : 'Set its sizes from the tabs around it on the front view.'}</p>`)
     + (isRoom(it) ? roomInspector(it) : furnitureInspector(it));
 }
 
@@ -1060,7 +1010,6 @@ insp.addEventListener('input', (e) => {
   // shelf); spinner arrows and the colour picker update live.
   if (el.type === 'number' && e.inputType) return;
   liveEdit(el.dataset.path, readInput(el));
-  if (el.dataset.path === 'cfg.color') insp.querySelector('.sh-corners path')?.setAttribute('fill', el.value);
 });
 
 insp.addEventListener('change', (e) => {
@@ -1090,11 +1039,7 @@ insp.addEventListener('click', (e) => {
   const old = new Map(state.items.map((i) => [i.id, sizeOf(i)]));
   const c = m.cfg;
   const i = Number(b.dataset.i);
-  if (act === 'corner') c[b.dataset.ring][b.dataset.c] = !c[b.dataset.ring][b.dataset.c];
-  else if (act === 'corners-all') for (const ring of ['outer', 'inner']) for (const key of CORNERS) c[ring][key] = b.dataset.v === '1';
-  else if (act === 'flip') c.flip = !c.flip;
-  else if (act === 'size-default') delete m.own[b.dataset.dim];
-  else if (act === 'walls-all') for (const w of WALLS) m.walls[w] = b.dataset.v;
+  if (act === 'size-default') delete m.own[b.dataset.dim];
   else if (act === 'add-opening') c.openings.push(OPENING_PRESETS[b.dataset.preset]());
   else if (act === 'del-opening') c.openings.splice(i, 1);
   else if (act === 'dup-opening') {
@@ -1116,8 +1061,6 @@ insp.addEventListener('click', (e) => {
   } else return;
   reflow(layout, old);
   commit(layout);
-  // Keep keyboard focus on the corner that was just toggled.
-  if (act === 'corner') insp.querySelector(`[data-act="corner"][data-ring="${b.dataset.ring}"][data-c="${b.dataset.c}"]`)?.focus();
 });
 
 function saveAsType(it) {
@@ -1150,25 +1093,32 @@ function flash(msg) {
 
 // ------------------------------------------------------------------ in-place panels
 
-// A selected room gets a panel on each of its four sides and one for its back
-// wall under the floor panel. Each sets that wall's weight and adds, picks or
-// removes its openings; hovering a panel or focusing one of its controls
-// lights the wall it works on.
-const JIG_WALLS = ['ceiling', 'left', 'right', 'floor', 'back'];
+// A selected block is edited where it stands. A room gets a tab on each of its
+// four sides and one for its back wall under the floor tab, setting that
+// wall's weight and adding, picking or removing its openings, plus a dot on
+// each corner that rounds or squares it. A table or a flight of stairs gets a
+// tab beside each size it has. A tab unfolds on hover or focus, and the part
+// it works on lights up on the front view.
 const JIG_NAME = { ceiling: 'Ceiling', left: 'Left', right: 'Right', floor: 'Floor', back: 'Back wall' };
 const JIG_ADDS = {
-  left: ['doorway', 'window'], right: ['doorway', 'window'],
+  left: ['doorway', 'window', 'porthole', 'arch'], right: ['doorway', 'window', 'porthole', 'arch'],
   ceiling: ['skylight'], floor: ['hatch'], back: ['window', 'arch', 'porthole'],
 };
 const ADD_LABEL = { doorway: 'doorway', window: 'window', skylight: 'skylight', hatch: 'hatch', arch: 'arched window', porthole: 'round window' };
 const KIND_LABEL = { thick: 'Thick', thin: 'Thin', none: 'No wall' };
+// Where each tab docks: above, below, under the one below, or beside.
+const ROOM_SIDES = { ceiling: 'top', left: 'left', right: 'right', floor: 'bottom', back: 'under' };
+// The walls each corner joins; a corner beside a missing wall is square.
+const CORNER_WALLS = { tl: ['left', 'ceiling'], tr: ['right', 'ceiling'], br: ['right', 'floor'], bl: ['left', 'floor'] };
 
 function newOpening(kind, wall) {
+  const side = wall === 'left' || wall === 'right';
   if (kind === 'doorway') return { ...OPENING_PRESETS.doorway(), wall };
   if (kind === 'skylight') return OPENING_PRESETS.skylight();
   if (kind === 'hatch') return { ...OPENING_PRESETS.skylight(), wall: 'floor', shape: 'rect', r: 2, cols: 1, rows: 1 };
-  if (kind === 'arch') return { ...OPENING_PRESETS.window(), wall, shape: 'arch', w: 22, h: 40, cols: 1 };
-  if (kind === 'porthole') return { ...OPENING_PRESETS.window(), wall, shape: 'round', w: 30, h: 30 };
+  // A side wall is only as deep as the room, so its windows are smaller.
+  if (kind === 'arch') return { ...OPENING_PRESETS.window(), wall, shape: 'arch', w: side ? 18 : 22, h: side ? 32 : 40, cols: 1 };
+  if (kind === 'porthole') return { ...OPENING_PRESETS.window(), wall, shape: 'round', w: side ? 24 : 30, h: side ? 24 : 30 };
   return { ...OPENING_PRESETS.window(), wall, w: wall === 'back' ? 34 : 24, h: wall === 'back' ? 30 : 24 };
 }
 
@@ -1180,8 +1130,8 @@ function freeX(cfg, o) {
   return 0;
 }
 
-let jigWall = null;     // the wall a panel is being worked in
-let jigPick = null;     // { id, i }: the opening picked from a panel
+let jigHot = null;      // the tab being worked in
+let jigPick = null;     // { id, i }: the opening picked from a tab
 
 const glyph = (body) => `<svg viewBox="0 0 16 16" aria-hidden="true">${body}</svg>`;
 function weightGlyph(kind, vertical) {
@@ -1198,34 +1148,94 @@ function shapeGlyph(shape) {
 }
 const ADD_SHAPE = { doorway: 'arch', window: 'rect', skylight: 'rect', hatch: 'rect', arch: 'arch', porthole: 'round' };
 
-function jigPanel(it, wall) {
-  const vertical = wall === 'left' || wall === 'right';
-  const kind = it.walls[wall];
-  const name = JIG_NAME[wall];
+// One tab and what it unfolds into.
+function jigPanel({ id, side, name, label, tab, title, body }) {
+  const vertical = side === 'left' || side === 'right' ? !!tab.vertical : false;
+  return `<div class="sh-jig-panel${vertical ? ' is-vertical' : ''}${side === 'left' && !vertical ? ' is-start' : ''}${jigHot === id ? ' is-hot' : ''}"
+      data-panel="${id}" data-side="${side}" role="group" aria-label="${name}">
+    <button type="button" class="sh-jig-tab" data-jig="open" data-panel="${id}" aria-expanded="${jigHot === id}"
+      title="${esc(title)}" aria-label="${esc(title)}">${tab.html}</button>
+    <span class="sh-jig-body">${body}</span>
+  </div>`;
+}
+
+function roomPanels(it) {
   const st = state.settings;
   const what = (k) => (k === 'none' ? 'no wall' : `${KIND_LABEL[k].toLowerCase()}, ${len(st[k])}`);
-  const ops = it.cfg.openings.map((o, i) => [o, i]).filter(([o]) => o.wall === wall);
-  // Folded, a panel is a tab showing the wall's weight and how many openings it has.
-  const tab = `<button type="button" class="sh-jig-tab" data-jig="open" data-wall="${wall}" aria-expanded="${jigWall === wall}"
-      title="${name}: ${what(kind)}${ops.length ? `, ${ops.length} opening${ops.length > 1 ? 's' : ''}` : ''}"
-      aria-label="${name}: ${what(kind)}, ${ops.length} opening${ops.length === 1 ? '' : 's'}">${vertical ? '' : `<span class="sh-jig-name">${name}</span>`}${weightGlyph(kind, vertical)}${ops.length ? `<span class="sh-jig-count">${ops.length}</span>` : ''}</button>`;
-  const weights = WALL_KINDS.map((k) => `<button type="button" class="sh-jig-btn${k === kind ? ' is-on' : ''}" data-jig="wall" data-wall="${wall}" data-v="${k}"
-      aria-pressed="${k === kind}" title="${KIND_LABEL[k]}${k === 'none' ? '' : `, ${len(st[k])}`}" aria-label="${name}: ${what(k)}">${weightGlyph(k, vertical)}</button>`).join('');
-  const picked = jigPick && jigPick.id === it.id && ops.some(([, i]) => i === jigPick.i) ? jigPick.i : null;
-  const chips = ops.map(([o, i]) => `<button type="button" class="sh-jig-btn sh-jig-op${i === picked ? ' is-picked' : ''}${kind === 'none' ? ' is-idle' : ''}"
-      data-jig="pick" data-wall="${wall}" data-i="${i}" aria-pressed="${i === picked}" title="Opening ${i + 1}: ${SHAPE_LABEL[o.shape].toLowerCase()}, ${len(o.w)} × ${len(o.h)}"
-      aria-label="${name}, opening ${i + 1}">${shapeGlyph(o.shape)}</button>`).join('');
-  const del = picked != null ? `<button type="button" class="sh-jig-btn sh-jig-del" data-jig="del" data-wall="${wall}" data-i="${picked}"
-      title="Remove opening ${picked + 1}" aria-label="Remove opening ${picked + 1}">×</button>` : '';
-  const adds = kind === 'none' ? '' : JIG_ADDS[wall].map((a) => `<button type="button" class="sh-jig-btn sh-jig-add" data-jig="add" data-wall="${wall}" data-v="${a}"
-      title="Add a ${ADD_LABEL[a]}" aria-label="${name}: add a ${ADD_LABEL[a]}">${shapeGlyph(ADD_SHAPE[a])}</button>`).join('');
-  return `<div class="sh-jig-panel${vertical ? ' is-vertical' : ''}${jigWall === wall ? ' is-hot' : ''}" data-wall="${wall}" role="group" aria-label="${name}">
-    ${tab}
-    <span class="sh-jig-body">
-      <span class="sh-jig-set">${weights}</span>
-      ${chips || adds ? `<span class="sh-jig-set">${chips}${del}${adds}</span>` : ''}
-    </span>
-  </div>`;
+  return Object.entries(ROOM_SIDES).map(([wall, side]) => {
+    const vertical = side === 'left' || side === 'right';
+    const kind = it.walls[wall];
+    const name = JIG_NAME[wall];
+    const ops = it.cfg.openings.map((o, i) => [o, i]).filter(([o]) => o.wall === wall);
+    const weights = WALL_KINDS.map((k) => `<button type="button" class="sh-jig-btn${k === kind ? ' is-on' : ''}" data-jig="wall" data-wall="${wall}" data-v="${k}"
+        aria-pressed="${k === kind}" title="${KIND_LABEL[k]}${k === 'none' ? '' : `, ${len(st[k])}`}" aria-label="${name}: ${what(k)}">${weightGlyph(k, vertical)}</button>`).join('');
+    const picked = jigPick && jigPick.id === it.id && ops.some(([, i]) => i === jigPick.i) ? jigPick.i : null;
+    const chips = ops.map(([o, i]) => `<button type="button" class="sh-jig-btn sh-jig-op${i === picked ? ' is-picked' : ''}${kind === 'none' ? ' is-idle' : ''}"
+        data-jig="pick" data-wall="${wall}" data-i="${i}" aria-pressed="${i === picked}" title="Opening ${i + 1}: ${SHAPE_LABEL[o.shape].toLowerCase()}, ${len(o.w)} × ${len(o.h)}"
+        aria-label="${name}, opening ${i + 1}">${shapeGlyph(o.shape)}</button>`).join('');
+    const del = picked != null ? `<button type="button" class="sh-jig-btn sh-jig-del" data-jig="del" data-wall="${wall}" data-i="${picked}"
+        title="Remove opening ${picked + 1}" aria-label="Remove opening ${picked + 1}">×</button>` : '';
+    const adds = kind === 'none' ? '' : JIG_ADDS[wall].map((a) => `<button type="button" class="sh-jig-btn sh-jig-add" data-jig="add" data-wall="${wall}" data-v="${a}"
+        title="Add a ${ADD_LABEL[a]}" aria-label="${name}: add a ${ADD_LABEL[a]}">${shapeGlyph(ADD_SHAPE[a])}</button>`).join('');
+    return {
+      id: wall, side, name,
+      title: `${name}: ${what(kind)}`,
+      tab: { vertical, html: `${vertical ? '' : `<span class="sh-jig-name">${name}</span>`}${weightGlyph(kind, vertical)}` },
+      body: `<span class="sh-jig-set">${weights}</span>${chips || adds ? `<span class="sh-jig-set">${chips}${del}${adds}</span>` : ''}`,
+    };
+  });
+}
+
+// A size of a table or a flight: the tab reads its value, and unfolds into
+// the field that sets it.
+function sizePanel(it, id, side, name, short, path, opts = {}) {
+  const v = getPath(it, path);
+  const shown = opts.unit === '' ? fmt(v) : fmtLen(v);
+  return {
+    id, side, name,
+    title: `${name}: ${opts.unit === '' ? shown : len(v)}${opts.hint ? `. ${opts.hint}` : ''}`,
+    tab: { html: `<span class="sh-jig-name">${short}</span><span class="sh-jig-val">${shown}</span>` },
+    body: `<span class="field-value">${numInput(path, v, { ...opts, id: `sh-jig-${id}`, extra: ` data-jig="num" aria-label="${name}"` })}</span>`,
+  };
+}
+
+function furniturePanels(it) {
+  const c = it.cfg;
+  if (isStairs(c)) {
+    return [
+      {
+        id: 'turn', side: 'top', name: 'Turn',
+        title: `Rises to the ${c.flip ? 'left' : 'right'}`,
+        tab: { html: `<span class="sh-jig-name">Rises ${c.flip ? 'left' : 'right'}</span>` },
+        body: `<button type="button" class="sh-jig-btn sh-jig-wide" data-jig="flip" title="Rise to the ${c.flip ? 'right' : 'left'} instead"
+          aria-label="Rise to the ${c.flip ? 'right' : 'left'} instead">turn ⇄</button>`,
+      },
+      sizePanel(it, 'run', 'bottom', 'Run length', 'Run', 'cfg.run', { min: 10 }),
+      sizePanel(it, 'steps', 'right', 'Steps', 'Steps', 'cfg.steps', {
+        unit: '', step: 1, min: 2, max: 40,
+        hint: 'Height and depth follow the room; the ceiling above and the floor of the room on top open up to fit',
+      }),
+    ];
+  }
+  return [
+    sizePanel(it, 'topD', 'top', 'Top diameter', 'Top ⌀', 'cfg.topD', { min: 4 }),
+    sizePanel(it, 'stemD', 'left', 'Stem diameter', 'Stem ⌀', 'cfg.stemD', { min: 1 }),
+    sizePanel(it, 'height', 'right', 'Height', 'Height', 'cfg.height', { min: 8 }),
+    sizePanel(it, 'baseD', 'bottom', 'Base diameter', 'Base ⌀', 'cfg.baseD', { min: 4 }),
+  ];
+}
+
+// The dots that round or square each corner, outer ring and inner.
+function cornerDots(it) {
+  return ['outer', 'inner'].flatMap((ring) => CORNERS.map((key) => {
+    const forced = CORNER_WALLS[key].some((w) => it.walls[w] === 'none');
+    const on = it.cfg[ring][key] && !forced;
+    const name = `${ring === 'outer' ? 'Outer' : 'Inner'} ${CORNER_LABEL[key]} corner`;
+    const title = forced ? `${name}: square, because a wall beside it is missing`
+      : `${name}: ${on ? 'rounded' : 'square'}. Shift-click to set all four ${ring} corners`;
+    return `<button type="button" class="sh-corner${on ? ' on' : ''}" data-jig="corner" data-ring="${ring}" data-c="${key}"
+      aria-pressed="${on}" title="${title}" aria-label="${title}"${forced ? ' disabled' : ''}></button>`;
+  })).join('');
 }
 
 const jig = document.createElement('div');
@@ -1235,103 +1245,180 @@ mat.parentElement.append(jig);
 function renderJig(layout) {
   const it = layout.items.find((i) => i.id === selectedId);
   const focusKey = jig.contains(document.activeElement) ? jigKey(document.activeElement) : null;
-  if (!it || !isRoom(it) || (drag && drag.moved)) {
+  if (!it || (drag && drag.moved)) {
     jig.replaceChildren();
-    if (!it || !isRoom(it)) jigWall = null;
-    drawWallHighlight(layout);
+    if (!it) jigHot = null;
+    drawJigHighlight(layout);
     return;
   }
-  jig.innerHTML = JIG_WALLS.map((w) => jigPanel(it, w)).join('');
+  const panels = isRoom(it) ? roomPanels(it) : furniturePanels(it);
+  // Forget a hot tab or corner that this block does not have.
+  const corner = isRoom(it) && /^corner-(outer|inner)-(tl|tr|br|bl)$/.test(jigHot || '');
+  if (!corner && !panels.some((p) => p.id === jigHot)) jigHot = null;
+  // The panels' fields read like the band's, so they take its input styles.
+  jig.innerHTML = `<div class="rail-band">${panels.map(jigPanel).join('')}${isRoom(it) ? cornerDots(it) : ''}</div>`;
   placeJig(layout, it);
   if (focusKey) jig.querySelector(focusKey)?.focus();
-  drawWallHighlight(layout);
+  drawJigHighlight(layout);
 }
 
 const jigKey = (el) => {
   const b = el.closest('[data-jig]');
   if (!b) return null;
-  const attr = (k) => (b.dataset[k] != null ? `[data-${k}="${b.dataset[k]}"]` : '');
-  return `[data-jig="${b.dataset.jig}"]${attr('wall')}${attr('v')}${attr('i')}`;
+  const attr = (k, a = k) => (b.dataset[k] != null ? `[data-${a}="${b.dataset[k]}"]` : '');
+  return `[data-jig="${b.dataset.jig}"]${attr('panel')}${attr('wall')}${attr('v')}${attr('i')}${attr('ring')}${attr('c')}${attr('path')}`;
 };
 
-// Dock each tab against its wall, just outside the selection outline. An
-// open panel unfolds away from its tab (rightwards along the top and bottom,
-// downwards at the sides), so the tab never moves from under the pointer.
+// Dock each tab against its side, just outside the selection outline. An
+// open panel unfolds away from its tab (rightwards above and below, outwards
+// beside), so the tab never moves from under the pointer.
 function placeJig(layout, it) {
   const box = jig.getBoundingClientRect();
   const ctm = mat.getScreenCTM();
   if (!ctm || !box.width) return;
   const a = absPos(layout, it), sz = sizeOf(it);
-  const pt = (x, y) => new DOMPoint(x, -y).matrixTransform(ctm);
+  const pt = (x, y) => {
+    const p = new DOMPoint(x, -y).matrixTransform(ctm);
+    return { x: p.x - box.left, y: p.y - box.top };
+  };
   const tl = pt(a.x - 3.5, a.y + sz.h + 3.5), br = pt(a.x + sz.w + 3.5, a.y - 3.5);
-  const r = { l: tl.x - box.left, t: tl.y - box.top, r: br.x - box.left, b: br.y - box.top };
-  const cx = (r.l + r.r) / 2, cy = (r.t + r.b) / 2, gap = 5;
-  const tabOf = (w) => jig.querySelector(`.sh-jig-panel[data-wall="${w}"] .sh-jig-tab`);
-  const put = (w, x, y) => {
-    const el = jig.querySelector(`.sh-jig-panel[data-wall="${w}"]`);
+  const r = { l: tl.x, t: tl.y, r: br.x, b: br.y };
+  const cx = (r.l + r.r) / 2, cy = (r.t + r.b) / 2, gap = 5, pad = 3;
+  const fit = (el, x, y) => {
     const fx = clamp(x, 2, box.width - el.offsetWidth - 2), fy = clamp(y, 2, box.height - el.offsetHeight - 2);
     el.style.transform = `translate(${Math.round(fx)}px, ${Math.round(fy)}px)`;
   };
-  const pad = 3; // the panel's padding around its tab
-  const ceiling = tabOf('ceiling'), floor = tabOf('floor'), back = tabOf('back'), side = tabOf('left');
-  put('ceiling', cx - ceiling.offsetWidth / 2 - pad, r.t - gap - ceiling.offsetHeight - 2 * pad);
-  put('floor', cx - floor.offsetWidth / 2 - pad, r.b + gap);
-  put('back', cx - back.offsetWidth / 2 - pad, r.b + gap + floor.offsetHeight + 2 * pad + 3);
-  put('left', r.l - gap - side.offsetWidth - 2 * pad, cy - side.offsetHeight / 2 - pad);
-  put('right', r.r + gap, cy - side.offsetHeight / 2 - pad);
+  const bottomTab = jig.querySelector('.sh-jig-panel[data-side="bottom"] .sh-jig-tab');
+  for (const el of jig.querySelectorAll('.sh-jig-panel')) {
+    const tab = el.querySelector('.sh-jig-tab');
+    const tw = tab.offsetWidth + 2 * pad, th = tab.offsetHeight + 2 * pad;
+    const side = el.dataset.side;
+    if (side === 'top') fit(el, cx - tw / 2, r.t - gap - th);
+    else if (side === 'bottom') fit(el, cx - tw / 2, r.b + gap);
+    else if (side === 'under') fit(el, cx - tw / 2, r.b + gap + (bottomTab ? bottomTab.offsetHeight + 2 * pad + 3 : 0));
+    else if (side === 'right') fit(el, r.r + gap, cy - th / 2);
+    // A left tab unfolds leftwards, so it is placed by its right edge.
+    else fit(el, r.l - gap - (el.classList.contains('is-vertical') ? tw : el.offsetWidth), cy - th / 2);
+  }
+  // Corner dots: the outer ring just outside each corner, the inner ring just
+  // inside each corner of the interior, so the two never sit on each other.
+  if (!isRoom(it)) return;
+  const b = innerBox(it.cfg);
+  const corner = {
+    outer: { tl: [0, sz.h], tr: [sz.w, sz.h], br: [sz.w, 0], bl: [0, 0] },
+    inner: { tl: [b.x0, b.y1], tr: [b.x1, b.y1], br: [b.x1, b.y0], bl: [b.x0, b.y0] },
+  };
+  const dir = { tl: [-1, -1], tr: [1, -1], br: [1, 1], bl: [-1, 1] };
+  for (const el of jig.querySelectorAll('.sh-corner')) {
+    const [x, y] = corner[el.dataset.ring][el.dataset.c];
+    const p = pt(a.x + x, a.y + y);
+    const [dx, dy] = dir[el.dataset.c];
+    const k = el.dataset.ring === 'outer' ? 7 : -9;
+    el.style.left = `${Math.round(p.x + dx * k)}px`;
+    el.style.top = `${Math.round(p.y + dy * k)}px`;
+  }
 }
 
-// The wall being worked on, lit on the front view: a strip the thickness of
-// the wall, a dashed edge where there is no wall, or the whole face for the back.
-function drawWallHighlight(layout) {
+// What the hot tab works on, lit on the front view: a wall as a strip its own
+// thickness (a dashed edge where there is none) or the whole back face; a
+// corner as an arc; a part of a table; a whole flight.
+function drawJigHighlight(layout) {
   mat.querySelector('.wall-hi')?.remove();
   const it = layout.items.find((i) => i.id === selectedId);
-  if (!jigWall || !it || !isRoom(it)) return;
-  const a = absPos(layout, it), c = it.cfg, t = c.walls, b = innerBox(c);
+  if (!jigHot || !it) return;
+  const a = absPos(layout, it), c = it.cfg, sz = sizeOf(it);
   const g = svgEl('g', { class: 'wall-hi' });
   const rect = (x0, y0, x1, y1) => g.append(svgEl('rect', { x: a.x + x0, y: -(a.y + y1), width: x1 - x0, height: y1 - y0 }));
   const edge = (x0, y0, x1, y1) => g.append(svgEl('line', { x1: a.x + x0, y1: -(a.y + y0), x2: a.x + x1, y2: -(a.y + y1), class: 'open' }));
-  const w = jigWall;
-  if (w === 'back') rect(b.x0, b.y0, b.x1, b.y1);
-  else if (!(t[w] > 0)) {
-    if (w === 'left') edge(0, 0, 0, c.h);
-    if (w === 'right') edge(c.w, 0, c.w, c.h);
-    if (w === 'ceiling') edge(0, c.h, c.w, c.h);
-    if (w === 'floor') edge(0, 0, c.w, 0);
+  const w = jigHot;
+  if (!isRoom(it)) {
+    if (isStairs(c)) rect(0, 0, sz.w, sz.h);
+    else {
+      const mid = sz.w / 2;
+      if (w === 'topD') rect(mid - c.topD / 2, c.height - 3, mid + c.topD / 2, c.height);
+      if (w === 'baseD') rect(mid - c.baseD / 2, 0, mid + c.baseD / 2, 3.5);
+      if (w === 'stemD') rect(mid - c.stemD / 2, 3.5, mid + c.stemD / 2, c.height - 3);
+      if (w === 'height') rect(0, 0, sz.w, c.height);
+    }
+  } else if (w.startsWith('corner-')) {
+    const [, ring, key] = w.split('-');
+    const b = innerBox(c);
+    const r = Math.max(ring === 'outer' ? c.outerR : c.innerR, 3);
+    const [x, y] = ring === 'outer'
+      ? { tl: [0, c.h], tr: [c.w, c.h], br: [c.w, 0], bl: [0, 0] }[key]
+      : { tl: [b.x0, b.y1], tr: [b.x1, b.y1], br: [b.x1, b.y0], bl: [b.x0, b.y0] }[key];
+    // The quarter circle the corner is rounded along, from one wall to the other.
+    const sx = key[1] === 'l' ? 1 : -1, sy = key[0] === 't' ? -1 : 1;
+    const X = (u) => a.x + u, Y = (v) => -(a.y + v);
+    const sweep = sx * sy < 0 ? 1 : 0; // both rings round about a centre inside the corner
+    g.append(svgEl('path', {
+      d: `M${X(x)},${Y(y + sy * r)} A${r},${r} 0 0 ${sweep} ${X(x + sx * r)},${Y(y)}`, class: 'arc',
+    }));
   } else {
-    if (w === 'left') rect(0, 0, t.left, c.h);
-    if (w === 'right') rect(c.w - t.right, 0, c.w, c.h);
-    if (w === 'ceiling') rect(0, b.y1, c.w, c.h);
-    if (w === 'floor') rect(0, 0, c.w, b.y0);
+    const t = c.walls, b = innerBox(c);
+    if (w === 'back') rect(b.x0, b.y0, b.x1, b.y1);
+    else if (!(t[w] > 0)) {
+      if (w === 'left') edge(0, 0, 0, c.h);
+      if (w === 'right') edge(c.w, 0, c.w, c.h);
+      if (w === 'ceiling') edge(0, c.h, c.w, c.h);
+      if (w === 'floor') edge(0, 0, c.w, 0);
+    } else {
+      if (w === 'left') rect(0, 0, t.left, c.h);
+      if (w === 'right') rect(c.w - t.right, 0, c.w, c.h);
+      if (w === 'ceiling') rect(0, b.y1, c.w, c.h);
+      if (w === 'floor') rect(0, 0, c.w, b.y0);
+    }
   }
   mat.append(g);
 }
 
-function setJigWall(w) {
-  if (jigWall === w) return;
-  jigWall = w;
+function setJigHot(id) {
+  if (jigHot === id) return;
+  jigHot = id;
   for (const p of jig.querySelectorAll('.sh-jig-panel')) {
-    p.classList.toggle('is-hot', p.dataset.wall === w);
-    p.querySelector('.sh-jig-tab').setAttribute('aria-expanded', p.dataset.wall === w);
+    p.classList.toggle('is-hot', p.dataset.panel === id);
+    p.querySelector('.sh-jig-tab').setAttribute('aria-expanded', p.dataset.panel === id);
   }
   const it = selected();
-  if (it && isRoom(it)) placeJig(state, it);
-  drawWallHighlight(currentView());
+  if (it) placeJig(state, it);
+  drawJigHighlight(currentView());
 }
-const panelWall = (e) => e.target.closest?.('.sh-jig-panel')?.dataset.wall || null;
-jig.addEventListener('pointerover', (e) => setJigWall(panelWall(e)));
-jig.addEventListener('pointerleave', () => { if (!jig.contains(document.activeElement)) setJigWall(null); });
-jig.addEventListener('focusin', (e) => setJigWall(panelWall(e)));
-jig.addEventListener('focusout', (e) => { if (!jig.contains(e.relatedTarget) && !jig.matches(':hover')) setJigWall(null); });
+const hotOf = (e) => {
+  const p = e.target.closest?.('.sh-jig-panel');
+  if (p) return p.dataset.panel;
+  const d = e.target.closest?.('.sh-corner');
+  return d ? `corner-${d.dataset.ring}-${d.dataset.c}` : null;
+};
+jig.addEventListener('pointerover', (e) => setJigHot(hotOf(e)));
+jig.addEventListener('pointerleave', () => { if (!jig.contains(document.activeElement)) setJigHot(null); });
+jig.addEventListener('focusin', (e) => setJigHot(hotOf(e)));
+jig.addEventListener('focusout', (e) => { if (!jig.contains(e.relatedTarget) && !jig.matches(':hover')) setJigHot(null); });
 // The panels sit over the mat; a press on one is not a press on the shelf.
 jig.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+// Sizes typed into a panel apply on Enter or when it loses focus; spinner
+// arrows apply as they go. Each is one undo step, as on the rail.
+jig.addEventListener('input', (e) => {
+  const el = e.target.closest('input[data-path]');
+  if (!el || e.inputType) return;
+  liveEdit(el.dataset.path, readInput(el));
+});
+jig.addEventListener('change', (e) => {
+  const el = e.target.closest('input[data-path]');
+  if (!el) return;
+  const v = readInput(el);
+  if (v !== undefined) liveEdit(el.dataset.path, v);
+  endEdit();
+  renderJig(state);
+});
 
 jig.addEventListener('click', (e) => {
   const b = e.target.closest('[data-jig]');
   const it = selected();
-  if (!b || !it || !isRoom(it)) return;
+  if (!b || !it) return;
   const act = b.dataset.jig;
-  if (act === 'open') { setJigWall(b.dataset.wall); return; }
+  if (act === 'open') { setJigHot(b.dataset.panel); return; }
+  if (act === 'num') return;
   if (act === 'pick') {
     const i = Number(b.dataset.i);
     jigPick = jigPick && jigPick.id === it.id && jigPick.i === i ? null : { id: it.id, i };
@@ -1351,12 +1438,18 @@ jig.addEventListener('click', (e) => {
   } else if (act === 'del') {
     m.cfg.openings.splice(Number(b.dataset.i), 1);
     jigPick = null;
-  } else return;
+  } else if (act === 'corner') {
+    const { ring, c } = b.dataset;
+    const to = !m.cfg[ring][c];
+    if (e.shiftKey) for (const key of CORNERS) m.cfg[ring][key] = to;
+    else m.cfg[ring][c] = to;
+  } else if (act === 'flip') m.cfg.flip = !m.cfg.flip;
+  else return;
   reflow(layout, old);
   commit(layout);
   if (act === 'add') showOpening(jigPick.i);
   // The control that was used may have gone (a removed opening): stay in the panel.
-  if (!jig.contains(document.activeElement)) jig.querySelector(`.sh-jig-panel[data-wall="${b.dataset.wall}"] [data-jig="wall"].is-on`)?.focus();
+  if (!jig.contains(document.activeElement)) jig.querySelector(`.sh-jig-panel[data-panel="${b.dataset.wall}"] [data-jig="wall"].is-on`)?.focus();
 });
 
 // Mark an opening's settings on the rail for a moment. The page does not
@@ -1373,7 +1466,10 @@ window.addEventListener('resize', () => { if (selected()) renderJig(state); });
 
 // ------------------------------------------------------------------ shelf settings
 
-const SETTING_LABEL = { wide: 'Wide rooms', narrow: 'Narrow rooms', h: 'Height', d: 'Depth', thick: 'Thick walls', thin: 'Thin walls' };
+const SETTING_LABEL = {
+  wide: 'Wide rooms', narrow: 'Narrow rooms', h: 'Height', d: 'Depth',
+  thick: 'Thick walls', thin: 'Thin walls', outerR: 'Outer radius', innerR: 'Inner radius',
+};
 const settingsEl = $('settings');
 
 function renderSettings() {
