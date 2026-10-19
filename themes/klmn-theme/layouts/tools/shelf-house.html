@@ -19,26 +19,26 @@
 }
 </script>
 
-<div class="press sh">
-    <div class="rail no-print">
+<div class="sh">
+    <header class="tool-head">
         <h1>Shelf House</h1>
-        <p>Stack dollhouse rooms into a shelf, tune each one, check it in 3D, and
-           download the STL files you need to print.</p>
-
-        <div id="inspector" aria-label="Block settings"></div>
-    </div>
+        <p>Stack dollhouse rooms into a shelf, tune each one where it stands, check it
+           in 3D, and download the STL files you need to print.</p>
+    </header>
 
     <div class="bed">
         <section class="rail-band sh-settings no-print" aria-labelledby="settings-head">
             <div class="rail-band-head">
-                <h2 id="settings-head">Shelf settings</h2>
+                <h2 id="settings-head"><button type="button" class="sh-fold" id="settings-fold"
+                    aria-expanded="true" aria-controls="settings">Shelf settings</button></h2>
+                <span class="sh-settings-summary num" id="settings-summary"></span>
                 <span class="seg" role="group" aria-label="Units" id="units">
                     <button type="button" data-units="mm">mm</button>
                     <button type="button" data-units="in">in</button>
                 </span>
             </div>
             <div class="rail-band-fields" id="settings"></div>
-            <p class="rail-hint">Every room takes these sizes, except the ones you set on the room itself.</p>
+            <p class="rail-hint" id="settings-hint">Every room takes these sizes, except the ones you set on the room itself.</p>
         </section>
 
         <div class="sh-bar no-print">
@@ -70,7 +70,7 @@
             aria-label="Blocks. Drag one onto the front view, or press it to add it to the end of the ground floor."></ul>
 
         <div class="trim">
-            <div class="sh-views">
+            <div class="sh-views" id="views">
                 <section class="sh-pane" aria-label="Front view">
                     <div class="sh-pane-head"><h2>Front view</h2></div>
                     <div class="sh-mat artifact">
@@ -82,6 +82,9 @@
                         </div>
                     </div>
                 </section>
+                <div class="sh-split" id="split" role="separator" tabindex="0" aria-orientation="vertical"
+                     aria-label="Width of the front view" aria-valuemin="35" aria-valuemax="80" aria-valuenow="64"
+                     title="Drag to share the width between the front view and 3D; double-click to reset"></div>
                 <section class="sh-pane" aria-label="3D preview">
                     <div class="sh-pane-head">
                         <h2>3D</h2>

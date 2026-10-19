@@ -487,9 +487,9 @@ test('a block\'s name, colour, size and actions are in the line under the front 
     await ready(p);
     await p.evalJson(`(${PAGE_HELPERS}, document.getElementById('example').click(), __sh.pick(3), true)`);
     const item = async (id) => (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).find((i) => i.id === id);
-    // Nothing of it is left on the rail but a hint.
-    assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('#inspector .rail-group > h2')].map((h) => h.textContent)"), ['Selected block']);
-    assert.strictEqual(await p.evalJson("document.querySelectorAll('#inspector input, #inspector select, #inspector button').length"), 0);
+    // There is no rail: the page is the bed, under a head with the tool's name.
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.rail, #inspector')"), false);
+    assert.strictEqual(await p.evalJson("document.querySelector('.tool-head h1').textContent"), 'Shelf House');
     assert.deepStrictEqual(await p.evalJson("['sh-name', 'sh-color', 'sh-cfg-w', 'sh-cfg-h', 'sh-cfg-d'].map((id) => document.getElementById(id)?.closest('#block-bar') != null)"), [true, true, true, true, true]);
 
     // Renamed and resized in place; a typed size gets its ↺, and the field it
@@ -522,7 +522,7 @@ test('a window is picked on the front view, dragged, resized and edited in its c
   { skip: !CHROME && 'no Chrome' }, async () => {
   await withPage('/tools/shelf-house/', async (p) => {
     await ready(p);
-    await p.evalJson(`(${PAGE_HELPERS}, document.getElementById('example').click(), true)`);
+    await p.evalJson(`(${PAGE_HELPERS}, document.getElementById('example').click(), document.getElementById('mat').scrollIntoView({ block: 'center' }), true)`);
     const ops = async () => (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).find((i) => i.id === 1).cfg.openings;
     // Screen point of a spot on room 1 (it stands at 0, 0), in mm.
     const at = (x, y) => p.evalJson(`(() => { const q = new DOMPoint(${x}, ${-y}).matrixTransform(document.getElementById('mat').getScreenCTM()); return [q.x, q.y]; })()`);
@@ -564,7 +564,32 @@ test('a window is picked on the front view, dragged, resized and edited in its c
     await p.evalJson("(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })), true)");
     assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-op-card')"), false);
     assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-jig-panel')"), true);
-    // And the rail has nothing left to edit.
-    assert.strictEqual(await p.evalJson("document.querySelectorAll('#inspector input, #inspector select, #inspector button').length"), 0);
+  });
+});
+
+test('the settings fold to one line, and the front view and 3D share the width at a divider',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.setViewport(1400, 900);
+    try {
+      // Folded, the band reads its sizes on one line; the fold is remembered.
+      await p.evalJson("(document.getElementById('settings-fold').click(), true)");
+      assert.strictEqual(await p.evalJson("document.getElementById('settings').offsetHeight"), 0);
+      assert.match(await p.evalJson("document.getElementById('settings-summary').textContent"), /^rooms 120 or 78 × 72 × 56, walls 3 \/ 1\.5, corners 8 \/ 5 mm$/);
+      assert.strictEqual(await p.evalJson("localStorage.getItem('shelf-house-settings')"), 'folded');
+
+      // The front view starts wider than 3D; the divider moves with the keys,
+      // within limits, and double-click puts it back.
+      const widths = () => p.evalJson("[...document.querySelectorAll('.sh-pane')].map((e) => Math.round(e.getBoundingClientRect().width))");
+      const [front, three] = await widths();
+      assert.ok(front > three * 1.5, `${front} vs ${three}`);
+      await p.evalJson("(() => { const s = document.getElementById('split'); s.focus(); for (let i = 0; i < 10; i++) s.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); return true; })()");
+      assert.strictEqual(await p.evalJson("document.getElementById('split').getAttribute('aria-valuenow')"), '80');
+      await p.evalJson("(document.getElementById('split').dispatchEvent(new MouseEvent('dblclick', { bubbles: true })), true)");
+      assert.strictEqual(await p.evalJson("document.getElementById('split').getAttribute('aria-valuenow')"), '64');
+    } finally {
+      await p.evalJson("(localStorage.removeItem('shelf-house-settings'), localStorage.removeItem('shelf-house-split'), true)");
+    }
   });
 });

@@ -894,7 +894,6 @@ bar.addEventListener('focusout', (e) => { if (!e.relatedTarget?.closest?.('.sh-d
 
 // ------------------------------------------------------------------ inspector
 
-const insp = $('inspector');
 
 const WALL_LABEL = { back: 'Back wall', left: 'Left wall', right: 'Right wall', ceiling: 'Ceiling', floor: 'Floor' };
 const SHAPE_LABEL = { rect: 'Rectangle', arch: 'Arch', round: 'Round' };
@@ -930,7 +929,6 @@ function pick(label, path, options, value, labels) {
     <span class="field-value"><select id="${id}" data-path="${path}">${options.map((v) => `<option value="${v}"${v === value ? ' selected' : ''}>${labels[v]}</option>`).join('')}</select></span></div>`;
 }
 
-const group = (title, body) => `<div class="rail-group"><h2>${title}</h2>${body}</div>`;
 
 // Every opening is placed from the middle of its wall.
 function positionLabels(wall) {
@@ -985,17 +983,10 @@ function openingHTML(o, i) {
   </div>`;
 }
 
+// Everything about the selected block is on or under the front view; this
+// rebuilds the part that is not redrawn with it.
 function renderInspector() {
   renderBlockBar();
-  const it = selected();
-  if (!it) {
-    insp.innerHTML = group('Selected block', `<p class="rail-hint">Click a block in the front view to tune it. Its name,
-      colour and size are in the line under the front view; its walls, corners and sizes are on the tabs and dots around it.</p>`);
-    return;
-  }
-  insp.innerHTML = group('Selected block', `<p class="rail-hint">${isRoom(it)
-    ? 'Click a window on the front view, or pick an opening from a wall tab, to edit it. Drag a window to move it.'
-    : 'Set its sizes from the tabs around it on the front view.'}</p>`);
 }
 
 // Inputs edit the selected block live; each field edit is one undo step.
@@ -1122,11 +1113,9 @@ function onAct(e) {
   commit(layout);
 }
 
-for (const el of [insp, bar]) {
-  el.addEventListener('input', onFieldInput);
-  el.addEventListener('change', onFieldChange);
-  el.addEventListener('click', onAct);
-}
+bar.addEventListener('input', onFieldInput);
+bar.addEventListener('change', onFieldChange);
+bar.addEventListener('click', onAct);
 
 function saveAsType(it) {
   let name = it.name;
@@ -1648,7 +1637,6 @@ jig.addEventListener('click', (e) => {
   if (!jig.contains(document.activeElement)) jig.querySelector(`.sh-jig-panel[data-panel="${b.dataset.wall}"] [data-jig="wall"].is-on`)?.focus();
 });
 
-window.addEventListener('resize', () => { if (selected()) renderJig(state); });
 
 // ------------------------------------------------------------------ shelf settings
 
@@ -1658,8 +1646,24 @@ const SETTING_LABEL = {
 };
 const settingsEl = $('settings');
 
+// Folded, the band is one line: the shelf's sizes at a glance.
+const SETTINGS_KEY = 'shelf-house-settings';
+function foldSettings(open) {
+  $('settings').hidden = $('settings-hint').hidden = !open;
+  $('settings-summary').hidden = open;
+  $('settings-fold').setAttribute('aria-expanded', open);
+}
+try { foldSettings(localStorage.getItem(SETTINGS_KEY) !== 'folded'); } catch { foldSettings(true); }
+$('settings-fold').onclick = () => {
+  const open = $('settings').hidden;
+  foldSettings(open);
+  try { localStorage.setItem(SETTINGS_KEY, open ? 'open' : 'folded'); } catch { /* ignore */ }
+};
+
 function renderSettings() {
   const s = state.settings;
+  $('settings-summary').textContent = `rooms ${fmtLen(s.wide)} or ${fmtLen(s.narrow)} × ${fmtLen(s.h)} × ${fmtLen(s.d)}, `
+    + `walls ${fmtLen(s.thick)} / ${fmtLen(s.thin)}, corners ${fmtLen(s.outerR)} / ${fmtLen(s.innerR)} ${unitName()}`;
   settingsEl.innerHTML = Object.keys(SETTING_LABEL).map((key) => num(SETTING_LABEL[key], key, s[key], {
     min: SETTING_MIN[key] ?? 10,
     max: SETTING_MAX[key] ?? 500,
@@ -1709,6 +1713,56 @@ $('units').addEventListener('click', (e) => {
   renderInspector();
   render();
 });
+
+// ------------------------------------------------------------------ views
+
+// The front view and 3D share the width; the divider between them sets how,
+// by dragging or with the arrow keys, and double-click puts it back.
+const SPLIT_KEY = 'shelf-house-split';
+const SPLIT_DEFAULT = 64;
+const views = $('views'), split = $('split');
+function setSplit(pct, save = true) {
+  const v = clamp(Math.round(pct), 35, 80);
+  views.style.setProperty('--split', `${v}%`);
+  split.setAttribute('aria-valuenow', v);
+  if (save) try { localStorage.setItem(SPLIT_KEY, v); } catch { /* ignore */ }
+}
+try { setSplit(Number(localStorage.getItem(SPLIT_KEY)) || SPLIT_DEFAULT, false); } catch { setSplit(SPLIT_DEFAULT, false); }
+split.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  split.setPointerCapture(e.pointerId);
+  split.classList.add('is-dragging');
+  const move = (ev) => {
+    const r = views.getBoundingClientRect();
+    setSplit(((ev.clientX - r.left) / r.width) * 100);
+  };
+  const up = () => {
+    split.classList.remove('is-dragging');
+    split.removeEventListener('pointermove', move);
+    split.removeEventListener('pointerup', up);
+  };
+  split.addEventListener('pointermove', move);
+  split.addEventListener('pointerup', up);
+});
+split.addEventListener('keydown', (e) => {
+  const now = Number(split.getAttribute('aria-valuenow'));
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    e.preventDefault();
+    setSplit(now + (e.key === 'ArrowLeft' ? -5 : 5));
+  } else if (e.key === 'Home' || e.key === 'End') {
+    e.preventDefault();
+    setSplit(e.key === 'Home' ? 35 : 80);
+  }
+});
+split.addEventListener('dblclick', () => setSplit(SPLIT_DEFAULT));
+
+// When the front view changes size, its scale changes: redraw it, so the
+// panels stay docked to their walls.
+let resizeFrame = 0;
+new ResizeObserver(() => {
+  cancelAnimationFrame(resizeFrame);
+  resizeFrame = requestAnimationFrame(() => { if (!drag && !opDrag && state) render(); });
+}).observe(mat);
 
 // ------------------------------------------------------------------ 3D view
 

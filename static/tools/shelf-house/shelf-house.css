@@ -69,10 +69,36 @@
 .sh-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; }
 .sh-tools > .chips + .chips { padding-left: .75rem; border-left: 1px solid var(--rule); }
 
+/* No rail: the bed has the page to itself. */
+.sh > .bed { padding-left: 0; }
+
+/* The front view and 3D share the width at the divider between them; on a
+   narrow screen they stack. */
 .sh-views {
+    --split: 64%;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 1.25rem;
+}
+.sh-split { display: none; }
+@media (min-width: 48rem) {
+    .sh-views { grid-template-columns: minmax(0, var(--split)) .75rem minmax(0, 1fr); gap: 0 .5rem; }
+    .sh-split {
+        display: block; position: relative;
+        cursor: col-resize; touch-action: none;
+    }
+    /* A hairline with a grip, lit while held or focused. */
+    .sh-split::before {
+        content: ''; position: absolute; top: 2.25rem; bottom: 0; left: 50%;
+        border-left: 1px solid var(--rule);
+    }
+    .sh-split::after {
+        content: ''; position: absolute; top: 50%; left: 50%;
+        width: 5px; height: 2rem; transform: translate(-50%, -50%);
+        background: radial-gradient(circle, var(--ink-soft) 1px, transparent 1.4px) 0 0 / 5px 5px;
+    }
+    .sh-split:hover::before, .sh-split.is-dragging::before, .sh-split:focus-visible::before { border-left-color: var(--reg); }
+    .sh-split:focus-visible { outline: none; }
 }
 .sh-pane { min-width: 0; }
 .sh-pane-head {
@@ -90,7 +116,7 @@
 }
 .sh-explode input { width: 6rem; accent-color: var(--reg); }
 
-.sh-mat, .sh-3d { position: relative; height: clamp(18rem, 52vh, 28rem); overflow: hidden; }
+.sh-mat, .sh-3d { position: relative; height: clamp(20rem, 60vh, 38rem); overflow: hidden; }
 #mat { width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
 #mat .block { cursor: grab; }
 #mat .block.dragging { cursor: grabbing; }
@@ -308,6 +334,26 @@
 /* ── Shelf settings ────────────────────────────────────────────────────── */
 
 .sh-settings { margin-bottom: 1.5rem; }
+/* The heading folds the band away to one line of its sizes. */
+.sh-fold {
+    display: inline-flex; align-items: center; gap: .375rem;
+    padding: 0; font: inherit; color: inherit; background: none; border: 0; cursor: pointer;
+}
+.sh-fold::after {
+    content: ''; width: .4rem; height: .4rem;
+    border-right: 1.5px solid var(--ink-soft); border-bottom: 1.5px solid var(--ink-soft);
+    transform: translateY(-.1rem) rotate(45deg);
+    transition: transform .12s;
+}
+.sh-fold[aria-expanded="false"]::after { transform: translateY(.05rem) rotate(-45deg); }
+.sh-fold:hover { color: var(--reg); }
+.sh-fold:focus-visible { outline: 1.5px solid var(--reg); outline-offset: 2px; }
+.sh-settings-summary {
+    margin-right: auto;
+    font-size: var(--fs-note); color: var(--ink-soft);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.sh-settings [hidden] { display: none; }
 
 /* The way back to a default, beside a size that has left it. */
 .sh-reset {
@@ -368,3 +414,10 @@
     touch-action: none;
 }
 #mat .block { touch-action: none; }
+
+/* On a phone the shelf is as wide as the screen allows, so a tall front view
+   is mostly empty grid; and the toolbar wraps, so its groups part by space. */
+@media (max-width: 48rem) {
+    .sh-mat { height: 24rem; }
+    .sh-tools > .chips + .chips { padding-left: 0; border-left: 0; }
+}
