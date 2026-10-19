@@ -456,12 +456,17 @@ function polyPath(polys, ox, oy) {
   return polys.map((poly) => 'M' + poly.map(([x, y]) => `${(ox + x).toFixed(2)},${(-(oy + y)).toFixed(2)}`).join('L') + 'Z').join('');
 }
 
-function thumb(kind, cfg) {
+// `frame` ({ w, h }) draws blocks at one scale, standing on the same line, so
+// a narrow room looks narrower than a wide one; without it a block fills its box.
+function thumb(kind, cfg, frame = null) {
   const { w, h } = blockSize(kind, cfg);
   const prof = profileFor(kind, cfg);
   const pad = 4;
   const marks = prof.marks.map(([x0, y0, x1, y1]) => `<rect x="${x0}" y="${-y1}" width="${x1 - x0}" height="${y1 - y0}" fill="var(--sh-mark)"/>`).join('');
-  return `<svg viewBox="${-pad} ${-h - pad} ${w + 2 * pad} ${h + 2 * pad}" aria-hidden="true">
+  const box = frame
+    ? `${(w - frame.w) / 2 - pad} ${-frame.h - pad} ${frame.w + 2 * pad} ${frame.h + 2 * pad}`
+    : `${-pad} ${-h - pad} ${w + 2 * pad} ${h + 2 * pad}`;
+  return `<svg viewBox="${box}" aria-hidden="true">
     <path d="${polyPath(prof.room, 0, 0)}" fill="${shade(cfg.color, -0.18)}" fill-rule="evenodd"/>
     <path d="${polyPath(prof.shell, 0, 0)}" fill="${cfg.color}" fill-rule="evenodd"/>${marks}</svg>`;
 }
@@ -475,12 +480,22 @@ function renderPalette() {
   ];
   for (const t of entries) {
     if (t.kind === 'room') t.cfg = resolveSize({ size: t.size, own: { ...t.own }, walls: { ...(t.walls || ALL_THICK) }, cfg: clone(t.cfg) }, state.settings).cfg;
+  }
+  // Rooms share one scale and furniture another, so each kind compares at a glance.
+  const frameOf = (kind) => {
+    const sizes = entries.filter((t) => t.kind === kind).map((t) => blockSize(t.kind, t.cfg));
+    return { w: Math.max(...sizes.map((z) => z.w)), h: Math.max(...sizes.map((z) => z.h)) };
+  };
+  const frames = { room: frameOf('room'), furniture: frameOf('furniture') };
+  for (const t of entries) {
     const { w, h } = blockSize(t.kind, t.cfg);
     const li = document.createElement('li');
         const btn = document.createElement('button');
     btn.className = 'sh-card';
     btn.type = 'button';
-    btn.innerHTML = `${thumb(t.kind, t.cfg)}<div><strong>${esc(t.name)}</strong><span>${t.kind === 'room' ? `${fmtLen(w)} × ${fmtLen(h)} ${unitName()}` : 'Sits inside a room'}</span></div>`;
+    // Pictures only: the name and size are in the tooltip.
+    btn.innerHTML = thumb(t.kind, t.cfg, frames[t.kind]);
+    btn.title = `${t.name}, ${t.kind === 'room' ? `${fmtLen(w)} × ${fmtLen(h)} ${unitName()}` : 'sits inside a room'}. Drag it onto the front view, or click to add it.`;
     btn.setAttribute('aria-label', `Add ${t.name}`);
     btn.addEventListener('pointerdown', (e) => startPaletteDrag(e, t.key));
     btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); addBlock(t.key); } });
@@ -497,6 +512,19 @@ function renderPalette() {
     ul.append(li);
   }
 }
+
+// The row of blocks over the front view folds away; the page remembers which.
+const BLOCKS_KEY = 'shelf-house-blocks';
+function showBlocks(open) {
+  $('palette').hidden = !open;
+  $('blocks-toggle').setAttribute('aria-expanded', open);
+}
+try { showBlocks(localStorage.getItem(BLOCKS_KEY) !== 'hidden'); } catch { showBlocks(true); }
+$('blocks-toggle').onclick = () => {
+  const open = $('palette').hidden;
+  showBlocks(open);
+  try { localStorage.setItem(BLOCKS_KEY, open ? 'shown' : 'hidden'); } catch { /* ignore */ }
+};
 
 function addBlock(typeKey) {
   const layout = layoutCopy();

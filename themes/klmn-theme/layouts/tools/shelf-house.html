@@ -25,13 +25,6 @@
         <p>Stack dollhouse rooms into a shelf, tune each one, check it in 3D, and
            download the STL files you need to print.</p>
 
-        <div class="rail-group">
-            <h2>Blocks</h2>
-            <p class="rail-hint">Drag a block onto the front view, or click it to add it to
-               the end of the ground floor.</p>
-            <ul id="palette" class="sh-palette"></ul>
-        </div>
-
         <div id="inspector" aria-label="Block settings"></div>
 
         <div class="rail-group">
@@ -65,9 +58,14 @@
             <div class="chips">
                 <button type="button" class="chip" id="undo" title="Undo (Ctrl+Z)">undo</button>
                 <button type="button" class="chip" id="redo" title="Redo (Ctrl+Shift+Z)">redo</button>
+                <button type="button" class="chip" id="blocks-toggle" aria-expanded="true" aria-controls="palette"
+                        title="Show or hide the blocks">blocks</button>
             </div>
             <span id="overall" class="num"></span>
         </div>
+
+        <ul id="palette" class="sh-palette no-print"
+            aria-label="Blocks. Drag one onto the front view, or press it to add it to the end of the ground floor."></ul>
 
         <div class="trim">
             <div class="sh-views">

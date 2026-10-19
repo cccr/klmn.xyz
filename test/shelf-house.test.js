@@ -364,3 +364,24 @@ test('a selected room is edited in place from panels on its walls',
     assert.strictEqual((await room()).cfg.openings.length, before + 1);
   });
 });
+
+test('the blocks sit over the front view as pictures, in a row that folds away',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    // Out of the rail, ahead of the front view, and nothing but pictures.
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.rail #palette')"), false);
+    assert.strictEqual(await p.evalJson("!!(document.getElementById('palette').compareDocumentPosition(document.getElementById('mat')) & Node.DOCUMENT_POSITION_FOLLOWING)"), true);
+    assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('#palette .sh-card')].filter((b) => b.textContent.trim()).length"), 0);
+    assert.match(await p.evalJson("document.querySelector('#palette [aria-label=\"Add Narrow · blank\"]').title"), /^Narrow · blank, 78 × 72 mm/);
+    // Folding is remembered.
+    try {
+      await p.evalJson("(document.getElementById('blocks-toggle').click(), true)");
+      assert.strictEqual(await p.evalJson("document.getElementById('palette').hidden"), true);
+      assert.strictEqual(await p.evalJson("localStorage.getItem('shelf-house-blocks')"), 'hidden');
+      assert.strictEqual(await p.evalJson("document.getElementById('blocks-toggle').getAttribute('aria-expanded')"), 'false');
+    } finally {
+      await p.evalJson("(localStorage.removeItem('shelf-house-blocks'), true)");
+    }
+  });
+});

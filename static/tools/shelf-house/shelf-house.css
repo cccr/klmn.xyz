@@ -14,13 +14,16 @@
 
 /* ── Palette ───────────────────────────────────────────────────────────── */
 
-.sh-palette { display: grid; grid-template-columns: 1fr 1fr; gap: .375rem; }
-.sh-palette li { position: relative; min-width: 0; }
+.sh-palette {
+    display: flex; flex-wrap: wrap; gap: .375rem;
+    margin: .75rem 0 1rem;
+}
+.sh-palette[hidden] { display: none; }
+.sh-palette li { position: relative; }
 .sh-card {
-    width: 100%; height: 100%;
-    display: flex; flex-direction: column; align-items: flex-start; gap: .25rem;
-    padding: .5rem;
-    text-align: left;
+    display: grid; place-items: center;
+    width: 3.75rem; height: 3rem;
+    padding: .3125rem;
     background: var(--paper);
     border: 1px solid var(--rule);
     cursor: grab;
@@ -28,15 +31,14 @@
     transition: border-color .12s;
 }
 .sh-card:hover { border-color: var(--ink-soft); }
+.sh-card:focus-visible { outline: 1.5px solid var(--reg); outline-offset: 1px; }
 .sh-card:active { cursor: grabbing; }
-.sh-card svg { width: 100%; height: 2.5rem; }
-.sh-card strong, .sh-card span { display: block; }
-.sh-card strong { font-size: var(--fs-note); font-weight: 600; line-height: 1.25; }
-.sh-card span { font-family: var(--mono); font-size: var(--fs-note); color: var(--ink-soft); }
+.sh-card svg { width: 100%; height: 100%; }
 .sh-remove {
-    position: absolute; top: 2px; right: 2px;
-    padding: 0 .3rem;
-    font-size: var(--fs-label); line-height: 1.2; color: var(--ink-soft);
+    position: absolute; top: -.4rem; right: -.4rem;
+    width: 1rem; height: 1rem; padding: 0;
+    font-size: var(--fs-note); line-height: 1; color: var(--ink-soft);
+    background: var(--paper); border: 1px solid var(--rule); border-radius: 50%;
     cursor: pointer;
 }
 .sh-remove:hover { color: var(--alert); }
@@ -267,3 +269,6 @@
 .sh-reset svg { width: .75rem; height: .75rem; }
 .sh-reset:hover { color: var(--reg); }
 .sh-reset:focus-visible { outline: 1px solid var(--reg); outline-offset: 2px; }
+
+/* The blocks toggle reads as pressed while the row is open. */
+#blocks-toggle[aria-expanded="true"] { color: var(--ink); border-color: var(--ink-soft); }
