@@ -64,6 +64,10 @@
     font-size: var(--fs-fine); color: var(--ink-soft);
 }
 .sh-bar .chips { margin: 0; }
+/* The bar's chips in groups by what they do: history, starting over, files,
+   and the toggle for the blocks row right under it. */
+.sh-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; }
+.sh-tools > .chips + .chips { padding-left: .75rem; border-left: 1px solid var(--rule); }
 
 .sh-views {
     display: grid;

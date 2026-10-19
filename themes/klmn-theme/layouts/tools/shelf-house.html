@@ -26,19 +26,6 @@
            download the STL files you need to print.</p>
 
         <div id="inspector" aria-label="Block settings"></div>
-
-        <div class="rail-group">
-            <h2>Layout</h2>
-            <div class="chips">
-                <button type="button" class="chip" id="example">example</button>
-                <button type="button" class="chip" id="clear">clear</button>
-                <button type="button" class="chip" id="save">save</button>
-                <label class="chip" for="open">open</label>
-                <input id="open" type="file" accept=".json,application/json" hidden>
-            </div>
-            <p class="rail-hint">A layout saves as JSON, with any block types you made.
-               The page also remembers the last one in this browser.</p>
-        </div>
     </div>
 
     <div class="bed">
@@ -55,11 +42,26 @@
         </section>
 
         <div class="sh-bar no-print">
-            <div class="chips">
-                <button type="button" class="chip" id="undo" title="Undo (Ctrl+Z)">undo</button>
-                <button type="button" class="chip" id="redo" title="Redo (Ctrl+Shift+Z)">redo</button>
-                <button type="button" class="chip" id="blocks-toggle" aria-expanded="true" aria-controls="palette"
-                        title="Show or hide the blocks">blocks</button>
+            <div class="sh-tools" role="toolbar" aria-label="Shelf">
+                <div class="chips">
+                    <button type="button" class="chip" id="undo" title="Undo (Ctrl+Z)">undo</button>
+                    <button type="button" class="chip" id="redo" title="Redo (Ctrl+Shift+Z)">redo</button>
+                </div>
+                <div class="chips">
+                    <button type="button" class="chip" id="example" title="Replace the shelf with the example layout">example</button>
+                    <button type="button" class="chip" id="clear" title="Take every block off the shelf">clear</button>
+                </div>
+                <div class="chips">
+                    <button type="button" class="chip" id="open-layout"
+                            title="Open a layout saved as JSON">open</button>
+                    <input id="open" type="file" accept=".json,application/json" hidden>
+                    <button type="button" class="chip" id="save"
+                            title="Save the layout as JSON, with any block types you made. The page also remembers the last one in this browser.">save</button>
+                </div>
+                <div class="chips">
+                    <button type="button" class="chip" id="blocks-toggle" aria-expanded="true" aria-controls="palette"
+                            title="Show or hide the blocks">blocks</button>
+                </div>
             </div>
             <span id="overall" class="num"></span>
         </div>

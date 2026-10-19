@@ -1791,6 +1791,7 @@ const loadExample = () => { selectedId = null; fitted = false; commit(makeExampl
 $('example').onclick = loadExample;
 $('empty-example').onclick = loadExample;
 $('save').onclick = () => save(new Blob([layoutFile()], { type: 'application/json' }), 'shelf_house_layout.json');
+$('open-layout').onclick = () => $('open').click();
 $('open').onchange = async (e) => {
   const f = e.target.files[0];
   e.target.value = '';
@@ -1809,7 +1810,7 @@ $('open').onchange = async (e) => {
     renderSettings();
     renderPalette();
   } catch {
-    flash(`${f.name} is not a Shelf House layout. Choose a .json file saved with “Save layout”.`);
+    flash(`${f.name} is not a Shelf House layout. Choose a .json file saved with “save”.`);
   }
 };
 

@@ -461,3 +461,22 @@ test('a side wall takes round and arched windows, and tabs carry no counts',
     assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('.sh-jig-tab')].map((t) => t.textContent.replace(/\\D/g, ''))"), ['', '', '', '', '']);
   });
 });
+
+test('the layout buttons sit with undo and redo, grouped by what they do',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    assert.deepStrictEqual(
+      await p.evalJson("[...document.querySelectorAll('.sh-tools > .chips')].map((g) => [...g.querySelectorAll('button')].map((b) => b.textContent.trim()))"),
+      [['undo', 'redo'], ['example', 'clear'], ['open', 'save'], ['blocks']]);
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.rail #example, .rail #save, .rail #open')"), false);
+    // Open is a real button, so it can be reached from the keyboard; it hands
+    // over to the hidden file input.
+    assert.strictEqual(await p.evalJson(`(() => {
+      let asked = false;
+      document.getElementById('open').addEventListener('click', (e) => { asked = true; e.preventDefault(); }, { once: true });
+      document.getElementById('open-layout').click();
+      return asked;
+    })()`), true);
+  });
+});
