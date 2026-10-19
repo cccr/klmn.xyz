@@ -268,7 +268,7 @@ test('rooms follow the shelf settings on every size they have not set themselves
     await p.evalJson("(__sh.set('sh-h', 80), __sh.set('sh-d', 60), true)");
     let sizes = await p.evalJson('__sh.sizes()');
     assert.deepStrictEqual(Object.values(sizes).map(([, h, d]) => [h, d]), Array(5).fill([80, 60]));
-    assert.deepStrictEqual(sizes[2], [78, 80, 60]);
+    assert.deepStrictEqual(sizes[2], [80, 80, 60]);
 
     // A width typed into room 1 stays its own; its height still follows.
     await p.evalJson("(__sh.pick(1), __sh.set('sh-cfg-w', 110), true)");
@@ -277,7 +277,7 @@ test('rooms follow the shelf settings on every size they have not set themselves
     sizes = await p.evalJson('__sh.sizes()');
     assert.deepStrictEqual(sizes[1], [110, 70, 60]);
     assert.deepStrictEqual(sizes[3], [130, 70, 60]);
-    assert.deepStrictEqual(sizes[2], [78, 70, 60]);
+    assert.deepStrictEqual(sizes[2], [80, 70, 60]);
 
     // Its ↺ puts it back on the default, and undo takes that back.
     await p.evalJson("(document.querySelector('[data-act=\"size-default\"][data-dim=\"w\"]').click(), true)");
@@ -368,7 +368,7 @@ test('the example is laid out for the sizes in the shelf settings',
       assert.strictEqual(table.parent, 5);
       assert.strictEqual(table.x, (140 - 36) / 2);
     } finally {
-      await p.evalJson("(__sh.set('sh-wide', 120), __sh.set('sh-narrow', 78), __sh.set('sh-h', 72), true)");
+      await p.evalJson("(__sh.set('sh-wide', 120), __sh.set('sh-narrow', 80), __sh.set('sh-h', 72), true)");
     }
   });
 });
@@ -407,7 +407,156 @@ test('rooms keep their places against each other when the shelf\'s widths change
       await widths(120, 78);
       assert.deepStrictEqual(await at(), { 1: [0, 0], 2: [140, 0], 3: [0, 72], 4: [98, 72] });
     } finally {
-      await widths(120, 78);
+      await widths(120, 80);
+    }
+  });
+});
+
+test('room widths default to round numbers in the page\'s units',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, true)`);
+    const back = (key) => `document.querySelector('[data-act="setting-default"][data-key="${key}"]')`;
+    try {
+      await p.evalJson("(__sh.set('sh-wide', 130), __sh.set('sh-narrow', 70), true)");
+      assert.strictEqual(await p.evalJson(`${back('narrow')}.title`), 'Back to the default, 80 mm');
+      await p.evalJson(`(${back('narrow')}.click(), true)`);
+      assert.strictEqual(await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).settings.narrow"), 80);
+      // In inches, 5 and 3: a room of exactly 3 in is the default, not beside it.
+      await p.evalJson("(document.querySelector('[data-units=\"in\"]').click(), true)");
+      assert.strictEqual(await p.evalJson(`${back('wide')}.title`), 'Back to the default, 5 in');
+      await p.evalJson(`(__sh.set('sh-narrow', 3), ${back('wide')}.click(), true)`);
+      assert.strictEqual(await p.evalJson(`!!${back('narrow')}`), false);
+      const s = await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).settings");
+      assert.deepStrictEqual([s.wide, s.narrow], [127, 76.2]);
+    } finally {
+      await p.evalJson("(localStorage.removeItem('shelf-house-units'), document.querySelector('[data-units=\"mm\"]').click(), __sh.set('sh-wide', 120), __sh.set('sh-narrow', 80), true)");
+    }
+  });
+});
+
+test('the grid is off until ticked, keeps a size for each unit, and steps every length field',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, document.getElementById('example').click(), true)`);
+    const step = (id) => p.evalJson(`document.getElementById('${id}').step`);
+    try {
+      assert.strictEqual(await p.evalJson("document.getElementById('grid-on').checked"), false);
+      assert.strictEqual(await p.evalJson("!!document.getElementById('grid-size')"), false);
+      assert.strictEqual(await step('sh-wide'), '0.5');
+
+      await p.evalJson("(document.getElementById('grid-on').click(), __sh.pick(1), true)");
+      assert.strictEqual(await p.evalJson("document.getElementById('grid-size').value"), '5');
+      // Sizes and places step by it; walls, bars and radii keep their fine steps.
+      assert.deepStrictEqual([await step('sh-wide'), await step('sh-cfg-w'), await step('sh-thick')], ['5', '5', '0.1']);
+      await p.evalJson("(__sh.set('grid-size', 10), true)");
+      assert.deepStrictEqual([await step('sh-wide'), await step('sh-cfg-h')], ['10', '10']);
+
+      // Inches have a grid of their own, an eighth to start; millimetres keep theirs.
+      await p.evalJson("(document.querySelector('[data-units=\"in\"]').click(), true)");
+      assert.strictEqual(await p.evalJson("document.getElementById('grid-size').value"), '0.125');
+      assert.strictEqual(await step('sh-wide'), '0.125');
+      await p.evalJson("(document.querySelector('[data-units=\"mm\"]').click(), true)");
+      assert.strictEqual(await p.evalJson("document.getElementById('grid-size').value"), '10');
+
+      // The folded band says it is on.
+      assert.match(await p.evalJson("document.getElementById('settings-summary').textContent"), /, grid 10 mm$/);
+    } finally {
+      await p.evalJson("(localStorage.removeItem('shelf-house-grid'), localStorage.removeItem('shelf-house-units'), true)");
+    }
+  });
+});
+
+test('with the grid on, rooms, things and openings land on it as they move',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, __sh.set('sh-wide', 120), __sh.set('sh-narrow', 80), __sh.set('sh-h', 72), document.getElementById('example').click(), document.getElementById('mat').scrollIntoView({ block: 'center' }), true)`);
+    const items = () => p.evalJson("Object.fromEntries(JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items.map((i) => [i.id, i]))");
+    const key = (k, shift = false) => p.evalJson(`(window.dispatchEvent(new KeyboardEvent('keydown', { key: '${k}', shiftKey: ${shift} })), true)`);
+    const at = (x, y) => p.evalJson(`(() => { const q = new DOMPoint(${x}, ${-y}).matrixTransform(document.getElementById('mat').getScreenCTM()); return [q.x, q.y]; })()`);
+    const drag = async (target, [x0, y0], [x1, y1]) => p.evalJson(`(() => {
+      const el = ${target} || document.elementFromPoint(${x0}, ${y0});
+      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: ${x0}, clientY: ${y0}, button: 0 }));
+      window.dispatchEvent(new PointerEvent('pointermove', { clientX: ${x1}, clientY: ${y1} }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientX: ${x1}, clientY: ${y1} }));
+      return true;
+    })()`);
+    try {
+      await p.evalJson("(document.getElementById('grid-on').click(), true)");
+
+      // Arrow keys go a grid line at a time, Shift the big step's worth.
+      await p.evalJson('(__sh.pick(5), true)');
+      await key('ArrowRight');
+      assert.strictEqual((await items())[5].x, 45);
+      await key('ArrowRight', true);
+      assert.strictEqual((await items())[5].x, 55);
+      await key('ArrowLeft');
+      assert.strictEqual((await items())[5].x, 50);
+
+      // A dragged room lands on the grid.
+      await drag('null', await at(80, 144 + 2), await at(80 + 13, 144 + 2));
+      assert.strictEqual((await items())[5].x, 65);
+
+      // So does a table, counted from the shelf's left edge, not its room's.
+      let it = await items();
+      const table = it[5].x + it[6].x;
+      await drag(`document.querySelector('#mat .block[data-id="6"] path')`, await at(table + 18, 144 + 12), await at(table + 18 + 7.3, 144 + 12));
+      it = await items();
+      assert.strictEqual(it[5].x + it[6].x, Math.round((table + 7.3) / 5) * 5);
+
+      // An opening moves and resizes on the grid, from the middle of its wall.
+      await drag('null', await at(60 - 26, 36 + 4), await at(60 - 15.3, 36 + 9.4));
+      let o = (await items())[1].cfg.openings[0];
+      assert.deepStrictEqual([o.x, o.y], [-15, 10]);
+      const h = await p.evalJson("(() => { const r = document.querySelector('.sh-op-handle').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()");
+      const mm = await p.evalJson("1 / document.getElementById('mat').getScreenCTM().a");
+      await drag("document.querySelector('.sh-op-handle')", h, [h[0] + 3.3 / mm, h[1]]);
+      o = (await items())[1].cfg.openings[0];
+      assert.strictEqual(o.w % 5, 0);
+
+      // Off again, a millimetre at a time.
+      await p.evalJson("(document.getElementById('grid-on').click(), __sh.pick(5), true)");
+      await key('ArrowRight');
+      assert.strictEqual((await items())[5].x, 66);
+    } finally {
+      await p.evalJson("(localStorage.removeItem('shelf-house-grid'), true)");
+    }
+  });
+});
+
+test('one press puts whatever is off the grid on it, and one undo takes it back',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, __sh.set('sh-wide', 120), __sh.set('sh-narrow', 80), __sh.set('sh-h', 72), __sh.set('sh-d', 56), document.getElementById('example').click(), true)`);
+    const saved = () => p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3'))");
+    const button = "document.getElementById('grid-snap')";
+    try {
+      await p.evalJson("(document.getElementById('grid-on').click(), true)");
+      // 72 high and 56 deep are off a 5 mm grid, and so are some windows and the table.
+      assert.match(await p.evalJson("document.querySelector('#grid-off .field-name').textContent"), /^Shelf sizes and \d+ blocks off the grid$/);
+      assert.match(await p.evalJson(`${button}.title`), /^Snap the shelf sizes and \d+ blocks to the grid$/);
+      await p.evalJson(`(${button}.click(), true)`);
+      const s = await saved();
+      assert.deepStrictEqual([s.settings.wide, s.settings.narrow, s.settings.h, s.settings.d], [120, 80, 70, 55]);
+      const at = Object.fromEntries(s.items.map((i) => [i.id, i]));
+      // The columns still stand side by side, the arched room still over both.
+      assert.deepStrictEqual([1, 2, 3, 4, 5].map((id) => [at[id].x, at[id].y]), [[0, 0], [120, 0], [0, 70], [120, 70], [40, 140]]);
+      for (const m of s.items.filter((i) => i.kind === 'room')) {
+        for (const o of m.cfg.openings) for (const k of ['x', 'y', 'w', 'h']) assert.strictEqual(Math.abs(o[k] % 5), 0, `room ${m.id} opening ${k} ${o[k]}`);
+      }
+      assert.strictEqual((at[5].x + at[6].x) % 5, 0);
+      for (const k of ['topD', 'baseD', 'height']) assert.strictEqual(at[6].cfg[k] % 5, 0, `table ${k}`);
+      assert.strictEqual(await p.evalJson(`!!${button}`), false);
+
+      await p.evalJson("(document.getElementById('undo').click(), true)");
+      assert.strictEqual((await saved()).settings.h, 72);
+      assert.strictEqual(await p.evalJson(`!!${button}`), true);
+    } finally {
+      await p.evalJson("(localStorage.removeItem('shelf-house-grid'), __sh.set('sh-h', 72), __sh.set('sh-d', 56), true)");
     }
   });
 });
@@ -487,7 +636,7 @@ test('the blocks sit over the front view as pictures, in a row that folds away',
     assert.strictEqual(await p.evalJson("!!document.querySelector('.rail #palette')"), false);
     assert.strictEqual(await p.evalJson("!!(document.getElementById('palette').compareDocumentPosition(document.getElementById('mat')) & Node.DOCUMENT_POSITION_FOLLOWING)"), true);
     assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('#palette .sh-card')].filter((b) => b.textContent.trim()).length"), 0);
-    assert.match(await p.evalJson("document.querySelector('#palette [aria-label=\"Add Narrow · blank\"]').title"), /^Narrow · blank, 78 × 72 mm/);
+    assert.match(await p.evalJson("document.querySelector('#palette [aria-label=\"Add Narrow · blank\"]').title"), /^Narrow · blank, 80 × 72 mm/);
     // Folding is remembered.
     try {
       await p.evalJson("(document.getElementById('blocks-toggle').click(), true)");
@@ -744,7 +893,7 @@ test('the settings fold to one line, and the front view and 3D share the width a
       // Folded, the band reads its sizes on one line; the fold is remembered.
       await p.evalJson("(document.getElementById('settings-fold').click(), true)");
       assert.strictEqual(await p.evalJson("document.getElementById('settings').offsetHeight"), 0);
-      assert.match(await p.evalJson("document.getElementById('settings-summary').textContent"), /^rooms 120 or 78 × 72 × 56, walls 3 \/ 1\.5, corners 8 \/ 5 mm$/);
+      assert.match(await p.evalJson("document.getElementById('settings-summary').textContent"), /^rooms 120 or 80 × 72 × 56, walls 3 \/ 1\.5, corners 8 \/ 5 mm$/);
       assert.strictEqual(await p.evalJson("localStorage.getItem('shelf-house-settings')"), 'folded');
 
       // The front view starts wider than 3D; the divider moves with the keys,

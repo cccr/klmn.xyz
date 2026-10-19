@@ -37,11 +37,43 @@ function loadUnits() {
 const inches = () => units === 'in';
 const unitName = () => (inches() ? 'in' : 'mm');
 const toUnit = (mm) => (inches() ? mm / MM_PER_IN : mm);
-const fromUnit = (v) => (inches() ? v * MM_PER_IN : v);
+// Typed inches come in clean of float dust, so 3 in is 76.2 mm exactly.
+const fromUnit = (v) => (inches() ? Math.round(v * MM_PER_IN * 1e6) / 1e6 : v);
 const fmtLen = (mm) => (inches() ? (Math.round((mm / MM_PER_IN) * 100) / 100).toString() : fmt(mm));
 const len = (mm) => `${fmtLen(mm)} ${unitName()}`;
 // The sideways step of the nudge chips and Shift+arrow: 10 mm, or half an inch.
 const bigStep = () => (inches() ? MM_PER_IN / 2 : 10);
+// The factory room widths are round in either unit: 120 or 80 mm, 5 or 3 in.
+const roomDefaults = () => (inches() ? { ...ROOM_DEFAULTS, wide: 127, narrow: 76.2 } : ROOM_DEFAULTS);
+
+// ------------------------------------------------------------------ grid
+
+// Snapping belongs to the visitor, like the units, and each unit keeps a
+// grid of its own, so switching never leaves an odd step: 5 mm and ⅛ in to
+// start. While it is on, whatever moves lands on it, every length field but
+// the fine ones steps by it, and the band offers to snap what is off it.
+const GRID_KEY = 'shelf-house-grid';
+const GRID_DEFAULT = { on: false, mm: 5, in: 0.125 };
+const GRID_LIMITS = { mm: [0.5, 100, 0.5], in: [0.0625, 4, 0.0625] }; // min, max, step
+let grid = loadGrid();
+
+function loadGrid() {
+  try {
+    const g = JSON.parse(localStorage.getItem(GRID_KEY));
+    const size = (u) => (Number.isFinite(g?.[u]) && g[u] >= GRID_LIMITS[u][0] && g[u] <= GRID_LIMITS[u][1] ? g[u] : GRID_DEFAULT[u]);
+    if (g) return { on: g.on === true, mm: size('mm'), in: size('in') };
+  } catch { /* storage unavailable */ }
+  return { ...GRID_DEFAULT };
+}
+function saveGrid() {
+  try { localStorage.setItem(GRID_KEY, JSON.stringify(grid)); } catch { /* ignore */ }
+}
+// The grid's step in the page's units, and in mm; 0 while snapping is off.
+const gridStep = () => (grid.on ? grid[units] : 0);
+const gridMM = () => (grid.on ? fromUnit(grid[units]) : 0);
+// The grid line nearest v (mm), without float dust or a negative zero.
+const toGrid = (v, g = gridMM()) => (g ? Math.round(Math.round(v / g) * g * 1e6) / 1e6 + 0 : v);
+const isOnGrid = (v, g = gridMM()) => !g || Math.abs(v - toGrid(v, g)) < 0.01;
 
 // ------------------------------------------------------------------ block types
 
@@ -89,7 +121,7 @@ function resolveSize(it, s) {
 }
 
 function applyDefaults(layout) {
-  const s = layout.settings = { ...ROOM_DEFAULTS, ...(layout.settings || state?.settings) };
+  const s = layout.settings = { ...roomDefaults(), ...(layout.settings || state?.settings) };
   for (const it of layout.items) if (isRoom(it)) resolveSize(it, s);
   return layout;
 }
@@ -97,20 +129,23 @@ function applyDefaults(layout) {
 const defaultFor = (it, dim, s = state.settings) => (dim === 'w' ? s[it.size === 'narrow' ? 'narrow' : 'wide'] : s[dim]);
 
 // Rooms and room types saved before settings existed were made at the factory
-// sizes: anything else was set by hand. Their wall openings move to anchors.
+// sizes of the time: anything else was set by hand. Their wall openings move
+// to anchors.
+const FACTORY_V2 = { ...ROOM_DEFAULTS, narrow: 78 };
+
 function migrateItem(it) {
   if (it.kind !== 'room') return it;
   const c = it.cfg;
-  if (it.size !== 'wide' && it.size !== 'narrow') it.size = c.w <= (ROOM_DEFAULTS.wide + ROOM_DEFAULTS.narrow) / 2 ? 'narrow' : 'wide';
+  if (it.size !== 'wide' && it.size !== 'narrow') it.size = c.w <= (FACTORY_V2.wide + FACTORY_V2.narrow) / 2 ? 'narrow' : 'wide';
   if (!it.own || typeof it.own !== 'object') {
     it.own = {};
-    if (c.w !== ROOM_DEFAULTS[it.size]) it.own.w = true;
-    if (c.h !== ROOM_DEFAULTS.h) it.own.h = true;
-    if (c.d !== ROOM_DEFAULTS.d) it.own.d = true;
+    if (c.w !== FACTORY_V2[it.size]) it.own.w = true;
+    if (c.h !== FACTORY_V2.h) it.own.h = true;
+    if (c.d !== FACTORY_V2.d) it.own.d = true;
   }
   // Walls used to be any thickness: each becomes the nearer of thick and thin.
   if (!it.walls || typeof it.walls !== 'object') {
-    const mid = (ROOM_DEFAULTS.thick + ROOM_DEFAULTS.thin) / 2;
+    const mid = (FACTORY_V2.thick + FACTORY_V2.thin) / 2;
     it.walls = Object.fromEntries(WALLS.map((w) => {
       const t = c.walls?.[w];
       return [w, !(t > 0) && t != null ? 'none' : t != null && t < mid ? 'thin' : 'thick'];
@@ -124,8 +159,8 @@ function migrateItem(it) {
 const SETTING_MIN = { thick: 0.4, thin: 0.4, outerR: 0, innerR: 0 };
 const SETTING_MAX = { thick: 30, thin: 30, outerR: 100, innerR: 100 };
 
-function sanitizeSettings(s) {
-  const out = { ...ROOM_DEFAULTS };
+function sanitizeSettings(s, base = roomDefaults()) {
+  const out = { ...base };
   for (const key of Object.keys(out)) {
     const v = s?.[key];
     if (Number.isFinite(v) && v >= (SETTING_MIN[key] ?? 10) && v <= (SETTING_MAX[key] ?? 500)) out[key] = v;
@@ -136,7 +171,7 @@ function sanitizeSettings(s) {
 // Laid out for the current shelf settings: a wide and a narrow column two
 // floors high, a wide room centred on top, a table in the middle of it.
 function makeExample() {
-  const s = { ...ROOM_DEFAULTS, ...state?.settings };
+  const s = { ...roomDefaults(), ...state?.settings };
   const table = blockSize('furniture', PRESETS.round_table.cfg).w;
   let id = 0;
   const at = (key, x, y, extra = {}) => ({ id: ++id, ...fromType(key), x, y, ...extra });
@@ -172,7 +207,7 @@ function load() {
 
 function sanitize(s) {
   const items = s.items.filter((it) => it && (it.kind === 'room' || it.kind === 'furniture') && it.cfg && Number.isFinite(it.x)).map(migrateItem);
-  return settle({ items, settings: sanitizeSettings(s.settings) });
+  return settle({ items, settings: sanitizeSettings(s.settings, s.settings ? roomDefaults() : FACTORY_V2) });
 }
 
 const snap = (s) => JSON.stringify({ settings: s.settings, items: s.items });
@@ -360,9 +395,10 @@ function overlapX(ax, aw, bx, bw) {
   return Math.min(ax + aw, bx + bw) - Math.max(ax, bx);
 }
 
-// Magnetic x: snap to edges and centres of nearby rooms.
+// Magnetic x: snap to edges and centres of nearby rooms, or else to the
+// grid while it is on.
 function snapX(x, w, others, tol) {
-  let best = Math.round(x), bestD = tol;
+  let best = gridMM() ? toGrid(x) : Math.round(x), bestD = tol;
   const consider = (c) => { const d = Math.abs(c - x); if (d < bestD) { bestD = d; best = c; } };
   consider(0);
   for (const o of others) {
@@ -388,14 +424,17 @@ function furnitureRange(host, it) {
   return [b.x0, Math.max(b.x0, b.x1 - sizeOf(it).w)];
 }
 
+// The grid counts from the shelf's left edge, not the room's, so things in
+// different rooms line up; against a wall is always allowed.
 function placeFurniture(layout, it, ax, px, py) {
   const host = hostAt(layout, px, py);
+  const g = gridMM();
   if (host) {
     it.parent = host.id;
-    it.x = Math.round(clamp(ax - host.x, ...furnitureRange(host, it)));
+    it.x = g ? clamp(toGrid(ax) - host.x, ...furnitureRange(host, it)) : Math.round(clamp(ax - host.x, ...furnitureRange(host, it)));
   } else {
     it.parent = null;
-    it.x = Math.round(ax);
+    it.x = g ? toGrid(ax) : Math.round(ax);
   }
 }
 
@@ -826,32 +865,45 @@ function duplicateSelected() {
     layout.items.push({ ...clone(it), id, y: 1e6 });
     settle(layout, id);
   } else {
-    layout.items.push({ ...clone(it), id, x: it.x + 4 });
+    layout.items.push({ ...clone(it), id, x: gridMM() ? it.x + gridMM() : it.x + 4 });
   }
   selectedId = id;
   commit(layout);
 }
 
+// Where a nudge `dir` (±1) takes x: a millimetre, or with `big` the big step.
+// With the grid on it goes to the next grid line that way, or as many lines
+// as make up the big step.
+const bigLines = () => Math.max(1, Math.round(bigStep() / gridMM()));
+const bigMove = () => (gridMM() ? bigLines() * gridMM() : bigStep());
+
+function nudged(x, dir, big) {
+  const g = gridMM();
+  if (!g) return x + dir * (big ? bigStep() : 1);
+  const n = big ? bigLines() : 1, at = x / g;
+  return toGrid((dir > 0 ? Math.floor(at + 1e-6) + n : Math.ceil(at - 1e-6) - n) * g);
+}
+
 // Arrow keys slide a block sideways, stopping against neighbours on its floor.
-function nudge(dx) {
+function nudge(dir, big = false) {
   if (!selected()) return;
   const layout = layoutCopy();
   const m = layout.items.find((i) => i.id === selectedId);
   if (isRoom(m)) {
     const w = sizeOf(m).w;
-    let x = m.x + dx;
+    let x = nudged(m.x, dir, big);
     for (const o of layout.items) {
       if (o === m || !isRoom(o)) continue;
       const vertical = Math.min(m.y + sizeOf(m).h, o.y + sizeOf(o).h) - Math.max(m.y, o.y);
       if (vertical <= 0.01) continue;
       const ow = sizeOf(o).w;
-      if (overlapX(x, w, o.x, ow) > 0.01) x = dx > 0 ? Math.min(x, o.x - w) : Math.max(x, o.x + ow);
+      if (overlapX(x, w, o.x, ow) > 0.01) x = dir > 0 ? Math.min(x, o.x - w) : Math.max(x, o.x + ow);
     }
     m.x = x;
     settle(layout, m.id);
   } else {
     const host = layout.items.find((h) => h.id === m.parent);
-    m.x = host ? clamp(m.x + dx, ...furnitureRange(host, m)) : m.x + dx;
+    m.x = host ? clamp(nudged(host.x + m.x, dir, big) - host.x, ...furnitureRange(host, m)) : nudged(m.x, dir, big);
   }
   commit(layout, { inspector: false });
 }
@@ -863,8 +915,8 @@ window.addEventListener('keydown', (e) => {
   if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
   if (selectedId == null || mod) return;
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected(); }
-  else if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(e.shiftKey ? -bigStep() : -1); }
-  else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(e.shiftKey ? bigStep() : 1); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(-1, e.shiftKey); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(1, e.shiftKey); }
   else if (e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); }
   else if (e.key === 'Escape') {
     if (jigPick) jigPick = null;
@@ -925,7 +977,7 @@ function renderBlockBar() {
   } else {
     const same = state.items.filter((o) => o.id !== it.id && o.kind === it.kind && o.name === it.name).length;
     const base = typeDef(it.base);
-    const step = bigStep();
+    const step = bigMove();
     bar.innerHTML = `
       <span class="sh-ident">
         <input id="sh-color" type="color" data-path="cfg.color" value="${it.cfg.color}" aria-label="Colour" title="Colour">
@@ -992,6 +1044,10 @@ function numInput(path, value, { min = 0, max = 500, step = 0.5, hint = '', unit
   const attrs = measure && inches()
     ? { value: fmtLen(value), min: Math.round(toUnit(min) * 100) / 100, max: Math.round(toUnit(max) * 100) / 100, step: fine ? 0.01 : 0.05 }
     : { value: fmt(value), min, max, step };
+  // With the grid on, every length but the fine ones steps by it, from a
+  // minimum on a grid line so that the steps land on lines too.
+  const g = measure && !fine ? gridStep() : 0;
+  if (g) Object.assign(attrs, { step: g, min: Math.round(Math.ceil(attrs.min / g - 1e-9) * g * 1e6) / 1e6 });
   return `<input${id ? ` id="${id}"` : ''} type="number" data-path="${path}"${measure ? ' data-measure' : ''} value="${attrs.value}" min="${attrs.min}" max="${attrs.max}" step="${attrs.step}"${hint ? ` title="${esc(hint)}"` : ''}${extra}>${unit ? `<span class="unit">${measure ? unitName() : unit}</span>` : ''}${after}`;
 }
 
@@ -1156,7 +1212,7 @@ function onAct(e) {
   if (act === 'save-type') { saveAsType(it); return; }
   if (act === 'duplicate') { duplicateSelected(); return; }
   if (act === 'delete') { removeSelected(); return; }
-  if (act === 'nudge') { nudge(Number(b.dataset.v) * bigStep()); return; }
+  if (act === 'nudge') { nudge(Number(b.dataset.v), true); return; }
 
   const layout = layoutCopy();
   const m = layout.items.find((i) => i.id === it.id);
@@ -1425,9 +1481,10 @@ const pickedOpening = (it) => (it && isRoom(it) && jigPick && jigPick.id === it.
 
 // Dragging an opening moves it along the axes the front view shows for its
 // wall; dragging its handle resizes it about its centre (a doorway grows up
-// from the floor). Either is one undo step, like a field edit.
+// from the floor). Either is one undo step, like a field edit, and goes by
+// half millimetres, or by the grid from the middle of the wall while it is on.
 let opDrag = null;
-const half = (v) => Math.round(v * 2) / 2;
+const half = (v) => (gridMM() ? toGrid(v) : Math.round(v * 2) / 2);
 
 function startOpeningDrag(room, i, w, resize = false) {
   const o = room.cfg.openings[i];
@@ -1455,8 +1512,8 @@ window.addEventListener('pointermove', (e) => {
     editSnapshot = snap(state);
   }
   if (opDrag.resize) {
-    o.w = Math.max(2, half(opDrag.w + 2 * dx));
-    o.h = Math.max(2, half(opDrag.h + (opDrag.floor ? dy : 2 * dy)));
+    o.w = Math.max(gridMM() || 2, half(opDrag.w + 2 * dx));
+    o.h = Math.max(gridMM() || 2, half(opDrag.h + (opDrag.floor ? dy : 2 * dy)));
   } else {
     if (opDrag.moveX) o.x = half(opDrag.x + dx);
     if (opDrag.moveY) o.y = half(opDrag.y + dy);
@@ -1776,18 +1833,23 @@ $('settings-fold').onclick = () => {
   try { localStorage.setItem(SETTINGS_KEY, open ? 'open' : 'folded'); } catch { /* ignore */ }
 };
 
+const gridText = () => String(+grid[units].toFixed(4));
+
 function renderSettings() {
-  const s = state.settings;
+  const s = state.settings, d = roomDefaults();
+  const focusId = settingsEl.contains(document.activeElement) ? document.activeElement.id : null;
   $('settings-summary').textContent = `rooms ${fmtLen(s.wide)} or ${fmtLen(s.narrow)} × ${fmtLen(s.h)} × ${fmtLen(s.d)}, `
-    + `walls ${fmtLen(s.thick)} / ${fmtLen(s.thin)}, corners ${fmtLen(s.outerR)} / ${fmtLen(s.innerR)} ${unitName()}`;
+    + `walls ${fmtLen(s.thick)} / ${fmtLen(s.thin)}, corners ${fmtLen(s.outerR)} / ${fmtLen(s.innerR)}${grid.on ? `, grid ${gridText()}` : ''} ${unitName()}`;
   settingsEl.innerHTML = Object.keys(SETTING_LABEL).map((key) => num(SETTING_LABEL[key], key, s[key], {
     min: SETTING_MIN[key] ?? 10,
     max: SETTING_MAX[key] ?? 500,
     step: key in SETTING_MIN ? 0.1 : 0.5,
     fine: key in SETTING_MIN,
     hint: key === 'wide' || key === 'narrow' ? 'Width' : '',
-    after: s[key] !== ROOM_DEFAULTS[key] ? resetChip('setting-default', `data-key="${key}"`, SETTING_LABEL[key], ROOM_DEFAULTS[key]) : '',
-  })).join('');
+    after: Math.abs(s[key] - d[key]) > 1e-6 ? resetChip('setting-default', `data-key="${key}"`, SETTING_LABEL[key], d[key]) : '',
+  })).join('') + gridFields();
+  if (focusId) $(focusId)?.focus();
+  renderOffGrid();
   for (const b of $('units').children) {
     b.classList.toggle('is-on', b.dataset.units === units);
     b.setAttribute('aria-pressed', b.dataset.units === units);
@@ -1808,6 +1870,7 @@ function setSetting(key, value) {
 }
 
 settingsEl.addEventListener('change', (e) => {
+  if (e.target.id === 'grid-on' || e.target.id === 'grid-size') { setGrid(e.target); return; }
   const el = e.target.closest('[data-path]');
   if (!el) return;
   const v = readInput(el);
@@ -1815,9 +1878,108 @@ settingsEl.addEventListener('change', (e) => {
   el.value = shown(el, state.settings[el.dataset.path]);
 });
 settingsEl.addEventListener('click', (e) => {
+  if (e.target.closest('#grid-snap')) { snapToGrid(); return; }
   const b = e.target.closest('[data-act="setting-default"]');
-  if (b) setSetting(b.dataset.key, ROOM_DEFAULTS[b.dataset.key]);
+  if (b) setSetting(b.dataset.key, roomDefaults()[b.dataset.key]);
 });
+
+// ------------------------------------------------------------------ grid in the band
+
+// The band's last fields: the switch, the grid's size once it is on, and
+// what is off the grid with a press to snap it.
+function gridFields() {
+  const [min, max, step] = GRID_LIMITS[units];
+  return `<div class="field sh-grid-switch"><label for="grid-on">Snap to grid</label>
+      <span class="field-value"><label class="toggle-row"><input type="checkbox" id="grid-on"${grid.on ? ' checked' : ''}><span class="toggle-pill"></span></label></span></div>`
+    + (grid.on ? `<div class="field field-measure"><label for="grid-size" title="The step everything moves and is sized by">Grid</label>
+      <span class="field-value"><input type="number" id="grid-size" value="${gridText()}" min="${min}" max="${max}" step="${step}"><span class="unit">${unitName()}</span></span></div>` : '')
+    + '<div class="field sh-grid-off" id="grid-off" hidden></div>';
+}
+
+function setGrid(el) {
+  if (el.id === 'grid-on') grid.on = el.checked;
+  else if (el.value !== '' && Number.isFinite(Number(el.value))) grid[units] = clamp(Number(el.value), GRID_LIMITS[units][0], GRID_LIMITS[units][1]);
+  saveGrid();
+  renderSettings();
+  renderInspector();
+  render();
+}
+
+const SHELF_SIZES = ['wide', 'narrow', 'h', 'd'];
+const thingSizes = (c) => (isStairs(c) ? ['run'] : isLift(c) ? ['w'] : ['topD', 'stemD', 'height', 'baseD']);
+
+// A block's lengths that go on the grid, as [object, key, place]: a room's
+// own sizes and its openings, a thing's sizes. A place snaps to the nearest
+// line, a size to one step at least. Walls, bars and radii are too fine for
+// the grid, and where the block itself stands is placeOnGrid's.
+function gridLengths(it) {
+  if (!isRoom(it)) return thingSizes(it.cfg).map((k) => [it.cfg, k, false]);
+  const out = ['w', 'h', 'd'].filter((dim) => it.own?.[dim]).map((dim) => [it.cfg, dim, false]);
+  for (const o of it.cfg.openings) {
+    out.push([o, 'x', true], [o, 'y', true], [o, 'w', false], [o, 'h', false]);
+    if (o.count > 1) out.push([o, 'pitch', false]);
+  }
+  return out;
+}
+
+// A block stands on the grid when its left edge is on a line, counted from
+// the shelf's left; a thing may stand against a wall instead.
+function placeOnGrid(layout, it) {
+  const host = !isRoom(it) && it.parent != null && layout.items.find((m) => m.id === it.parent);
+  if (!host) return isOnGrid(it.x);
+  const [lo, hi] = furnitureRange(host, it);
+  return isOnGrid(host.x + it.x) || Math.abs(it.x - lo) < 0.01 || Math.abs(it.x - hi) < 0.01;
+}
+
+function offGrid(layout) {
+  return {
+    shelf: SHELF_SIZES.some((k) => !isOnGrid(layout.settings[k])),
+    blocks: layout.items.filter((it) => !placeOnGrid(layout, it) || gridLengths(it).some(([o, k]) => !isOnGrid(o[k]))).length,
+  };
+}
+
+// Redrawn with the front view, since any edit can take something off the grid.
+function renderOffGrid() {
+  const cell = $('grid-off');
+  if (!cell) return;
+  const { shelf, blocks } = gridMM() ? offGrid(state) : { shelf: false, blocks: 0 };
+  const n = blocks && `${blocks} block${blocks > 1 ? 's' : ''}`;
+  const key = `${shelf}${blocks}`;
+  if (cell.dataset.key === key) return;
+  cell.dataset.key = key;
+  cell.hidden = !shelf && !blocks;
+  const what = [shelf && 'the shelf sizes', n].filter(Boolean).join(' and ');
+  cell.innerHTML = cell.hidden ? '' : `<span class="field-name">${[shelf && 'Shelf sizes', n].filter(Boolean).join(' and ')} off the grid</span>
+    <span class="field-value"><button type="button" class="chip" id="grid-snap" title="Snap ${what} to the grid" aria-label="Snap ${what} to the grid">snap</button></span>`;
+}
+
+// Everything off the grid onto it, as one undo step. Sizes go first, so that
+// reflow keeps rooms that touched touching; then each room's place, after
+// the room it touches, which is on the grid by then.
+function snapToGrid() {
+  const g = gridMM();
+  if (!g) return;
+  const layout = layoutCopy();
+  const old = new Map(state.items.map((i) => [i.id, measure(i)]));
+  const size = (v) => Math.max(g, toGrid(v));
+  for (const k of SHELF_SIZES) layout.settings[k] = clamp(size(layout.settings[k]), 10, 500);
+  for (const it of layout.items) for (const [o, k, place] of gridLengths(it)) o[k] = place ? toGrid(o[k]) : size(o[k]);
+  reflow(layout, old);
+  const rooms = layout.items.filter(isRoom).sort((a, b) => a.y - b.y || a.x - b.x);
+  const was = new Map(rooms.map((m) => [m.id, m.x]));
+  for (const m of rooms) {
+    const left = rooms.find((o) => o !== m && Math.abs(o.y - m.y) < 0.01 && Math.abs(was.get(o.id) + sizeOf(o).w - m.x) < 0.5);
+    m.x = left ? left.x + sizeOf(left).w : toGrid(m.x);
+  }
+  for (const it of layout.items) {
+    if (isRoom(it) || placeOnGrid(layout, it)) continue;
+    const host = it.parent != null && layout.items.find((m) => m.id === it.parent);
+    it.x = host ? clamp(toGrid(host.x + it.x) - host.x, ...furnitureRange(host, it)) : toGrid(it.x);
+  }
+  commit(layout);
+  renderPalette();
+  renderSettings();
+}
 
 $('units').addEventListener('click', (e) => {
   const b = e.target.closest('[data-units]');
@@ -2188,6 +2350,7 @@ function render() {
   render3D(view);
   renderSelection(view);
   renderJig(view);
+  renderOffGrid();
   renderBom();
   updateHistoryButtons();
   let maxX = -Infinity, minX = Infinity, maxY = 0, maxD = 0;

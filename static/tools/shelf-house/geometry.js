@@ -19,7 +19,7 @@ const SEG = 16; // segments per quarter circle
 // start from these, on every size the user has not set themselves; each wall
 // is thick, thin or missing and takes its thickness from the settings, and
 // every rounded corner takes the shelf's outer or inner radius.
-export const ROOM_DEFAULTS = { wide: 120, narrow: 78, h: 72, d: 56, thick: 3, thin: 1.5, outerR: 8, innerR: 5 };
+export const ROOM_DEFAULTS = { wide: 120, narrow: 80, h: 72, d: 56, thick: 3, thin: 1.5, outerR: 8, innerR: 5 };
 
 export function defaultRoom(over = {}) {
   return {

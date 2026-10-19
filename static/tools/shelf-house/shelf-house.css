@@ -354,6 +354,12 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
 }
 .sh-settings [hidden] { display: none; }
+/* The grid's switch sits in the value column like any other value; what is
+   off the grid may run to two lines on a phone rather than push the band. */
+.sh-grid-switch .field-value { align-items: center; }
+.sh-grid-switch .toggle-row { padding-block: 0; }
+.sh-grid-off > .field-name { white-space: normal; }
+@media (min-width: 48rem) { .sh-grid-off { grid-column: span 2; } }
 
 /* The way back to a default, beside a size that has left it. */
 .sh-reset {
