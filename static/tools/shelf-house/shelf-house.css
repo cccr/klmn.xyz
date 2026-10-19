@@ -105,6 +105,7 @@
 #mat .wall-hi { pointer-events: none; }
 #mat .wall-hi rect { fill: color-mix(in srgb, var(--reg) 55%, transparent); stroke: var(--reg); stroke-width: 1.6; }
 #mat .wall-hi .open { stroke: var(--reg); stroke-width: 1.6; stroke-dasharray: 3 2.5; }
+#mat .wall-hi .dim { stroke: var(--reg); stroke-width: 1.4; }
 #mat .wall-hi .arc { fill: none; stroke: var(--reg); stroke-width: 2.4; stroke-linecap: round; }
 
 /* ── In-place panels ───────────────────────────────────────────────────
@@ -224,9 +225,47 @@
     min-height: 2.75rem; margin-top: .25rem;
     font-size: var(--fs-fine); color: var(--ink-soft);
 }
-.sh-selection strong { color: var(--ink); font-weight: 600; }
-.sh-selection .spacer { margin-right: auto; }
-.sh-selection .chip { margin: 0; }
+.sh-selection .chips { margin: 0; }
+
+/* The block's colour and name lead the line; the name is typed in place. */
+.sh-ident { display: flex; align-items: center; gap: .5rem; }
+.sh-selection input[type="text"] {
+    width: 10rem;
+    text-align: left;
+    font-family: var(--sans); font-weight: 600; font-size: var(--fs-label);
+    color: var(--ink);
+    cursor: text;
+}
+.sh-dims { display: flex; flex-wrap: wrap; gap: .25rem .875rem; }
+.sh-dim { display: flex; align-items: baseline; gap: .25rem; font-family: var(--mono); color: var(--ink); }
+.sh-dim > label { font-size: var(--fs-note); color: var(--ink-soft); cursor: pointer; }
+.sh-dim:focus-within > label { color: var(--reg); }
+.sh-selection .sh-dim input[type="number"] { width: 3rem; }
+.sh-dim .unit { font-size: var(--fs-note); color: var(--ink-soft); }
+/* Where the block stands, in small type under its name. */
+.sh-ident-text { display: flex; flex-direction: column; gap: .125rem; }
+.sh-ident-text .sh-where { font-size: var(--fs-note); }
+.sh-selection .sh-move { margin-left: auto; }
+
+/* The rarer actions, behind ⋯. */
+.sh-more { position: relative; }
+.sh-more > summary { list-style: none; cursor: pointer; }
+.sh-more > summary::-webkit-details-marker { display: none; }
+.sh-more[open] > summary { color: var(--ink); border-color: var(--ink-soft); }
+.sh-menu {
+    position: absolute; right: 0; top: calc(100% + .25rem); z-index: 5;
+    display: flex; flex-direction: column;
+    min-width: 15rem; padding: .25rem;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    box-shadow: 0 4px 12px rgba(20, 24, 26, .12);
+}
+.sh-menu button {
+    padding: .375rem .5rem;
+    text-align: left; font-size: var(--fs-fine); color: var(--ink);
+    background: none; border: 0; cursor: pointer;
+}
+.sh-menu button:hover, .sh-menu button:focus-visible { background: var(--ground-sunk); outline: none; }
 
 /* ── Print list ────────────────────────────────────────────────────────── */
 

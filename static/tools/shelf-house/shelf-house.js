@@ -787,29 +787,95 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'Escape') { select(null); render(); }
 });
 
+// The live part of the block line: where the selected block stands, or what
+// to do when nothing is selected. Redrawn with the front view, so it follows
+// a drag; the rest of the line is built with the inspector.
 function renderSelection(layout) {
   const box = $('selection');
+  if (!box) return;
   const it = layout.items.find((i) => i.id === selectedId);
-  box.replaceChildren();
   if (!it) {
     const tips = [...(layout.info?.values() || [])].filter((v) => v.tips).length;
     box.innerHTML = tips
       ? `<span class="sh-warn">${tips === 1 ? 'One room overhangs' : `${tips} rooms overhang`} the room below. Move it back over its support or glue it.</span>`
-      : '<span>Click a block to tune it. Arrow keys move it, Delete removes it, D duplicates it.</span>';
+      : 'Click a block to tune it. Arrow keys move it, Delete removes it, D duplicates it.';
     return;
   }
   const a = absPos(layout, it);
   const info = layout.info?.get(it.id);
   const where = isRoom(it) ? `x ${len(a.x)}, floor ${(info?.level ?? 0) + 1}` : it.parent != null ? 'inside a room' : 'on the ground';
-  box.innerHTML = `<strong>${esc(it.name)}</strong><span class="spacer">${where}${info?.tips ? ', <span class="sh-warn">overhangs and will tip</span>' : ''}</span>`;
-  const mk = (label, fn, title) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = label; b.title = title || ''; b.onclick = fn; return b; };
-  box.append(
-    mk(`◀ ${fmtLen(bigStep())}`, () => nudge(-bigStep()), `Move left ${len(bigStep())}`),
-    mk(`${fmtLen(bigStep())} ▶`, () => nudge(bigStep()), `Move right ${len(bigStep())}`),
-    mk('duplicate', duplicateSelected, 'Stack a copy on top (D)'),
-    mk('delete', removeSelected, 'Delete (Del)'),
-  );
+  box.innerHTML = `${where}${info?.tips ? ', <span class="sh-warn">overhangs and will tip</span>' : ''}`;
 }
+
+// ------------------------------------------------------------------ block line
+
+// Under the front view, the selected block's line: its colour and name, a
+// room's three sizes, where it stands, moving it, and what can be done with
+// it. Sizes a room has set itself carry a ↺ back to the shelf's.
+const bar = $('block-bar');
+const DIM_NAME = { w: 'Width', h: 'Height', d: 'Depth' };
+
+function dimField(it, dim) {
+  const own = it.own?.[dim];
+  const name = dim === 'w' ? `Width (${it.size})` : DIM_NAME[dim];
+  return `<span class="sh-dim" data-dim="${dim}" title="${name}: ${own ? 'set for this room' : 'follows the shelf settings'}">
+    <label for="sh-cfg-${dim}">${dim.toUpperCase()}</label>${numInput(`cfg.${dim}`, it.cfg[dim], {
+      min: 10, id: `sh-cfg-${dim}`, extra: ` aria-label="${name}"`,
+      after: own ? resetChip('size-default', `data-dim="${dim}"`, name, defaultFor(it, dim)) : '',
+    })}</span>`;
+}
+
+function renderBlockBar() {
+  const it = selected();
+  const focusId = bar.contains(document.activeElement) ? document.activeElement.id : null;
+  if (!it) {
+    bar.innerHTML = '<span id="selection" class="sh-where" aria-live="polite"></span>';
+  } else {
+    const same = state.items.filter((o) => o.id !== it.id && o.kind === it.kind && o.name === it.name).length;
+    const base = typeDef(it.base);
+    const step = bigStep();
+    bar.innerHTML = `
+      <span class="sh-ident">
+        <input id="sh-color" type="color" data-path="cfg.color" value="${it.cfg.color}" aria-label="Colour" title="Colour">
+        <span class="sh-ident-text">
+          <input id="sh-name" type="text" data-path="name" value="${esc(it.name)}" maxlength="40" aria-label="Name" title="Name: type to rename it">
+          <span id="selection" class="sh-where" aria-live="polite"></span>
+        </span>
+      </span>
+      ${isRoom(it) ? `<span class="sh-dims">${['w', 'h', 'd'].map((d) => dimField(it, d)).join('')}</span>` : ''}
+      <span class="chips sh-move">
+        <button type="button" class="chip" data-act="nudge" data-v="-1" title="Move left ${len(step)} (Shift+←)" aria-label="Move left ${len(step)}">◀</button>
+        <button type="button" class="chip" data-act="nudge" data-v="1" title="Move right ${len(step)} (Shift+→)" aria-label="Move right ${len(step)}">▶</button>
+      </span>
+      <span class="chips">
+        <button type="button" class="chip" data-act="duplicate" title="Stack a copy on top (D)">duplicate</button>
+        <button type="button" class="chip" data-act="delete" title="Delete (Del)">delete</button>
+        <button type="button" class="chip" data-act="download" title="Download this block's STL">stl</button>
+        <details class="sh-more">
+          <summary class="chip" title="More" aria-label="More actions">⋯</summary>
+          <div class="sh-menu">
+            <button type="button" data-act="save-type">Save as block type</button>
+            ${same ? `<button type="button" data-act="apply-same">Copy settings to ${same} other “${esc(it.name)}” block${same > 1 ? 's' : ''}</button>` : ''}
+            ${base ? `<button type="button" data-act="reset">Reset to “${esc(base.name)}”</button>` : ''}
+          </div>
+        </details>
+      </span>`;
+  }
+  if (focusId) $(focusId)?.focus();
+  renderSelection(currentView());
+}
+
+// The ⋯ menu closes on a choice, a click elsewhere, or Escape.
+const closeMenus = (except = null) => { for (const d of bar.querySelectorAll('.sh-more[open]')) if (d !== except) d.open = false; };
+document.addEventListener('click', (e) => closeMenus(e.target.closest?.('.sh-more')));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenus(); });
+
+// A size field in the line lights the dimension it sets on the front view.
+const dimOf = (e) => { const d = e.target.closest?.('.sh-dim'); return d ? `dim-${d.dataset.dim}` : null; };
+bar.addEventListener('pointerover', (e) => { if (dimOf(e) || jigHot?.startsWith('dim-')) setJigHot(dimOf(e)); });
+bar.addEventListener('pointerleave', () => { if (jigHot?.startsWith('dim-') && !bar.querySelector('.sh-dim:focus-within')) setJigHot(null); });
+bar.addEventListener('focusin', (e) => setJigHot(dimOf(e)));
+bar.addEventListener('focusout', (e) => { if (!e.relatedTarget?.closest?.('.sh-dim') && jigHot?.startsWith('dim-')) setJigHot(null); });
 
 // ------------------------------------------------------------------ inspector
 
@@ -842,15 +908,6 @@ function numInput(path, value, { min = 0, max = 500, step = 0.5, hint = '', unit
 const RESET_ICON = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6a3.5 3.5 0 1 0 1.1-2.55" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M2 1.6v2.6h2.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const resetChip = (act, attrs, what, to) =>
   `<button type="button" class="sh-reset" data-act="${act}" ${attrs} title="Back to the default, ${len(to)}" aria-label="${what} back to the default, ${len(to)}">${RESET_ICON}</button>`;
-
-function sizeField(it, label, dim) {
-  const own = it.own?.[dim];
-  return num(label, `cfg.${dim}`, it.cfg[dim], {
-    min: 10,
-    hint: own ? 'Set for this block' : 'Follows the shelf settings',
-    after: own ? resetChip('size-default', `data-dim="${dim}"`, label, defaultFor(it, dim)) : '',
-  });
-}
 
 function pick(label, path, options, value, labels) {
   const id = 'sh-' + path.replace(/\./g, '-');
@@ -895,56 +952,30 @@ function openingHTML(o, i) {
   </div>`;
 }
 
+// The rail keeps only a room's openings in detail; everything else about a
+// block is on or under the front view.
 function roomInspector(it) {
   const c = it.cfg;
-  return group('Size', `
-      ${sizeField(it, it.size === 'narrow' ? 'Width (narrow)' : 'Width (wide)', 'w')}
-      ${sizeField(it, 'Height', 'h')}
-      ${sizeField(it, 'Depth', 'd')}`)
-    + group('Openings', `
+  return group('Openings', `
       ${c.openings.length ? '' : '<p class="rail-hint">No openings yet. Add a window, a doorway or a skylight.</p>'}
       ${c.openings.map(openingHTML).join('')}
       <div class="chips">
         <button type="button" class="chip" data-act="add-opening" data-preset="window">+ window</button>
         <button type="button" class="chip" data-act="add-opening" data-preset="doorway">+ doorway</button>
         <button type="button" class="chip" data-act="add-opening" data-preset="skylight">+ skylight</button>
-      </div>`)
-    + blockActions(it);
-}
-
-// A table's or a flight's sizes are set from the panels around it on the
-// front view; the rail keeps what has no place there.
-function furnitureInspector(it) {
-  return blockActions(it);
-}
-
-function blockActions(it) {
-  const same = state.items.filter((o) => o.id !== it.id && o.kind === it.kind && o.name === it.name).length;
-  const base = typeDef(it.base);
-  return `<div class="rail-actions">
-      <button type="button" class="btn" data-act="download">Download STL</button>
-      <button type="button" class="btn" data-act="save-type">Save as block type</button>
-      ${same ? `<button type="button" class="btn" data-act="apply-same">Copy settings to ${same} other “${esc(it.name)}” block${same > 1 ? 's' : ''}</button>` : ''}
-      ${base ? `<button type="button" class="btn" data-act="reset">Reset to “${esc(base.name)}”</button>` : ''}
-    </div>`;
+      </div>`);
 }
 
 function renderInspector() {
+  renderBlockBar();
   const it = selected();
   if (!it) {
-    insp.innerHTML = group('Selected block', `<p class="rail-hint">Click a block in the front view to tune it.
-      Each block has its own size, walls, corners and openings, so two rooms of the same type can differ.</p>`);
+    insp.innerHTML = group('Selected block', `<p class="rail-hint">Click a block in the front view to tune it. Its name,
+      colour and size are in the line under the front view; its walls, corners and sizes are on the tabs and dots around it.</p>`);
     return;
   }
-  insp.innerHTML = group('Selected block', `
-      <div class="field"><label for="sh-name">Name</label>
-        <span class="field-value"><input id="sh-name" type="text" data-path="name" value="${esc(it.name)}" maxlength="40"></span></div>
-      <div class="field"><label for="sh-color">Colour</label>
-        <span class="field-value"><input id="sh-color" type="color" data-path="cfg.color" value="${it.cfg.color}"></span></div>
-      <p class="rail-hint">${isRoom(it)
-        ? 'Set its walls and openings from the tabs around it on the front view, and round or square a corner with the dot beside it.'
-        : 'Set its sizes from the tabs around it on the front view.'}</p>`)
-    + (isRoom(it) ? roomInspector(it) : furnitureInspector(it));
+  insp.innerHTML = isRoom(it) ? roomInspector(it)
+    : group('Selected block', '<p class="rail-hint">Set its sizes from the tabs around it on the front view.</p>');
 }
 
 // Inputs edit the selected block live; each field edit is one undo step.
@@ -1003,16 +1034,17 @@ function endEdit() {
   updateHistoryButtons();
 }
 
-insp.addEventListener('input', (e) => {
+// The rail and the block line edit the selected block the same way.
+function onFieldInput(e) {
   const el = e.target.closest('[data-path]');
   if (!el || el.tagName === 'SELECT') return;
   // Typed numbers wait for Enter/blur (half-typed values would reshuffle the
   // shelf); spinner arrows and the colour picker update live.
   if (el.type === 'number' && e.inputType) return;
   liveEdit(el.dataset.path, readInput(el));
-});
+}
 
-insp.addEventListener('change', (e) => {
+function onFieldChange(e) {
   const el = e.target.closest('[data-path]');
   if (!el) return;
   if (el.type === 'number') {
@@ -1024,15 +1056,19 @@ insp.addEventListener('change', (e) => {
   // Some fields show or hide others (shape, panes, copies, wall, anchor), and
   // a typed room size gains its ↺.
   if (/\.(shape|wall|anchor|cols|rows|count)$/.test(el.dataset.path) || /^(name|cfg\.[whd])$/.test(el.dataset.path)) renderInspector();
-});
+}
 
-insp.addEventListener('click', (e) => {
+function onAct(e) {
   const b = e.target.closest('[data-act]');
   const it = selected();
   if (!b || !it) return;
   const act = b.dataset.act;
+  closeMenus();
   if (act === 'download') { downloadItem(it); return; }
   if (act === 'save-type') { saveAsType(it); return; }
+  if (act === 'duplicate') { duplicateSelected(); return; }
+  if (act === 'delete') { removeSelected(); return; }
+  if (act === 'nudge') { nudge(Number(b.dataset.v) * bigStep()); return; }
 
   const layout = layoutCopy();
   const m = layout.items.find((i) => i.id === it.id);
@@ -1061,7 +1097,13 @@ insp.addEventListener('click', (e) => {
   } else return;
   reflow(layout, old);
   commit(layout);
-});
+}
+
+for (const el of [insp, bar]) {
+  el.addEventListener('input', onFieldInput);
+  el.addEventListener('change', onFieldChange);
+  el.addEventListener('click', onAct);
+}
 
 function saveAsType(it) {
   let name = it.name;
@@ -1253,7 +1295,7 @@ function renderJig(layout) {
   }
   const panels = isRoom(it) ? roomPanels(it) : furniturePanels(it);
   // Forget a hot tab or corner that this block does not have.
-  const corner = isRoom(it) && /^corner-(outer|inner)-(tl|tr|br|bl)$/.test(jigHot || '');
+  const corner = isRoom(it) && /^(corner-(outer|inner)-(tl|tr|br|bl)|dim-[whd])$/.test(jigHot || '');
   if (!corner && !panels.some((p) => p.id === jigHot)) jigHot = null;
   // The panels' fields read like the band's, so they take its input styles.
   jig.innerHTML = `<div class="rail-band">${panels.map(jigPanel).join('')}${isRoom(it) ? cornerDots(it) : ''}</div>`;
@@ -1340,6 +1382,14 @@ function drawJigHighlight(layout) {
       if (w === 'stemD') rect(mid - c.stemD / 2, 3.5, mid + c.stemD / 2, c.height - 3);
       if (w === 'height') rect(0, 0, sz.w, c.height);
     }
+  } else if (w.startsWith('dim-')) {
+    // A dimension line across the room, with a tick at each end; depth, which
+    // the front view cannot show, lights the back wall it is measured to.
+    const b = innerBox(c);
+    const line = (x0, y0, x1, y1) => g.append(svgEl('line', { x1: a.x + x0, y1: -(a.y + y0), x2: a.x + x1, y2: -(a.y + y1), class: 'dim' }));
+    if (w === 'dim-w') { line(0, c.h / 2, c.w, c.h / 2); line(0, c.h / 2 - 5, 0, c.h / 2 + 5); line(c.w, c.h / 2 - 5, c.w, c.h / 2 + 5); }
+    if (w === 'dim-h') { line(c.w / 2, 0, c.w / 2, c.h); line(c.w / 2 - 5, 0, c.w / 2 + 5, 0); line(c.w / 2 - 5, c.h, c.w / 2 + 5, c.h); }
+    if (w === 'dim-d') rect(b.x0, b.y0, b.x1, b.y1);
   } else if (w.startsWith('corner-')) {
     const [, ring, key] = w.split('-');
     const b = innerBox(c);

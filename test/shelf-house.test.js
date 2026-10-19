@@ -480,3 +480,39 @@ test('the layout buttons sit with undo and redo, grouped by what they do',
     })()`), true);
   });
 });
+
+test('a block\'s name, colour, size and actions are in the line under the front view',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, document.getElementById('example').click(), __sh.pick(3), true)`);
+    const item = async (id) => (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).find((i) => i.id === id);
+    // Nothing of it is left on the rail but the openings.
+    assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('#inspector .rail-group > h2')].map((h) => h.textContent)"), ['Openings']);
+    assert.deepStrictEqual(await p.evalJson("['sh-name', 'sh-color', 'sh-cfg-w', 'sh-cfg-h', 'sh-cfg-d'].map((id) => document.getElementById(id)?.closest('#block-bar') != null)"), [true, true, true, true, true]);
+
+    // Renamed and resized in place; a typed size gets its ↺, and the field it
+    // is typed in keeps the focus.
+    await p.evalJson("(document.getElementById('sh-cfg-h').focus(), __sh.set('sh-name', 'Hall'), __sh.set('sh-cfg-h', 80), true)");
+    const room = await item(3);
+    assert.deepStrictEqual([room.name, room.cfg.h, room.own.h], ['Hall', 80, true]);
+    assert.strictEqual(await p.evalJson("document.activeElement.id"), 'sh-cfg-h');
+    assert.ok(await p.evalJson("!!document.querySelector('#block-bar [data-act=size-default][data-dim=h]')"));
+    // Focusing a size draws it on the room.
+    assert.strictEqual(await p.evalJson("document.querySelectorAll('#mat .wall-hi .dim').length"), 3);
+    assert.match(await p.evalJson("document.getElementById('selection').textContent"), /floor 2/);
+
+    // The rarer actions are behind ⋯, and the menu closes on a choice.
+    await p.evalJson("(document.querySelector('#block-bar .sh-more summary').click(), true)");
+    assert.strictEqual(await p.evalJson("document.querySelector('#block-bar .sh-more').open"), true);
+    await p.evalJson("(document.querySelector('#block-bar [data-act=reset]').click(), true)");
+    assert.deepStrictEqual([(await item(3)).name, (await item(3)).cfg.h], ['Wide · doorways', 72]);
+    assert.strictEqual(await p.evalJson("!!document.querySelector('#block-bar .sh-more[open]')"), false);
+
+    const before = (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).length;
+    await p.evalJson("(document.querySelector('#block-bar [data-act=duplicate]').click(), true)");
+    assert.strictEqual((await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).length, before + 1);
+    await p.evalJson("(document.querySelector('#block-bar [data-act=delete]').click(), true)");
+    assert.strictEqual((await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).length, before);
+  });
+});

@@ -284,15 +284,15 @@ body > footer > div {
 
 .rail input[type="range"] { width: 100%; accent-color: var(--reg); }
 
-.rail input[type="color"] {
+:is(.rail, .rail-band) input[type="color"] {
     -webkit-appearance: none; appearance: none;
     width: 1.75rem; height: 1.125rem; padding: 0;
     background: none; cursor: pointer;
     border: 1px solid var(--rule); border-radius: 2px;
 }
-.rail input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
-.rail input[type="color"]::-webkit-color-swatch { border: none; }
-.rail input[type="color"]::-moz-color-swatch { border: none; }
+:is(.rail, .rail-band) input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+:is(.rail, .rail-band) input[type="color"]::-webkit-color-swatch { border: none; }
+:is(.rail, .rail-band) input[type="color"]::-moz-color-swatch { border: none; }
 
 /* A free-text payload is still a value, but it is a paragraph rather than a
    number, so it keeps a visible box. It was `#payload` in qr.css; nothing
