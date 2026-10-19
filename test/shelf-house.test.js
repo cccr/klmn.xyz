@@ -361,6 +361,45 @@ test('the example is laid out for the sizes in the shelf settings',
   });
 });
 
+test('rooms keep their places against each other when the shelf\'s widths change',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, __sh.set('sh-wide', 120), __sh.set('sh-narrow', 78), __sh.set('sh-h', 72), document.getElementById('example').click(), true)`);
+    const at = () => p.evalJson("Object.fromEntries(JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items.map((i) => [i.id, i.kind === 'room' ? [i.x, i.y] : i.x]))");
+    const widths = (wide, narrow) => p.evalJson(`(__sh.set('sh-wide', ${wide}), __sh.set('sh-narrow', ${narrow}), true)`);
+    try {
+      // The columns stay side by side, the arched room centred over both of
+      // them and the table in the middle of it, as if the example were new.
+      const example = await at();
+      await widths(160, 78);
+      assert.deepStrictEqual(await at(), { 1: [0, 0], 2: [160, 0], 3: [0, 72], 4: [160, 72], 5: [39, 144], 6: 62 });
+      await widths(160, 40);
+      assert.deepStrictEqual(await at(), { 1: [0, 0], 2: [160, 0], 3: [0, 72], 4: [160, 72], 5: [20, 144], 6: 62 });
+      await widths(120, 78);
+      assert.deepStrictEqual(await at(), example);
+
+      // A gap on the floor stays the same gap; a room flush with an edge of
+      // the rooms under it stays flush with that edge.
+      const ex = await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3'))");
+      const from = (src, id, x, y) => ({ ...ex.items.find((i) => i.id === src), id, x, y });
+      const layout = { ...ex, items: [from(1, 1, 0, 0), from(2, 2, 140, 0), from(4, 3, 0, 72), from(3, 4, 98, 72)] };
+      await p.evalJson(`(localStorage.setItem('shelf-house-layout-v3', ${JSON.stringify(JSON.stringify(layout))}), location.reload(), true)`);
+      await new Promise((r) => setTimeout(r, 300));
+      await ready(p);
+      await p.evalJson(PAGE_HELPERS);
+      await widths(160, 78);
+      assert.deepStrictEqual(await at(), { 1: [0, 0], 2: [180, 0], 3: [0, 72], 4: [98, 72] });
+      await widths(160, 40);
+      assert.deepStrictEqual(await at(), { 1: [0, 0], 2: [180, 0], 3: [0, 72], 4: [60, 72] });
+      await widths(120, 78);
+      assert.deepStrictEqual(await at(), { 1: [0, 0], 2: [140, 0], 3: [0, 72], 4: [98, 72] });
+    } finally {
+      await widths(120, 78);
+    }
+  });
+});
+
 test('walls are thick, thin or missing, and take their thickness from the shelf settings',
   { skip: !CHROME && 'no Chrome' }, async () => {
   await withPage('/tools/shelf-house/', async (p) => {

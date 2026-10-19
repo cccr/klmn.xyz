@@ -415,33 +415,51 @@ function proposeMove(base, d, ax, ay, px, py, tol) {
   return layout;
 }
 
-// After rooms change width, keep rooms that touched still touching and keep
-// stacked rooms over the same spot of the room below. `old` maps id -> old size.
+// What reflow needs to know about a block from before a change.
+const measure = (it) => ({ ...sizeOf(it), box: isRoom(it) ? innerBox(it.cfg) : null });
+
+// Where a block w wide stands along a run from lo to hi, kept as the share of
+// the way from flush with lo to flush with hi, so flush stays flush and
+// centred stays centred. Returns where it stands on the run once resized.
+// A block as wide as the run has no way to go and keeps its offset.
+function along(x, w, lo, hi) {
+  const free = hi - lo - w;
+  if (Math.abs(free) < 0.5) return (w2, lo2) => lo2 + x - lo;
+  const t = (x - lo) / free;
+  return (w2, lo2, hi2) => Math.round((lo2 + t * (hi2 - lo2 - w2)) * 10) / 10;
+}
+
+// After blocks change size, each keeps its place against the others: a room
+// keeps touching the room on its left, a room on the floor keeps its gap to
+// the one on its left, and a room standing on others keeps its place along
+// the run they make together. Furniture keeps its place along its room.
+// `old` maps id -> measure() from before the change.
 function reflow(layout, old) {
+  applyDefaults(layout);
   const rooms = layout.items.filter(isRoom).sort((a, b) => a.y - b.y || a.x - b.x);
-  const ow = (r) => (old.get(r.id) || sizeOf(r)).w;
-  const oh = (r) => (old.get(r.id) || sizeOf(r)).h;
+  const was = (it) => old.get(it.id) || measure(it);
+  const right = (o) => o.x + was(o).w;
+  const span = (under, w) => [Math.min(...under.map((o) => o.x)), Math.max(...under.map((o) => o.x + w(o)))];
   const anchors = new Map();
   for (const m of rooms) {
-    const left = rooms.find((o) => o !== m && Math.abs(o.y - m.y) < 0.01 && Math.abs(o.x + ow(o) - m.x) < 0.5);
-    if (left) { anchors.set(m.id, { ref: left, abut: true }); continue; }
-    let sup = null, best = 0.01;
-    for (const o of rooms) {
-      const ov = overlapX(m.x, ow(m), o.x, ow(o));
-      if (Math.abs(o.y + oh(o) - m.y) < 0.01 && ov > best) { best = ov; sup = o; }
-    }
-    if (sup) anchors.set(m.id, { ref: sup, rel: (m.x + ow(m) / 2 - sup.x) / ow(sup) });
+    let left = null;
+    for (const o of rooms) if (o !== m && Math.abs(o.y - m.y) < 0.01 && right(o) < m.x + 0.5 && (!left || right(o) > right(left))) left = o;
+    if (left && (m.y < 0.01 || Math.abs(right(left) - m.x) < 0.5)) { anchors.set(m.id, { left, gap: m.x - right(left) }); continue; }
+    const under = rooms.filter((o) => Math.abs(o.y + was(o).h - m.y) < 0.01 && overlapX(m.x, was(m).w, o.x, was(o).w) > 0.01);
+    if (under.length) anchors.set(m.id, { under, place: along(m.x, was(m).w, ...span(under, (o) => was(o).w)) });
   }
   for (const m of rooms) {
     const a = anchors.get(m.id);
-    if (!a) continue;
-    const rw = sizeOf(a.ref).w;
-    m.x = a.abut ? a.ref.x + rw : Math.round(a.ref.x + a.rel * rw - sizeOf(m).w / 2);
+    if (a?.left) m.x = a.left.x + sizeOf(a.left).w + a.gap;
+    else if (a) m.x = a.place(sizeOf(m).w, ...span(a.under, (o) => sizeOf(o).w));
   }
   for (const it of layout.items) {
     if (isRoom(it) || it.parent == null) continue;
     const host = layout.items.find((m) => m.id === it.parent);
-    if (host) it.x = clamp(it.x, ...furnitureRange(host, it));
+    if (!host) continue;
+    const ob = old.get(host.id)?.box, b = innerBox(host.cfg);
+    if (ob) it.x = along(it.x, was(it).w, ob.x0, ob.x1)(sizeOf(it).w, b.x0, b.x1);
+    it.x = clamp(it.x, ...furnitureRange(host, it));
   }
   return settle(layout);
 }
@@ -1077,7 +1095,7 @@ function liveEdit(path, value) {
   const it = selected();
   if (!it || value === undefined) return;
   if (!editSnapshot) editSnapshot = snap(state);
-  const old = new Map(state.items.map((i) => [i.id, sizeOf(i)]));
+  const old = new Map(state.items.map((i) => [i.id, measure(i)]));
   const before = getPath(it, path);
   setPath(it, path, value);
   // A size typed into a room is its own from now on.
@@ -1141,7 +1159,7 @@ function onAct(e) {
 
   const layout = layoutCopy();
   const m = layout.items.find((i) => i.id === it.id);
-  const old = new Map(state.items.map((i) => [i.id, sizeOf(i)]));
+  const old = new Map(state.items.map((i) => [i.id, measure(i)]));
   const c = m.cfg;
   const i = Number(b.dataset.i);
   if (act === 'size-default') delete m.own[b.dataset.dim];
@@ -1710,7 +1728,7 @@ jig.addEventListener('click', (e) => {
   }
   const layout = layoutCopy();
   const m = layout.items.find((i) => i.id === it.id);
-  const old = new Map(state.items.map((i) => [i.id, sizeOf(i)]));
+  const old = new Map(state.items.map((i) => [i.id, measure(i)]));
   if (act === 'wall') m.walls[b.dataset.wall] = b.dataset.v;
   else if (act === 'add') {
     const o = newOpening(b.dataset.v, b.dataset.wall);
@@ -1780,7 +1798,7 @@ function renderSettings() {
 function setSetting(key, value) {
   if (state.settings[key] === value) return;
   const layout = layoutCopy();
-  const old = new Map(state.items.map((i) => [i.id, sizeOf(i)]));
+  const old = new Map(state.items.map((i) => [i.id, measure(i)]));
   layout.settings[key] = value;
   reflow(layout, old);
   commit(layout);
