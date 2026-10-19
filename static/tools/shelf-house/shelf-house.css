@@ -179,7 +179,7 @@
 .sh-jig-panel.is-start .sh-jig-body { flex-direction: row-reverse; }
 .sh-jig-body .field-value { padding-inline: .25rem; }
 .sh-jig-body input[type="number"] { width: 3.25rem; }
-.sh-jig-wide { width: auto; padding: 0 .5rem; font: var(--fs-note) var(--mono); }
+.sh-jig-btn.sh-jig-wide { width: auto; padding: 0 .5rem; font: var(--fs-note) var(--mono); white-space: nowrap; }
 
 /* Corner dots: filled when the corner is rounded. */
 .sh-corner {

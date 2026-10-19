@@ -70,6 +70,69 @@ test('a room cuts its stairwells and shows them edge-on in the front view', asyn
   assert.deepStrictEqual(g.frontProfile(k, 'room', wide).marks, [[90, 0, cfg.w - cfg.walls.right, cfg.walls.floor]]);
 });
 
+test('a lift car is one open-fronted solid, clear of its shaft, with a notch up each side', async () => {
+  const { g, k } = await geometry();
+  const cfg = g.defaultLift({ w: 32, rise: 66, depth: 26.5, wall: 3, rail: 1.75 });
+  const car = g.buildLift(k, cfg);
+  assert.strictEqual(car.status(), 'NoError');
+  assert.strictEqual(car.genus(), 0);
+  // 0.3 mm clear of each shaft wall and of the back, 1 mm under the ceiling.
+  const bb = car.boundingBox();
+  assert.deepStrictEqual([...bb.min, ...bb.max].map((v) => Math.round(v * 100) / 100), [3.3, 0, 0.3, 34.7, 65, 26.5]);
+  assert.deepStrictEqual(g.blockSize('furniture', cfg), { w: 38, h: 66, d: 26.5 });
+  // Floor, roof, back and two sides, less a notch half the rail deep and the
+  // rail plus 0.3 mm each side wide up each side.
+  const box = 31.4 * 65 * 26.2, inside = 25.4 * 59 * 23.2, notches = 2 * 0.875 * 2.35 * 65;
+  assert.ok(Math.abs(car.volume() - (box - inside - notches)) < 1e-3, `${car.volume()}`);
+  // Seen from the front: a frame round its inside, the notches edge-on.
+  const prof = g.frontProfile(k, 'furniture', cfg);
+  assert.deepStrictEqual(prof.marks, [[3.3, 0, 4.175, 65], [33.825, 0, 34.7, 65]]);
+  assert.ok(prof.room.length && prof.shell.length);
+});
+
+test('a lift shaft is built into a room, and a strand glued in its grooves clears the car', async () => {
+  const { g, k } = await geometry();
+  const cfg = g.defaultRoom();
+  const lift = g.defaultLift({ rise: 66, depth: 26.5, wall: 3, rail: 1.75 });
+  // Outer left edge at x 40, from the back wall's inside face forward.
+  const s = g.liftShaft({ x: 0, y: 0, cfg }, 40, lift, 3);
+  assert.deepStrictEqual(s, { x: 40, w: 32, t: 3, z0: 3, z1: 29.5, rail: 1.75 });
+  const shaft = { ...cfg, shafts: [s] };
+  const room = g.buildRoom(k, shaft);
+  assert.strictEqual(room.status(), 'NoError');
+  const b = g.innerBox(cfg), ih = b.y1 - b.y0;
+  // Two walls the shaft's depth and the room's inside height, less a groove
+  // half the rail deep and 0.2 mm wider than it up each.
+  const added = room.volume() - g.buildRoom(k, cfg).volume();
+  assert.ok(Math.abs(added - 2 * (3 * ih * 26.5 - 0.875 * 1.95 * ih)) < 0.01, `added ${added} mm³`);
+  // The walls join the room's frame on the front view; the grooves show edge-on.
+  const prof = g.frontProfile(k, 'room', shaft);
+  assert.deepStrictEqual(prof.marks, [[42.125, b.y0, 43, b.y1], [75, b.y0, 75.875, b.y1]]);
+  const area = (polys) => polys.reduce((sum, p) => sum + p.reduce((a, [x, y], i) => {
+    const [x2, y2] = p[(i + 1) % p.length];
+    return a + (x * y2 - x2 * y) / 2;
+  }, 0), 0);
+  const plain = g.frontProfile(k, 'room', cfg);
+  assert.ok(Math.abs(area(prof.shell) - area(plain.shell) - 2 * 3 * ih) < 0.01);
+
+  // A strand of filament in each groove, its middle on the wall's face: it
+  // fits the groove and rides in the car's notch without touching either.
+  const car = g.buildLift(k, lift).translate([40, b.y0, 3]);
+  for (const x of [43, 75]) {
+    const strand = k.Manifold.cylinder(ih, 0.875, 0.875, 24).rotate([-90, 0, 0]).translate([x, b.y0, (3 + 29.5) / 2]);
+    assert.ok(strand.intersect(room).volume() < 1e-6, `room at x ${x}`);
+    assert.ok(strand.intersect(car).volume() < 1e-6, `car at x ${x}`);
+  }
+
+  // With the floor and ceiling open between the walls, the car rides up
+  // from the room below, through this one and on into the room above.
+  const open = ['floor', 'ceiling'].map((wall) => g.stairwell({ x: 0, y: 0, cfg }, 43, 75, 3, 29.5, wall));
+  const passed = g.buildRoom(k, { ...shaft, stairwells: open });
+  for (const dy of [-40, -10, 0, 30, 60]) {
+    assert.ok(car.translate([0, dy, 0]).intersect(passed).volume() < 1e-6, `car ${dy} mm up`);
+  }
+});
+
 test('a centred window stays in the middle of its wall when the room gets shorter', async () => {
   const { g, k } = await geometry();
   const win = g.defaultOpening({ anchor: 'centre', y: 0, w: 30, h: 30 });
@@ -446,6 +509,60 @@ test('tables and stairs are sized from panels around them',
     assert.strictEqual((await item(id)).cfg.run, 40);
     await p.evalJson("(document.querySelector('[data-panel=turn] .sh-jig-tab').focus(), document.querySelector('[data-jig=flip]').click(), true)");
     assert.strictEqual((await item(id)).cfg.flip, true);
+  });
+});
+
+test('a lift raises its shaft through the floors set, as far as rooms above hold it',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, localStorage.removeItem('shelf-house-units'), document.getElementById('example').click(), true)`);
+    const items = () => p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items");
+    // Rooms 1, 3 and 5 stand on each other; 5 is shifted right by half a narrow room.
+    const column = async (key) => {
+      const all = await items();
+      return [1, 3, 5].map((id) => all.find((i) => i.id === id).cfg[key]);
+    };
+    const shafts = async () => (await column('shafts')).map((s) => s.length);
+    const holes = async () => (await column('stairwells')).map((s) => s.map((o) => o.wall));
+    const where = () => p.evalJson("document.getElementById('selection').textContent");
+
+    await p.evalJson("(__sh.pick(1), document.querySelector('#palette [aria-label=\"Add Lift\"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), true)");
+    const id = await p.evalJson("Math.max(...JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items.map((i) => i.id))");
+    assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('.sh-jig-panel')].map((e) => e.dataset.panel)"), ['floors', 'width', 'rail']);
+    assert.deepStrictEqual(await shafts(), [1, 1, 0]);
+    assert.deepStrictEqual(await holes(), [['ceiling'], ['floor'], []]);
+    assert.match(await where(), /serving 2 floors/);
+    assert.ok(await p.evalJson("[...document.querySelectorAll('#bom td')].some((td) => td.textContent.trim() === 'Lift')"));
+
+    // Three floors: room 5's left wall stands where the shaft would go up, so it stops.
+    await p.evalJson("(document.querySelector('[data-panel=floors] .sh-jig-tab').focus(), __sh.set('sh-jig-floors', 3), true)");
+    assert.strictEqual((await items()).find((i) => i.id === id).cfg.floors, 3);
+    assert.deepStrictEqual(await shafts(), [1, 1, 0]);
+    assert.match(await where(), /serving 2 of 3 floors/);
+    // 10 mm to the right, room 5 holds it too.
+    await p.evalJson("(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true })), true)");
+    assert.deepStrictEqual(await shafts(), [1, 1, 1]);
+    assert.deepStrictEqual(await holes(), [['ceiling'], ['floor', 'ceiling'], ['floor']]);
+    assert.match(await where(), /serving 3 floors/);
+    // Every room's grooves are in the same place, so one rail runs up through them.
+    const lines = await p.evalJson(`[1, 3, 5].map((id) => {
+      const r = document.querySelector('#mat .block[data-id="' + id + '"]');
+      return [...r.querySelectorAll('.mark')].map((m) => m.getBBox()).filter((b) => b.width < 1).map((b) => Math.round(b.x * 1000) / 1000).sort((a, b) => a - b);
+    })`);
+    assert.strictEqual(lines[0].length, 2);
+    assert.deepStrictEqual(lines[1], lines[0]);
+    assert.deepStrictEqual(lines[2], lines[0]);
+
+    // The other common filament: every groove and both notches follow.
+    await p.evalJson("(document.querySelector('[data-panel=rail] .sh-jig-tab').focus(), document.querySelector('[data-jig=rail][data-v=\"2.85\"]').click(), true)");
+    assert.strictEqual((await items()).find((i) => i.id === id).cfg.rail, 2.85);
+    assert.deepStrictEqual((await column('shafts')).map((s) => s[0].rail), [2.85, 2.85, 2.85]);
+
+    // Deleting it closes every room again.
+    await p.evalJson("(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' })), true)");
+    assert.deepStrictEqual(await shafts(), [0, 0, 0]);
+    assert.deepStrictEqual(await holes(), [[], [], []]);
   });
 });
 

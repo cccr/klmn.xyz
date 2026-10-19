@@ -6,6 +6,7 @@ import {
   PRESETS, OPENING_PRESETS, CORNERS, WALLS, SHAPES,
   blockSize, buildBlock, frontProfile, meshArrays, toSTL, innerBox,
   defaultStairs, isStairs, stairwell, ROOM_DEFAULTS, migrateOpening,
+  defaultLift, isLift, liftShaft, liftWall, RAILS,
 } from './geometry.js';
 
 const k = await Module();
@@ -268,6 +269,7 @@ function settle(layout, movedId = null) {
     if (!layout.items.some((m) => m.id === it.parent)) it.parent = null;
   }
   cutStairwells(layout, rooms);
+  raiseLifts(layout, rooms, info);
   layout.info = info;
   return layout;
 }
@@ -297,10 +299,59 @@ function cutStairwells(layout, rooms) {
   }
 }
 
-// Depth (z) of a furniture item's origin: stairs stand against the back wall,
-// anything else in the middle of the room.
+// A lift's car takes its height from the room it stands in, its depth as the
+// stairs do, and its walls from the shelf's thick walls. Its shaft rises
+// through `floors` storeys: each room on the way gets the shaft's walls, and
+// each ceiling it passes opens along with the floor above, until no room on
+// top holds the whole shaft. The info records how far it got. Recomputed
+// from scratch on every settle, after the stairs.
+function raiseLifts(layout, rooms, info) {
+  for (const m of rooms) m.cfg.shafts = [];
+  for (const it of layout.items) {
+    if (isRoom(it) || !isLift(it.cfg)) continue;
+    const c = it.cfg;
+    c.wall = layout.settings.thick;
+    const host = it.parent != null && rooms.find((m) => m.id === it.parent);
+    if (!host) {
+      const d = defaultLift();
+      Object.assign(c, { rise: d.rise, depth: d.depth });
+      info.set(it.id, { reach: 0 });
+      continue;
+    }
+    const b = innerBox(host.cfg);
+    c.rise = b.y1 - b.y0;
+    c.depth = (host.cfg.d - host.cfg.walls.back) / 2;
+    const t = liftWall(c), x0 = host.x + it.x, x1 = x0 + sizeOf(it).w;
+    const z0 = host.cfg.walls.back, z1 = z0 + c.depth;
+    const holds = (m) => {
+      const mb = innerBox(m.cfg);
+      return x0 - m.x >= mb.x0 - 0.01 && x1 - m.x <= mb.x1 + 0.01 && m.cfg.walls.back <= z0 + 0.01 && m.cfg.d >= z1 - 0.01;
+    };
+    let room = host, reach = 1;
+    host.cfg.shafts.push(liftShaft(host, x0, c, z0));
+    while (reach < c.floors) {
+      const top = room.y + sizeOf(room).h;
+      const above = rooms.find((m) => Math.abs(m.y - top) < 0.01 && holds(m));
+      if (!above) break;
+      for (const [m, wall] of [[room, 'ceiling'], [above, 'floor']]) {
+        const o = stairwell(m, x0 + t, x1 - t, z0, z1, wall);
+        if (o) m.cfg.stairwells.push(o);
+      }
+      above.cfg.shafts.push(liftShaft(above, x0, c, z0));
+      room = above;
+      reach++;
+    }
+    info.set(it.id, { reach, top: room.y + innerBox(room.cfg).y1 });
+  }
+}
+
+// Stairs and lifts are built standing, against the back wall.
+const backed = (cfg) => isStairs(cfg) || isLift(cfg);
+
+// Depth (z) of a furniture item's origin: against the back wall, or in the
+// middle of the room for anything else.
 function furnitureZ(host, it) {
-  if (isStairs(it.cfg)) return host ? host.cfg.walls.back : 0;
+  if (backed(it.cfg)) return host ? host.cfg.walls.back : 0;
   return host ? host.cfg.walls.back + (host.cfg.d - host.cfg.walls.back) / 2 : sizeOf(it).d / 2;
 }
 
@@ -468,7 +519,8 @@ function thumb(kind, cfg, frame = null) {
   const box = frame
     ? `${(w - frame.w) / 2 - pad} ${-frame.h - pad} ${frame.w + 2 * pad} ${frame.h + 2 * pad}`
     : `${-pad} ${-h - pad} ${w + 2 * pad} ${h + 2 * pad}`;
-  return `<svg viewBox="${box}" aria-hidden="true">
+  const shaft = prof.shaft ? `<path d="${polyPath(prof.shaft, 0, 0)}" fill="var(--sh-mark)"/>` : '';
+  return `<svg viewBox="${box}" aria-hidden="true">${shaft}
     <path d="${polyPath(prof.room, 0, 0)}" fill="${shade(cfg.color, -0.18)}" fill-rule="evenodd"/>
     <path d="${polyPath(prof.shell, 0, 0)}" fill="${cfg.color}" fill-rule="evenodd"/>${marks}</svg>`;
 }
@@ -819,7 +871,13 @@ function renderSelection(layout) {
   const a = absPos(layout, it);
   const info = layout.info?.get(it.id);
   const where = isRoom(it) ? `x ${len(a.x)}, floor ${(info?.level ?? 0) + 1}` : it.parent != null ? 'inside a room' : 'on the ground';
-  box.innerHTML = `${where}${info?.tips ? ', <span class="sh-warn">overhangs and will tip</span>' : ''}`;
+  box.innerHTML = `${where}${info?.tips ? ', <span class="sh-warn">overhangs and will tip</span>' : ''}${isLift(it.cfg) && info?.reach ? liftReach(it.cfg, info.reach) : ''}`;
+}
+
+// How far a lift's shaft got, and why it stopped short.
+function liftReach(c, reach) {
+  if (reach >= c.floors) return `, serving ${reach} floors`;
+  return `, <span class="sh-warn">serving ${reach} of ${c.floors} floors: no room above holds the shaft</span>`;
 }
 
 // ------------------------------------------------------------------ block line
@@ -1127,7 +1185,9 @@ function saveAsType(it) {
   }
   const key = `custom_${Date.now().toString(36)}`;
   const cfg = clone(it.cfg);
-  delete cfg.stairwells; // belongs to where this room stands, not to the type
+  // Stairwells and lift shafts belong to where this room stands, not to the type.
+  delete cfg.stairwells;
+  delete cfg.shafts;
   customTypes.push(isRoom(it) ? { key, name, kind: it.kind, cfg, size: it.size, own: clone(it.own || {}), walls: clone(it.walls) } : { key, name, kind: it.kind, cfg });
   saveTypes();
   renderPalette();
@@ -1150,9 +1210,9 @@ function flash(msg) {
 // A selected block is edited where it stands. A room gets a tab on each of its
 // four sides and one for its back wall under the floor tab, setting that
 // wall's weight and adding, picking or removing its openings, plus a dot on
-// each corner that rounds or squares it. A table or a flight of stairs gets a
-// tab beside each size it has. A tab unfolds on hover or focus, and the part
-// it works on lights up on the front view.
+// each corner that rounds or squares it. A table, a flight of stairs or a
+// lift gets a tab beside each size it has. A tab unfolds on hover or focus,
+// and the part it works on lights up on the front view.
 const JIG_NAME = { ceiling: 'Ceiling', left: 'Left', right: 'Right', floor: 'Floor', back: 'Back wall' };
 const JIG_ADDS = {
   left: ['doorway', 'window', 'porthole', 'arch'], right: ['doorway', 'window', 'porthole', 'arch'],
@@ -1253,8 +1313,30 @@ function sizePanel(it, id, side, name, short, path, opts = {}) {
   };
 }
 
-function furniturePanels(it) {
+function furniturePanels(it, layout) {
   const c = it.cfg;
+  if (isLift(c)) {
+    const reach = layout.info?.get(it.id)?.reach ?? 0;
+    const rail = (v) => `<button type="button" class="sh-jig-btn sh-jig-wide${v === c.rail ? ' is-on' : ''}" data-jig="rail" data-v="${v}"
+      aria-pressed="${v === c.rail}" title="${v} mm filament" aria-label="Rail: ${v} mm filament">${v} mm</button>`;
+    return [
+      sizePanel(it, 'floors', 'top', 'Floors', 'Floors', 'cfg.floors', {
+        unit: '', step: 1, min: 2, max: 12,
+        hint: !reach ? 'Put the lift in a room and its shaft rises through the rooms stacked on it'
+          : reach < c.floors ? `The shaft stops at floor ${reach}: there is no room above, or its walls are in the way`
+            : 'Each room the shaft passes gets its walls, and its ceiling and the floor above open for the car',
+      }),
+      sizePanel(it, 'width', 'bottom', 'Shaft width', 'Width', 'cfg.w', {
+        min: 12, max: 200, hint: `Inside the shaft walls; the car is ${len(0.3)} narrower each side`,
+      }),
+      {
+        id: 'rail', side: 'right', name: 'Rail',
+        title: `Rail: ${c.rail} mm filament, glued into the groove up each shaft wall. The car's notches ride on it`,
+        tab: { html: `<span class="sh-jig-name">Rail</span><span class="sh-jig-val">${c.rail} mm</span>` },
+        body: RAILS.map(rail).join(''),
+      },
+    ];
+  }
   if (isStairs(c)) {
     return [
       {
@@ -1392,7 +1474,7 @@ function renderJig(layout) {
     drawJigHighlight(layout);
     return;
   }
-  const panels = isRoom(it) ? roomPanels(it) : furniturePanels(it);
+  const panels = isRoom(it) ? roomPanels(it) : furniturePanels(it, layout);
   // Forget a hot tab or corner that this block does not have.
   const corner = isRoom(it) && /^(corner-(outer|inner)-(tl|tr|br|bl)|dim-[whd])$/.test(jigHot || '');
   if (!corner && !panels.some((p) => p.id === jigHot)) jigHot = null;
@@ -1512,7 +1594,12 @@ function drawJigHighlight(layout) {
   const w = jigHot;
   if (!isRoom(it)) {
     if (isStairs(c)) rect(0, 0, sz.w, sz.h);
-    else {
+    else if (isLift(c)) {
+      // The shaft up to the ceiling of its last floor; for the rail, its two walls.
+      const top = (layout.info?.get(it.id)?.top ?? a.y + sz.h) - a.y, t = liftWall(c);
+      if (w === 'rail') { rect(0, 0, t, top); rect(sz.w - t, 0, sz.w, top); }
+      else rect(0, 0, sz.w, top);
+    } else {
       const mid = sz.w / 2;
       if (w === 'topD') rect(mid - c.topD / 2, c.height - 3, mid + c.topD / 2, c.height);
       if (w === 'baseD') rect(mid - c.baseD / 2, 0, mid + c.baseD / 2, 3.5);
@@ -1639,6 +1726,7 @@ jig.addEventListener('click', (e) => {
     if (e.shiftKey) for (const key of CORNERS) m.cfg[ring][key] = to;
     else m.cfg[ring][c] = to;
   } else if (act === 'flip') m.cfg.flip = !m.cfg.flip;
+  else if (act === 'rail') m.cfg.rail = Number(b.dataset.v);
   else return;
   reflow(layout, old);
   commit(layout);
@@ -1860,7 +1948,7 @@ function render3D(layout) {
     if (isRoom(it)) {
       mesh.rotation.set(0, 0, 0);
       mesh.position.set(a.x + ex, a.y + ey, 0);
-    } else if (isStairs(it.cfg)) {
+    } else if (backed(it.cfg)) {
       mesh.rotation.set(0, 0, 0);
       mesh.position.set(a.x + ex, a.y + ey, furnitureZ(host, it));
     } else {
@@ -2005,6 +2093,8 @@ $('zip').onclick = () => {
     files[`${g.file}_x${g.qty}.stl`] = new Uint8Array(stlFor(g));
     lines.push(`${g.qty} x ${g.file}.stl  (${g.label})`);
   }
+  const rails = [...new Set(state.items.filter((i) => !isRoom(i) && isLift(i.cfg)).map((i) => i.cfg.rail))];
+  if (rails.length) lines.push('', `Lifts: glue a strand of ${rails.join(' or ')} mm filament into the groove up each shaft wall, in every room the shaft passes. The car's notches ride on them.`);
   files['print_list.txt'] = new TextEncoder().encode(lines.join('\n'));
   files['layout.json'] = new TextEncoder().encode(layoutFile());
   save(new Blob([zipSync(files, { level: 6 })], { type: 'application/zip' }), 'shelf_house.zip');
@@ -2014,12 +2104,12 @@ $('assembly').onclick = () => {
   const parts = [];
   for (const it of state.items) {
     const a = absPos(state, it);
-    // Z-up STL with the open fronts facing -y. Rooms and stairs are modelled
-    // lying on their back, so stand them up; the table is already upright.
+    // Z-up STL with the open fronts facing -y. Rooms, stairs and lift cars are
+    // modelled lying on their back, so stand them up; the table is already upright.
     const host = state.items.find((m) => m.id === it.parent);
     if (isRoom(it)) {
       parts.push(manifoldFor(it.kind, it.cfg).rotate([90, 0, 0]).translate([a.x, 0, a.y]));
-    } else if (isStairs(it.cfg)) {
+    } else if (backed(it.cfg)) {
       parts.push(manifoldFor(it.kind, it.cfg).rotate([90, 0, 0]).translate([a.x, -furnitureZ(host, it), a.y]));
     } else {
       parts.push(manifoldFor(it.kind, it.cfg).translate([a.x + sizeOf(it).w / 2, -furnitureZ(host, it), a.y]));
