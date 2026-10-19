@@ -593,3 +593,45 @@ test('the settings fold to one line, and the front view and 3D share the width a
     }
   });
 });
+
+// On a phone a tap lifts the finger (pointerleave) before its click arrives,
+// and iOS gives a tapped button no focus. The panels used to fold on that
+// pointerleave, so a tapped button was hidden before its click and nothing
+// happened: removing a wall did not work on a phone.
+test('panels work by tapping, the way iOS taps',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    try {
+      // Like iOS: a tap does not focus the button it lands on.
+      await p.evalJson("(document.addEventListener('mousedown', (e) => e.preventDefault(), true), document.getElementById('example').click(), document.getElementById('mat').scrollIntoView({ block: 'center' }), true)");
+      await new Promise((r) => setTimeout(r, 300));
+      const tap = async (sel) => {
+        const [x, y] = await p.evalJson(`(() => { const r = (${sel}).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+        await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+        await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await new Promise((r) => setTimeout(r, 150));
+      };
+      const room = async () => (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).find((i) => i.id === 1);
+
+      await tap("document.querySelector('#mat .block[data-id=\"1\"] path')");
+      await tap("document.querySelector('.sh-jig-panel[data-panel=left] .sh-jig-tab')");
+      await tap("document.querySelector('[data-jig=wall][data-wall=left][data-v=none]')");
+      assert.strictEqual((await room()).walls.left, 'none');
+
+      await tap("document.querySelector('.sh-jig-panel[data-panel=right] .sh-jig-tab')");
+      await tap("document.querySelector('[data-jig=add][data-wall=right][data-v=porthole]')");
+      const o = (await room()).cfg.openings.at(-1);
+      assert.deepStrictEqual([o.wall, o.shape], ['right', 'round']);
+      assert.strictEqual(await p.evalJson("document.querySelector('.sh-jig-panel[data-panel=right]').classList.contains('is-hot')"), true);
+
+      // A tap outside the panels folds them.
+      await tap("document.querySelector('.tool-head h1')");
+      assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-jig-panel.is-hot')"), false);
+    } finally {
+      await p.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    }
+  });
+});

@@ -1577,7 +1577,16 @@ const hotOf = (e) => {
   return d ? `corner-${d.dataset.ring}-${d.dataset.c}` : null;
 };
 jig.addEventListener('pointerover', (e) => setJigHot(hotOf(e)));
-jig.addEventListener('pointerleave', () => { if (!jig.contains(document.activeElement)) setJigHot(null); });
+// A mouse leaving the panels folds them. A finger "leaves" every time it
+// lifts, before the tap's click arrives, so folding then would hide the
+// button being tapped (iOS gives a tapped button no focus to hold it open):
+// a touch-opened panel folds when something outside it is tapped instead.
+jig.addEventListener('pointerleave', (e) => {
+  if (e.pointerType === 'mouse' && !jig.contains(document.activeElement)) setJigHot(null);
+});
+document.addEventListener('pointerdown', (e) => {
+  if (jigHot && e.pointerType !== 'mouse' && !jig.contains(e.target) && !bar.contains(e.target)) setJigHot(null);
+}, true);
 jig.addEventListener('focusin', (e) => setJigHot(hotOf(e)));
 jig.addEventListener('focusout', (e) => { if (!jig.contains(e.relatedTarget) && !jig.matches(':hover')) setJigHot(null); });
 // The panels sit over the mat; a press on one is not a press on the shelf.

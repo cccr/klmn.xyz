@@ -154,6 +154,10 @@ async function withPage(relUrl, fn) {
     async emulateMedia(media) {
       await c.send('Emulation.setEmulatedMedia', { media: media });
     },
+    // Any DevTools command the helpers above do not wrap, e.g. touch input.
+    send(method, params) {
+      return c.send(method, params || {});
+    },
     async blockUrls(urls) {
       await c.send('Network.setBlockedURLs', { urls });
       // Marking the live document first makes the wait below observe the new
