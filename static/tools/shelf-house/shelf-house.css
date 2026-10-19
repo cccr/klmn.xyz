@@ -105,6 +105,8 @@
 #mat .wall-hi { pointer-events: none; }
 #mat .wall-hi rect { fill: color-mix(in srgb, var(--reg) 55%, transparent); stroke: var(--reg); stroke-width: 1.6; }
 #mat .wall-hi .open { stroke: var(--reg); stroke-width: 1.6; stroke-dasharray: 3 2.5; }
+#mat .op-hi { pointer-events: none; }
+#mat .op-hi rect { fill: color-mix(in srgb, var(--reg) 14%, transparent); stroke: var(--reg); stroke-width: 1.2; stroke-dasharray: 3 2; }
 #mat .wall-hi .dim { stroke: var(--reg); stroke-width: 1.4; }
 #mat .wall-hi .arc { fill: none; stroke: var(--reg); stroke-width: 2.4; stroke-linecap: round; }
 
@@ -198,10 +200,6 @@
 .sh-jig-add:hover { color: var(--reg); border-color: var(--reg); }
 .sh-jig-del:hover { color: var(--alert); border-color: var(--alert); }
 
-/* The opening a panel just picked or added, found on the rail. */
-@keyframes sh-shown { from { background: color-mix(in srgb, var(--reg) 16%, transparent); } }
-.sh-opening.is-shown { animation: sh-shown 1.2s ease-out; }
-@media (prefers-reduced-motion: reduce) { .sh-opening.is-shown { animation: none; outline: 1px solid var(--reg); } }
 
 .sh-empty {
     position: absolute; inset: 0;
@@ -327,3 +325,46 @@
 
 /* The blocks toggle reads as pressed while the row is open. */
 #blocks-toggle[aria-expanded="true"] { color: var(--ink); border-color: var(--ink-soft); }
+
+/* ── Opening card ─────────────────────────────────────────────────────
+   The picked opening's fields, docked beside its room. The same fields the
+   rail used to hold, set a little tighter. */
+.sh-op-card {
+    position: absolute; top: 0; left: 0; z-index: 3;
+    width: 17rem; max-height: calc(100% - 4px); overflow-y: auto;
+    padding: .375rem .625rem .5rem;
+    background: var(--paper);
+    border: 1px solid var(--reg);
+    box-shadow: 0 0 0 1px var(--reg), 0 6px 16px rgba(20, 24, 26, .14);
+    pointer-events: auto;
+}
+.sh-op-card .sh-opening { margin: 0; padding: 0; border: 0; }
+.sh-op-card .sh-opening-head { gap: .375rem; padding-bottom: .375rem; border-bottom: 1px solid var(--rule); }
+.sh-op-card .sh-opening-head > span:first-child { white-space: nowrap; }
+.sh-op-card .sh-opening-head select { margin-right: auto; font-size: var(--fs-fine); }
+.sh-op-card .chip { padding-inline: .375rem; }
+.sh-op-actions { justify-content: flex-end; margin: .375rem 0 0; padding-top: .375rem; border-top: 1px solid var(--paper-rule); }
+.sh-op-row { display: flex; justify-content: space-between; gap: .5rem; padding-block: .375rem; }
+.sh-op-seg { display: flex; gap: 2px; }
+.sh-op-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: .125rem 1rem;
+    padding-top: .25rem; border-top: 1px solid var(--paper-rule);
+}
+.sh-mini { display: flex; align-items: baseline; gap: .25rem; font-family: var(--mono); font-size: var(--fs-fine); color: var(--ink); }
+.sh-mini > label { margin-right: auto; font-family: var(--sans); font-size: var(--fs-note); color: var(--ink-soft); cursor: pointer; }
+.sh-mini:focus-within > label { color: var(--reg); }
+.sh-op-card .sh-mini input[type="number"] { width: 2.75rem; font-size: var(--fs-fine); }
+.sh-mini .unit { font-size: var(--fs-note); color: var(--ink-soft); }
+
+/* Drag to resize a back-wall opening. */
+.sh-op-handle {
+    position: absolute; z-index: 2;
+    width: .625rem; height: .625rem;
+    transform: translate(-50%, -50%);
+    background: var(--reg); border: 1.5px solid var(--paper);
+    box-shadow: 0 0 0 1px var(--reg);
+    cursor: nesw-resize;
+    pointer-events: auto;
+    touch-action: none;
+}
+#mat .block { touch-action: none; }

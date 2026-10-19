@@ -487,8 +487,9 @@ test('a block\'s name, colour, size and actions are in the line under the front 
     await ready(p);
     await p.evalJson(`(${PAGE_HELPERS}, document.getElementById('example').click(), __sh.pick(3), true)`);
     const item = async (id) => (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).find((i) => i.id === id);
-    // Nothing of it is left on the rail but the openings.
-    assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('#inspector .rail-group > h2')].map((h) => h.textContent)"), ['Openings']);
+    // Nothing of it is left on the rail but a hint.
+    assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('#inspector .rail-group > h2')].map((h) => h.textContent)"), ['Selected block']);
+    assert.strictEqual(await p.evalJson("document.querySelectorAll('#inspector input, #inspector select, #inspector button').length"), 0);
     assert.deepStrictEqual(await p.evalJson("['sh-name', 'sh-color', 'sh-cfg-w', 'sh-cfg-h', 'sh-cfg-d'].map((id) => document.getElementById(id)?.closest('#block-bar') != null)"), [true, true, true, true, true]);
 
     // Renamed and resized in place; a typed size gets its ↺, and the field it
@@ -514,5 +515,56 @@ test('a block\'s name, colour, size and actions are in the line under the front 
     assert.strictEqual((await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).length, before + 1);
     await p.evalJson("(document.querySelector('#block-bar [data-act=delete]').click(), true)");
     assert.strictEqual((await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).length, before);
+  });
+});
+
+test('a window is picked on the front view, dragged, resized and edited in its card',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, document.getElementById('example').click(), true)`);
+    const ops = async () => (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).find((i) => i.id === 1).cfg.openings;
+    // Screen point of a spot on room 1 (it stands at 0, 0), in mm.
+    const at = (x, y) => p.evalJson(`(() => { const q = new DOMPoint(${x}, ${-y}).matrixTransform(document.getElementById('mat').getScreenCTM()); return [q.x, q.y]; })()`);
+    const press = async (target, [x0, y0], [x1, y1]) => p.evalJson(`(() => {
+      const el = ${target} || document.elementFromPoint(${x0}, ${y0});
+      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: ${x0}, clientY: ${y0}, button: 0 }));
+      window.dispatchEvent(new PointerEvent('pointermove', { clientX: ${x1}, clientY: ${y1} }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientX: ${x1}, clientY: ${y1} }));
+      return true;
+    })()`);
+
+    // The left porthole is centred 26 mm left of the middle, 4 mm above it:
+    // press it and drag it 10 mm right and 5 mm up.
+    const from = await at(60 - 26, 36 + 4);
+    const to = await at(60 - 16, 36 + 9);
+    await press('null', from, to);
+    let o = (await ops())[0];
+    assert.deepStrictEqual([o.x, o.y], [-16, 9]);
+    // The room is selected with the window picked and its card open.
+    assert.strictEqual(await p.evalJson("document.querySelector('.sh-op-card .sh-opening-head').textContent.trim().startsWith('Opening 1')"), true);
+    assert.strictEqual(await p.evalJson("document.querySelectorAll('#mat .op-hi rect').length"), 1);
+
+    // Its handle resizes it about its centre.
+    const h = await p.evalJson("(() => { const r = document.querySelector('.sh-op-handle').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()");
+    const mm = await p.evalJson("1 / document.getElementById('mat').getScreenCTM().a");
+    await press("document.querySelector('.sh-op-handle')", h, [h[0] + 3 / mm, h[1]]);
+    o = (await ops())[0];
+    assert.deepStrictEqual([o.w, o.h], [40, 34]);
+
+    // The card's fields and pictures edit it, one undo step each.
+    await p.evalJson("(__sh.set('sh-op-h', 30), document.querySelector('.sh-op-card [data-jig=set][data-v=rect]').click(), true)");
+    o = (await ops())[0];
+    assert.deepStrictEqual([o.h, o.shape], [30, 'rect']);
+    await p.evalJson("(document.getElementById('undo').click(), true)");
+    assert.strictEqual((await ops())[0].shape, 'round');
+
+    // Escape closes the card but keeps the room selected; pressing the room
+    // away from its openings drops the pick too.
+    await p.evalJson("(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })), true)");
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-op-card')"), false);
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-jig-panel')"), true);
+    // And the rail has nothing left to edit.
+    assert.strictEqual(await p.evalJson("document.querySelectorAll('#inspector input, #inspector select, #inspector button').length"), 0);
   });
 });

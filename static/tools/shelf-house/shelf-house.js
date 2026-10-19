@@ -686,7 +686,18 @@ mat.addEventListener('pointerdown', (e) => {
   const it = state.items.find((i) => i.id === id);
   const a = absPos(state, it);
   const w = toWorld(e);
+  // A press on one of a room's openings picks it and may drag it; a press
+  // anywhere else on the room drops the pick and may drag the room.
+  const hit = isRoom(it) ? openingAt(it, a, w) : -1;
   select(id);
+  if (hit >= 0) {
+    jigPick = { id, i: hit };
+    startOpeningDrag(it, hit, w);
+    e.preventDefault();
+    render();
+    return;
+  }
+  jigPick = null;
   drag = { id, grabX: w.x - a.x, grabY: w.y - a.y, sx: e.clientX, sy: e.clientY, moved: false, preview: null };
   e.preventDefault();
   render();
@@ -784,7 +795,11 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(e.shiftKey ? -bigStep() : -1); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(e.shiftKey ? bigStep() : 1); }
   else if (e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); }
-  else if (e.key === 'Escape') { select(null); render(); }
+  else if (e.key === 'Escape') {
+    if (jigPick) jigPick = null;
+    else select(null);
+    render();
+  }
 });
 
 // The live part of the block line: where the selected block stands, or what
@@ -926,44 +941,48 @@ function positionLabels(wall) {
 const ANCHORS = ['centre', 'floor'];
 const ANCHOR_LABEL = { centre: 'Centre of the wall', floor: 'Floor (doorway)' };
 
+// The picked opening's fields, compact enough to sit beside a room on the
+// front view: shape and anchor as pictures, the numbers in two columns.
+const ANCHOR_GLYPH = {
+  centre: '<rect x="4.5" y="4.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3" stroke="currentColor" stroke-width="1.2"/>',
+  floor: '<rect x="4.5" y="3" width="7" height="10" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M1 13.6h14" stroke="currentColor" stroke-width="1.6"/>',
+};
+
 function openingHTML(o, i) {
   const [xl, yl, xh] = positionLabels(o.wall);
   const p = `cfg.openings.${i}`;
   const onWall = !(o.wall === 'ceiling' || o.wall === 'floor');
   const count = { unit: '', step: 1, min: 1, max: 12 };
+  const mini = (short, name, key, opts = {}) => `<span class="sh-mini" title="${esc(opts.hint ? `${name}: ${opts.hint}` : name)}">
+      <label for="sh-op-${key}">${short}</label>${numInput(`${p}.${key}`, o[key], { ...opts, id: `sh-op-${key}`, extra: ` aria-label="${name}"` })}</span>`;
+  const seg = (key, values, labels, glyphs) => `<span class="sh-op-seg" role="group" aria-label="${key === 'shape' ? 'Shape' : 'Sits on'}">${values.map((v) =>
+    `<button type="button" class="sh-jig-btn${o[key] === v ? ' is-on' : ''}" data-jig="set" data-path="${p}.${key}" data-v="${v}"
+      aria-pressed="${o[key] === v}" title="${labels[v]}" aria-label="${labels[v]}">${glyphs(v)}</button>`).join('')}</span>`;
   return `<div class="sh-opening">
-    <div class="sh-opening-head"><span>Opening ${i + 1}</span><span class="chips">
-      <button type="button" class="chip" data-act="dup-opening" data-i="${i}" title="Duplicate opening">copy</button>
-      <button type="button" class="chip" data-act="del-opening" data-i="${i}" title="Remove opening">remove</button>
-    </span></div>
-    ${pick('Wall', `${p}.wall`, WALLS, o.wall, WALL_LABEL)}
-    ${onWall ? pick('Sits on', `${p}.anchor`, ANCHORS, o.anchor, ANCHOR_LABEL) : ''}
-    ${pick('Shape', `${p}.shape`, SHAPES, o.shape, SHAPE_LABEL)}
-    ${num(xl, `${p}.x`, o.x, { min: -500, hint: xh })}
-    ${onWall && o.anchor === 'floor' ? '' : num(yl, `${p}.y`, o.y, { min: -500, hint: onWall ? 'From the middle of the wall; positive moves it up' : '' })}
-    ${num('Width', `${p}.w`, o.w, { min: 1 })}
-    ${num('Height', `${p}.h`, o.h, { min: 1 })}
-    ${o.shape === 'rect' ? num('Corner radius', `${p}.r`, o.r, { max: 100, fine: true }) : ''}
-    ${num('Panes across', `${p}.cols`, o.cols, count)}
-    ${num('Panes up', `${p}.rows`, o.rows, count)}
-    ${(o.cols > 1 || o.rows > 1) ? num('Bar width', `${p}.bar`, o.bar, { max: 20, fine: true }) : ''}
-    ${num('Copies', `${p}.count`, o.count, count)}
-    ${o.count > 1 ? num('Spacing', `${p}.pitch`, o.pitch, { min: 1, hint: 'Centre to centre' }) : ''}
+    <div class="sh-opening-head"><span>Opening ${i + 1}</span>
+      <select id="sh-op-wall" data-path="${p}.wall" aria-label="Wall" title="Wall">${WALLS.map((w) =>
+        `<option value="${w}"${w === o.wall ? ' selected' : ''}>${WALL_LABEL[w]}</option>`).join('')}</select>
+      <button type="button" class="chip" data-jig="unpick" title="Close (Esc)" aria-label="Close">×</button></div>
+    <div class="sh-op-row">
+      ${seg('shape', SHAPES, SHAPE_LABEL, shapeGlyph)}
+      ${onWall ? seg('anchor', ANCHORS, ANCHOR_LABEL, (v) => glyph(ANCHOR_GLYPH[v])) : ''}
+    </div>
+    <div class="sh-op-grid">
+      ${mini(xl === 'Along depth' ? 'Depth' : 'Across', xl, 'x', { min: -500, hint: xh })}
+      ${onWall && o.anchor === 'floor' ? '<span></span>' : mini('Up', yl, 'y', { min: -500, hint: onWall ? 'from the middle of the wall; positive moves it up' : '' })}
+      ${mini('W', 'Width', 'w', { min: 1 })}
+      ${mini('H', 'Height', 'h', { min: 1 })}
+      <span class="sh-mini" title="Panes across × panes up"><label for="sh-op-cols">Panes</label>${numInput(`${p}.cols`, o.cols, { ...count, unit: '', id: 'sh-op-cols', extra: ' aria-label="Panes across"' })}<span class="unit">×</span>${numInput(`${p}.rows`, o.rows, { ...count, unit: '', id: 'sh-op-rows', extra: ' aria-label="Panes up"' })}</span>
+      ${(o.cols > 1 || o.rows > 1) ? mini('Bar', 'Bar width', 'bar', { max: 20, fine: true }) : '<span></span>'}
+      ${mini('Copies', 'Copies', 'count', count)}
+      ${o.count > 1 ? mini('Gap', 'Spacing, centre to centre', 'pitch', { min: 1 }) : '<span></span>'}
+      ${o.shape === 'rect' ? mini('R', 'Corner radius', 'r', { max: 100, fine: true }) : ''}
+    </div>
+    <div class="chips sh-op-actions">
+      <button type="button" class="chip" data-act="dup-opening" data-i="${i}" title="Add a copy of this opening beside it">copy</button>
+      <button type="button" class="chip" data-act="del-opening" data-i="${i}" title="Remove this opening">remove</button>
+    </div>
   </div>`;
-}
-
-// The rail keeps only a room's openings in detail; everything else about a
-// block is on or under the front view.
-function roomInspector(it) {
-  const c = it.cfg;
-  return group('Openings', `
-      ${c.openings.length ? '' : '<p class="rail-hint">No openings yet. Add a window, a doorway or a skylight.</p>'}
-      ${c.openings.map(openingHTML).join('')}
-      <div class="chips">
-        <button type="button" class="chip" data-act="add-opening" data-preset="window">+ window</button>
-        <button type="button" class="chip" data-act="add-opening" data-preset="doorway">+ doorway</button>
-        <button type="button" class="chip" data-act="add-opening" data-preset="skylight">+ skylight</button>
-      </div>`);
 }
 
 function renderInspector() {
@@ -974,8 +993,9 @@ function renderInspector() {
       colour and size are in the line under the front view; its walls, corners and sizes are on the tabs and dots around it.</p>`);
     return;
   }
-  insp.innerHTML = isRoom(it) ? roomInspector(it)
-    : group('Selected block', '<p class="rail-hint">Set its sizes from the tabs around it on the front view.</p>');
+  insp.innerHTML = group('Selected block', `<p class="rail-hint">${isRoom(it)
+    ? 'Click a window on the front view, or pick an opening from a wall tab, to edit it. Drag a window to move it.'
+    : 'Set its sizes from the tabs around it on the front view.'}</p>`);
 }
 
 // Inputs edit the selected block live; each field edit is one undo step.
@@ -1077,11 +1097,14 @@ function onAct(e) {
   const i = Number(b.dataset.i);
   if (act === 'size-default') delete m.own[b.dataset.dim];
   else if (act === 'add-opening') c.openings.push(OPENING_PRESETS[b.dataset.preset]());
-  else if (act === 'del-opening') c.openings.splice(i, 1);
-  else if (act === 'dup-opening') {
+  else if (act === 'del-opening') {
+    c.openings.splice(i, 1);
+    jigPick = null;
+  } else if (act === 'dup-opening') {
     const o = clone(c.openings[i]);
     o.x += Math.min(o.w + 6, 40);
     c.openings.splice(i + 1, 0, o);
+    jigPick = { id: m.id, i: i + 1 };
   } else if (act === 'reset') {
     const t = typeDef(m.base);
     if (!t) return;
@@ -1280,13 +1303,100 @@ function cornerDots(it) {
   })).join('');
 }
 
+// Where an opening shows on the front view, in its room's coordinates: each
+// copy of a back-wall opening face-on, a side-wall opening edge-on across its
+// wall, a ceiling or floor opening edge-on along it. Widened a little so the
+// edge-on ones can be picked.
+function openingBoxes(cfg, o) {
+  const t = cfg.walls, b = innerBox(cfg);
+  const n = Math.max(1, Math.round(o.count || 1));
+  const us = Array.from({ length: n }, (_, k) => cfg.w / 2 + o.x + (k - (n - 1) / 2) * (o.pitch || 0));
+  const v0 = o.anchor === 'floor' ? b.y0 + o.y : (b.y0 + b.y1) / 2 + o.y - o.h / 2;
+  if (o.wall === 'back') return us.map((u) => ({ x0: u - o.w / 2, x1: u + o.w / 2, y0: v0, y1: v0 + o.h }));
+  if (o.wall === 'left') return [{ x0: -1.5, x1: t.left + 1.5, y0: v0, y1: v0 + o.h }];
+  if (o.wall === 'right') return [{ x0: cfg.w - t.right - 1.5, x1: cfg.w + 1.5, y0: v0, y1: v0 + o.h }];
+  const [y0, y1] = o.wall === 'ceiling' ? [b.y1, cfg.h] : [0, b.y0];
+  return us.map((u) => ({ x0: u - o.w / 2, x1: u + o.w / 2, y0: y0 - 1.5, y1: y1 + 1.5 }));
+}
+
+// The opening of `room` (at `a`) under world point `w`, or -1. Edge-on ones
+// are thin, so they win over a face-on window behind them.
+function openingAt(room, a, w) {
+  const x = w.x - a.x, y = w.y - a.y;
+  const inside = (o) => openingBoxes(room.cfg, o).some((r) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1);
+  const ops = room.cfg.openings.map((o, i) => [o, i]);
+  const edge = ops.find(([o]) => o.wall !== 'back' && inside(o));
+  if (edge) return edge[1];
+  const face = ops.find(([o]) => o.wall === 'back' && inside(o));
+  return face ? face[1] : -1;
+}
+
+const pickedOpening = (it) => (it && isRoom(it) && jigPick && jigPick.id === it.id ? it.cfg.openings[jigPick.i] || null : null);
+
+// Dragging an opening moves it along the axes the front view shows for its
+// wall; dragging its handle resizes it about its centre (a doorway grows up
+// from the floor). Either is one undo step, like a field edit.
+let opDrag = null;
+const half = (v) => Math.round(v * 2) / 2;
+
+function startOpeningDrag(room, i, w, resize = false) {
+  const o = room.cfg.openings[i];
+  const flat = o.wall === 'ceiling' || o.wall === 'floor';
+  opDrag = {
+    id: room.id, i, wx: w.x, wy: w.y, resize, moved: false,
+    x: o.x, y: o.y, w: o.w, h: o.h,
+    moveX: o.wall === 'back' || flat,
+    moveY: !flat && o.anchor !== 'floor',
+    floor: o.anchor === 'floor',
+  };
+}
+
+window.addEventListener('pointermove', (e) => {
+  if (!opDrag) return;
+  const w = toWorld(e);
+  const dx = w.x - opDrag.wx, dy = w.y - opDrag.wy;
+  if (!opDrag.moved && Math.hypot(dx, dy) < 2 * mmPerPx()) return;
+  const it = state.items.find((m) => m.id === opDrag.id);
+  const o = it?.cfg.openings[opDrag.i];
+  if (!o) return;
+  if (!opDrag.moved) {
+    opDrag.moved = true;
+    endEdit();
+    editSnapshot = snap(state);
+  }
+  if (opDrag.resize) {
+    o.w = Math.max(2, half(opDrag.w + 2 * dx));
+    o.h = Math.max(2, half(opDrag.h + (opDrag.floor ? dy : 2 * dy)));
+  } else {
+    if (opDrag.moveX) o.x = half(opDrag.x + dx);
+    if (opDrag.moveY) o.y = half(opDrag.y + dy);
+  }
+  persist();
+  render();
+});
+window.addEventListener('pointerup', () => {
+  if (!opDrag) return;
+  const moved = opDrag.moved;
+  opDrag = null;
+  if (moved) endEdit();
+});
+
+// The picked opening's card: its fields, docked beside the room.
+function openingCard(it) {
+  const o = pickedOpening(it);
+  if (!o) return '';
+  return `<div class="sh-op-card" data-panel="op-card" role="group" aria-label="Opening ${jigPick.i + 1}">${openingHTML(o, jigPick.i)}</div>`
+    + (o.wall === 'back' ? `<span class="sh-op-handle" data-jig="resize" title="Drag to resize" aria-hidden="true"></span>` : '');
+}
+
 const jig = document.createElement('div');
 jig.className = 'sh-jig no-print';
 mat.parentElement.append(jig);
 
 function renderJig(layout) {
   const it = layout.items.find((i) => i.id === selectedId);
-  const focusKey = jig.contains(document.activeElement) ? jigKey(document.activeElement) : null;
+  const active = jig.contains(document.activeElement) ? document.activeElement : null;
+  const focusKey = active ? (active.id ? `#${active.id}` : jigKey(active)) : null;
   if (!it || (drag && drag.moved)) {
     jig.replaceChildren();
     if (!it) jigHot = null;
@@ -1298,10 +1408,26 @@ function renderJig(layout) {
   const corner = isRoom(it) && /^(corner-(outer|inner)-(tl|tr|br|bl)|dim-[whd])$/.test(jigHot || '');
   if (!corner && !panels.some((p) => p.id === jigHot)) jigHot = null;
   // The panels' fields read like the band's, so they take its input styles.
-  jig.innerHTML = `<div class="rail-band">${panels.map(jigPanel).join('')}${isRoom(it) ? cornerDots(it) : ''}</div>`;
+  if (!pickedOpening(it)) jigPick = null;
+  jig.innerHTML = `<div class="rail-band">${panels.map(jigPanel).join('')}${isRoom(it) ? cornerDots(it) : ''}${openingCard(it)}</div>`;
   placeJig(layout, it);
   if (focusKey) jig.querySelector(focusKey)?.focus();
   drawJigHighlight(layout);
+  drawPick(layout);
+}
+
+// The picked opening, outlined on the front view.
+function drawPick(layout) {
+  mat.querySelector('.op-hi')?.remove();
+  const it = layout.items.find((i) => i.id === selectedId);
+  const o = pickedOpening(it);
+  if (!o) return;
+  const a = absPos(layout, it);
+  const g = svgEl('g', { class: 'op-hi' });
+  for (const r of openingBoxes(it.cfg, o)) {
+    g.append(svgEl('rect', { x: a.x + r.x0 - 1, y: -(a.y + r.y1 + 1), width: r.x1 - r.x0 + 2, height: r.y1 - r.y0 + 2 }));
+  }
+  mat.append(g);
 }
 
 const jigKey = (el) => {
@@ -1342,6 +1468,28 @@ function placeJig(layout, it) {
     // A left tab unfolds leftwards, so it is placed by its right edge.
     else fit(el, r.l - gap - (el.classList.contains('is-vertical') ? tw : el.offsetWidth), cy - th / 2);
   }
+  // The opening card goes beside the room's side tabs, on whichever side has
+  // room for it, top-aligned with the room; the resize handle on the top
+  // right corner of the opening's first copy.
+  const card = jig.querySelector('.sh-op-card');
+  if (card) {
+    const sideW = (s) => jig.querySelector(`.sh-jig-panel[data-side="${s}"]`)?.offsetWidth || 0;
+    let x = r.r + gap + sideW('right') + 8;
+    if (x + card.offsetWidth > box.width - 2) {
+      const left = r.l - gap - sideW('left') - 8 - card.offsetWidth;
+      x = left >= 2 ? left : box.width - card.offsetWidth - 2;
+    }
+    fit(card, x, r.t);
+  }
+  const handle = jig.querySelector('.sh-op-handle');
+  const o = pickedOpening(it);
+  if (handle && o) {
+    const [first] = openingBoxes(it.cfg, o);
+    const p = pt(a.x + first.x1, a.y + first.y1);
+    handle.style.left = `${Math.round(p.x)}px`;
+    handle.style.top = `${Math.round(p.y)}px`;
+  }
+
   // Corner dots: the outer ring just outside each corner, the inner ring just
   // inside each corner of the interior, so the two never sit on each other.
   if (!isRoom(it)) return;
@@ -1446,34 +1594,33 @@ jig.addEventListener('focusout', (e) => { if (!jig.contains(e.relatedTarget) && 
 // The panels sit over the mat; a press on one is not a press on the shelf.
 jig.addEventListener('pointerdown', (e) => e.stopPropagation());
 
-// Sizes typed into a panel apply on Enter or when it loses focus; spinner
-// arrows apply as they go. Each is one undo step, as on the rail.
-jig.addEventListener('input', (e) => {
-  const el = e.target.closest('input[data-path]');
-  if (!el || e.inputType) return;
-  liveEdit(el.dataset.path, readInput(el));
-});
-jig.addEventListener('change', (e) => {
-  const el = e.target.closest('input[data-path]');
-  if (!el) return;
-  const v = readInput(el);
-  if (v !== undefined) liveEdit(el.dataset.path, v);
-  endEdit();
-  renderJig(state);
+// Fields in the panels and the opening card edit the block as the rail did:
+// typed numbers apply on Enter or when the field loses focus, spinner arrows
+// as they go, each one undo step.
+jig.addEventListener('input', onFieldInput);
+jig.addEventListener('change', (e) => { onFieldChange(e); renderJig(state); });
+jig.addEventListener('pointerdown', (e) => {
+  const h = e.target.closest('.sh-op-handle');
+  const it = selected();
+  if (!h || !pickedOpening(it)) return;
+  startOpeningDrag(it, jigPick.i, toWorld(e), true);
+  e.preventDefault();
 });
 
 jig.addEventListener('click', (e) => {
+  if (e.target.closest('[data-act]')) { onAct(e); return; }
   const b = e.target.closest('[data-jig]');
   const it = selected();
   if (!b || !it) return;
   const act = b.dataset.jig;
   if (act === 'open') { setJigHot(b.dataset.panel); return; }
+  if (act === 'unpick') { jigPick = null; renderJig(state); return; }
+  if (act === 'set') { liveEdit(b.dataset.path, b.dataset.v); endEdit(); return; }
   if (act === 'num') return;
   if (act === 'pick') {
     const i = Number(b.dataset.i);
     jigPick = jigPick && jigPick.id === it.id && jigPick.i === i ? null : { id: it.id, i };
     renderJig(state);
-    if (jigPick) showOpening(i);
     return;
   }
   const layout = layoutCopy();
@@ -1497,20 +1644,9 @@ jig.addEventListener('click', (e) => {
   else return;
   reflow(layout, old);
   commit(layout);
-  if (act === 'add') showOpening(jigPick.i);
   // The control that was used may have gone (a removed opening): stay in the panel.
   if (!jig.contains(document.activeElement)) jig.querySelector(`.sh-jig-panel[data-panel="${b.dataset.wall}"] [data-jig="wall"].is-on`)?.focus();
 });
-
-// Mark an opening's settings on the rail for a moment. The page does not
-// scroll to them: editing in place keeps the shelf where it is.
-function showOpening(i) {
-  const el = insp.querySelectorAll('.sh-opening')[i];
-  if (!el) return;
-  el.classList.remove('is-shown');
-  void el.offsetWidth;
-  el.classList.add('is-shown');
-}
 
 window.addEventListener('resize', () => { if (selected()) renderJig(state); });
 
