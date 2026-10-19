@@ -215,10 +215,22 @@ test('stairs added to a room open its ceiling and the floor of the room on top',
     })()`);
     assert.deepStrictEqual([await p.evalJson(marks(1)), await p.evalJson(marks(3))], [before[0] + 1, before[1] + 1]);
     assert.ok(await p.evalJson("[...document.querySelectorAll('#bom td')].some((td) => td.textContent.trim() === 'Stairs')"));
+    // Each hole spans the top half of the run, measured from the stairs' left end.
+    const holes = `(() => {
+      const items = JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items;
+      const st = items.find((i) => i.cfg.form === 'stairs'), host = items.find((i) => i.id === st.parent);
+      return [1, 3].map((id) => {
+        const m = items.find((i) => i.id === id), [o] = m.cfg.stairwells, mid = m.x + m.cfg.w / 2 + o.x;
+        return [mid - o.w / 2, mid + o.w / 2].map((v) => Math.round((v - host.x - st.x) / st.cfg.run * 100) / 100);
+      });
+    })()`;
+    assert.deepStrictEqual(await p.evalJson(holes), [[0.5, 1], [0.5, 1]]);
 
-    // Turning them keeps the stairwells; deleting them closes both again.
+    // Turning them moves the stairwells to the end that is now high; deleting
+    // them closes both again.
     await p.evalJson("(document.querySelector('[data-jig=\"flip\"]').click(), true)");
     assert.deepStrictEqual([await p.evalJson(marks(1)), await p.evalJson(marks(3))], [before[0] + 1, before[1] + 1]);
+    assert.deepStrictEqual(await p.evalJson(holes), [[0, 0.5], [0, 0.5]]);
     await p.evalJson("(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' })), true)");
     assert.deepStrictEqual([await p.evalJson(marks(1)), await p.evalJson(marks(3))], before);
   });

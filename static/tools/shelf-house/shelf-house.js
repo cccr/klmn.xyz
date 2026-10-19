@@ -275,8 +275,9 @@ function settle(layout, movedId = null) {
 }
 
 // Stairs take their height and depth from the room they stand in, and open
-// a hole the size of their footprint in its ceiling and in the floor of every
-// room resting on it. Recomputed from scratch on every settle.
+// a hole over the top half of their run, the right half unless turned, in
+// its ceiling and in the floor of every room resting on it. Recomputed from
+// scratch on every settle.
 function cutStairwells(layout, rooms) {
   for (const m of rooms) m.cfg.stairwells = [];
   for (const it of layout.items) {
@@ -290,7 +291,7 @@ function cutStairwells(layout, rooms) {
     const b = innerBox(host.cfg);
     it.cfg.rise = b.y1 - b.y0;
     it.cfg.depth = (host.cfg.d - host.cfg.walls.back) / 2;
-    const x0 = host.x + it.x, x1 = x0 + it.cfg.run;
+    const half = it.cfg.run / 2, x0 = host.x + it.x + (it.cfg.flip ? 0 : half), x1 = x0 + half;
     const z0 = host.cfg.walls.back, z1 = z0 + it.cfg.depth;
     const top = host.y + sizeOf(host).h;
     const add = (m, wall) => { const o = stairwell(m, x0, x1, z0, z1, wall); if (o) m.cfg.stairwells.push(o); };
