@@ -321,3 +321,46 @@ test('walls are thick, thin or missing, and take their thickness from the shelf 
     }
   });
 });
+
+test('a selected room is edited in place from panels on its walls',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, document.getElementById('example').click(), __sh.pick(3), true)`);
+    const room = async () => (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).find((i) => i.id === 3);
+    const click = (sel) => p.evalJson(`(document.querySelector('${sel}').click(), true)`);
+    // Five folded panels, one per wall; nothing lit until one is worked in.
+    assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('.sh-jig-panel')].map((e) => e.dataset.wall)"),
+      ['ceiling', 'left', 'right', 'floor', 'back']);
+    assert.strictEqual(await p.evalJson("!!document.querySelector('#mat .wall-hi')"), false);
+
+    // Focusing a tab opens its panel and lights that wall.
+    await p.evalJson("(document.querySelector('.sh-jig-panel[data-wall=left] .sh-jig-tab').focus(), true)");
+    assert.strictEqual(await p.evalJson("document.querySelector('.sh-jig-panel[data-wall=left]').classList.contains('is-hot')"), true);
+    assert.strictEqual(await p.evalJson("document.querySelectorAll('#mat .wall-hi rect').length"), 1);
+
+    await click('[data-jig=wall][data-wall=left][data-v=none]');
+    assert.strictEqual((await room()).walls.left, 'none');
+    // Still working in the same panel, and the missing wall shows as a broken edge.
+    assert.strictEqual(await p.evalJson("document.querySelector('.sh-jig-panel[data-wall=left]').contains(document.activeElement)"), true);
+    assert.strictEqual(await p.evalJson("document.querySelectorAll('#mat .wall-hi .open').length"), 1);
+
+    // Add a round window to the back wall: it lands clear of the one there,
+    // and is picked, so it can be removed again from the same panel.
+    const before = (await room()).cfg.openings.length;
+    await p.evalJson("(document.querySelector('.sh-jig-panel[data-wall=back] .sh-jig-tab').focus(), true)");
+    await click('[data-jig=add][data-wall=back][data-v=porthole]');
+    let ops = (await room()).cfg.openings;
+    assert.strictEqual(ops.length, before + 1);
+    const added = ops.at(-1);
+    assert.deepStrictEqual([added.wall, added.shape], ['back', 'round']);
+    assert.ok(ops.filter((o) => o.wall === 'back' && o !== added).every((o) => Math.abs(o.x - added.x) >= (o.w + added.w) / 2));
+    assert.strictEqual(await p.evalJson(`!!document.querySelector('.sh-jig-op.is-picked[data-i="${before}"]')`), true);
+    await click(`[data-jig=del][data-i="${before}"]`);
+    assert.strictEqual((await room()).cfg.openings.length, before);
+
+    // Undo brings the round window back; the panels follow the history.
+    await p.evalJson("(document.getElementById('undo').click(), true)");
+    assert.strictEqual((await room()).cfg.openings.length, before + 1);
+  });
+});

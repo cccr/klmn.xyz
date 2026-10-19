@@ -108,6 +108,81 @@
 #mat .warn-label { fill: var(--paper); font: 600 8px var(--sans); pointer-events: none; }
 #mat .mark { fill: var(--sh-mark); pointer-events: none; }
 #mat .shadow { fill: rgba(20, 24, 26, .16); pointer-events: none; }
+#mat .wall-hi { pointer-events: none; }
+#mat .wall-hi rect { fill: color-mix(in srgb, var(--reg) 55%, transparent); stroke: var(--reg); stroke-width: 1.6; }
+#mat .wall-hi .open { stroke: var(--reg); stroke-width: 1.6; stroke-dasharray: 3 2.5; }
+
+/* ── In-place panels ───────────────────────────────────────────────────
+   Docked to the walls of the selected room, in the selection's cyan so they
+   read as part of it. Folded, each is a tab showing its wall's weight; it
+   opens on hover or focus. A weight is chosen by drawing it: a heavy bar, a
+   light one, a broken line for no wall. */
+
+.sh-jig { position: absolute; inset: 0; pointer-events: none; }
+.sh-jig-panel {
+    position: absolute; top: 0; left: 0; z-index: 1;
+    display: flex; align-items: center; gap: .25rem;
+    padding: 2px;
+    background: var(--paper);
+    border: 1px solid color-mix(in srgb, var(--reg) 50%, var(--rule));
+    box-shadow: 0 1px 2px rgba(20, 24, 26, .08);
+    pointer-events: auto;
+    transition: border-color .12s, box-shadow .12s;
+}
+.sh-jig-panel.is-vertical { flex-direction: column; }
+.sh-jig-panel.is-hot {
+    z-index: 2;
+    border-color: var(--reg);
+    box-shadow: 0 0 0 1px var(--reg), 0 4px 12px rgba(20, 24, 26, .12);
+}
+.sh-jig-body { display: none; align-items: center; gap: .25rem; }
+.sh-jig-panel.is-hot .sh-jig-body { display: flex; }
+.sh-jig-panel.is-vertical .sh-jig-body { flex-direction: column; }
+
+.sh-jig-tab {
+    display: flex; align-items: center; gap: .25rem;
+    height: 1.375rem; min-width: 1.375rem; padding: 0 .25rem;
+    color: var(--ink-soft); background: none; border: 0;
+    cursor: pointer;
+}
+.sh-jig-panel.is-vertical .sh-jig-tab { flex-direction: column; justify-content: center; height: auto; min-height: 1.375rem; padding: .25rem 0; }
+.sh-jig-tab svg { width: .875rem; height: .875rem; fill: currentColor; flex: none; }
+.sh-jig-tab:focus-visible { outline: 1.5px solid var(--reg); outline-offset: 1px; }
+.sh-jig-name { font-family: var(--cond); font-size: var(--fs-note); font-weight: 600; white-space: nowrap; }
+.sh-jig-count { font-family: var(--mono); font-size: var(--fs-note); line-height: 1; color: var(--ink); }
+.sh-jig-panel.is-hot .sh-jig-tab { color: var(--reg); }
+
+.sh-jig-set { display: flex; gap: 2px; }
+.sh-jig-panel.is-vertical .sh-jig-set { flex-direction: column; }
+.sh-jig-set, .sh-jig-panel.is-hot .sh-jig-tab { padding-left: .25rem; border-left: 1px solid var(--paper-rule); }
+.sh-jig-panel.is-hot .sh-jig-tab { padding-left: .25rem; border-left: 0; }
+.sh-jig-panel.is-vertical .sh-jig-set { padding: .25rem 0 0; border-left: 0; border-top: 1px solid var(--paper-rule); }
+
+.sh-jig-btn {
+    display: grid; place-items: center;
+    width: 1.5rem; height: 1.5rem; padding: 0;
+    color: var(--ink-soft); background: var(--paper);
+    border: 1px solid transparent;
+    font: 600 var(--fs-label)/1 var(--sans);
+    cursor: pointer;
+    transition: color .12s, background-color .12s, border-color .12s;
+}
+.sh-jig-btn svg { width: 1rem; height: 1rem; fill: currentColor; }
+.sh-jig-btn:hover { color: var(--ink); border-color: var(--rule); }
+.sh-jig-btn:focus-visible { outline: 1.5px solid var(--reg); outline-offset: 1px; }
+.sh-jig-btn.is-on { color: var(--paper); background: var(--ink); border-color: var(--ink); }
+.sh-jig-op { color: var(--ink); }
+.sh-jig-op.is-picked { color: var(--reg); border-color: var(--reg); background: color-mix(in srgb, var(--reg) 10%, var(--paper)); }
+.sh-jig-op.is-idle { opacity: .4; }
+/* Adding is an invitation, so it is dashed like the file drop. */
+.sh-jig-add { border: 1px dashed var(--rule); }
+.sh-jig-add:hover { color: var(--reg); border-color: var(--reg); }
+.sh-jig-del:hover { color: var(--alert); border-color: var(--alert); }
+
+/* The opening a panel just picked or added, found on the rail. */
+@keyframes sh-shown { from { background: color-mix(in srgb, var(--reg) 16%, transparent); } }
+.sh-opening.is-shown { animation: sh-shown 1.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .sh-opening.is-shown { animation: none; outline: 1px solid var(--reg); } }
 
 .sh-empty {
     position: absolute; inset: 0;

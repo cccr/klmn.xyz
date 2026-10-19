@@ -544,8 +544,25 @@ function svgEl(tag, attrs = {}) {
   return el;
 }
 
+// Pixels kept clear under the ground line, where a ground-floor room's floor
+// and back-wall panels dock. Reserved whether or not anything is selected, so
+// picking a room never rescales the view.
+const UNDER_GROUND_PX = 84;
+
+function padForPanels(vb) {
+  const W = mat.clientWidth, H = mat.clientHeight;
+  if (!W || !H) return vb;
+  const below = vb.y + vb.h; // mm under the ground line already in view
+  let h = vb.h;
+  for (let i = 0; i < 3; i++) {
+    const scale = Math.min(W / vb.w, H / h);
+    h = vb.h + Math.max(0, UNDER_GROUND_PX / scale - below);
+  }
+  return { ...vb, h };
+}
+
 function renderMat(layout) {
-  if (!drag || !drag.moved) viewBox = fitViewBox(layout);
+  if (!drag || !drag.moved) viewBox = padForPanels(fitViewBox(layout));
   const vb = viewBox;
   mat.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
   mat.setAttribute('preserveAspectRatio', 'xMidYMax meet');
@@ -628,6 +645,7 @@ function select(id) {
   if (selectedId === id) return;
   endEdit();
   selectedId = id;
+  jigPick = null;
   renderInspector();
 }
 
@@ -1102,6 +1120,229 @@ function flash(msg) {
   flash.t = setTimeout(() => { el.hidden = true; }, 2600);
 }
 
+// ------------------------------------------------------------------ in-place panels
+
+// A selected room gets a panel on each of its four sides and one for its back
+// wall under the floor panel. Each sets that wall's weight and adds, picks or
+// removes its openings; hovering a panel or focusing one of its controls
+// lights the wall it works on.
+const JIG_WALLS = ['ceiling', 'left', 'right', 'floor', 'back'];
+const JIG_NAME = { ceiling: 'Ceiling', left: 'Left', right: 'Right', floor: 'Floor', back: 'Back wall' };
+const JIG_ADDS = {
+  left: ['doorway', 'window'], right: ['doorway', 'window'],
+  ceiling: ['skylight'], floor: ['hatch'], back: ['window', 'arch', 'porthole'],
+};
+const ADD_LABEL = { doorway: 'doorway', window: 'window', skylight: 'skylight', hatch: 'hatch', arch: 'arched window', porthole: 'round window' };
+const KIND_LABEL = { thick: 'Thick', thin: 'Thin', none: 'No wall' };
+
+function newOpening(kind, wall) {
+  if (kind === 'doorway') return { ...OPENING_PRESETS.doorway(), wall };
+  if (kind === 'skylight') return OPENING_PRESETS.skylight();
+  if (kind === 'hatch') return { ...OPENING_PRESETS.skylight(), wall: 'floor', shape: 'rect', r: 2, cols: 1, rows: 1 };
+  if (kind === 'arch') return { ...OPENING_PRESETS.window(), wall, shape: 'arch', w: 22, h: 40, cols: 1 };
+  if (kind === 'porthole') return { ...OPENING_PRESETS.window(), wall, shape: 'round', w: 30, h: 30 };
+  return { ...OPENING_PRESETS.window(), wall, w: wall === 'back' ? 34 : 24, h: wall === 'back' ? 30 : 24 };
+}
+
+// Beside the openings already on that wall rather than on top of them.
+function freeX(cfg, o) {
+  const taken = cfg.openings.filter((p) => p.wall === o.wall);
+  const clear = (x) => taken.every((p) => Math.abs(p.x - x) >= (p.w + o.w) / 2 + 4);
+  for (let k = 0; k < 12; k++) for (const x of [k * (o.w + 6), -k * (o.w + 6)]) if (clear(x)) return x;
+  return 0;
+}
+
+let jigWall = null;     // the wall a panel is being worked in
+let jigPick = null;     // { id, i }: the opening picked from a panel
+
+const glyph = (body) => `<svg viewBox="0 0 16 16" aria-hidden="true">${body}</svg>`;
+function weightGlyph(kind, vertical) {
+  const bar = (t) => (vertical ? `<rect x="${8 - t / 2}" y="1" width="${t}" height="14"/>` : `<rect x="1" y="${8 - t / 2}" width="14" height="${t}"/>`);
+  if (kind === 'thick') return glyph(bar(5));
+  if (kind === 'thin') return glyph(bar(1.6));
+  const line = vertical ? 'M8 1.5V14.5' : 'M1.5 8H14.5';
+  return glyph(`<path d="${line}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 2.4"/>`);
+}
+function shapeGlyph(shape) {
+  if (shape === 'round') return glyph('<circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.4"/>');
+  if (shape === 'arch') return glyph('<path d="M4 14V7.5a4 4 0 0 1 8 0V14z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>');
+  return glyph('<rect x="3" y="3" width="10" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>');
+}
+const ADD_SHAPE = { doorway: 'arch', window: 'rect', skylight: 'rect', hatch: 'rect', arch: 'arch', porthole: 'round' };
+
+function jigPanel(it, wall) {
+  const vertical = wall === 'left' || wall === 'right';
+  const kind = it.walls[wall];
+  const name = JIG_NAME[wall];
+  const st = state.settings;
+  const what = (k) => (k === 'none' ? 'no wall' : `${KIND_LABEL[k].toLowerCase()}, ${len(st[k])}`);
+  const ops = it.cfg.openings.map((o, i) => [o, i]).filter(([o]) => o.wall === wall);
+  // Folded, a panel is a tab showing the wall's weight and how many openings it has.
+  const tab = `<button type="button" class="sh-jig-tab" data-jig="open" data-wall="${wall}" aria-expanded="${jigWall === wall}"
+      title="${name}: ${what(kind)}${ops.length ? `, ${ops.length} opening${ops.length > 1 ? 's' : ''}` : ''}"
+      aria-label="${name}: ${what(kind)}, ${ops.length} opening${ops.length === 1 ? '' : 's'}">${vertical ? '' : `<span class="sh-jig-name">${name}</span>`}${weightGlyph(kind, vertical)}${ops.length ? `<span class="sh-jig-count">${ops.length}</span>` : ''}</button>`;
+  const weights = WALL_KINDS.map((k) => `<button type="button" class="sh-jig-btn${k === kind ? ' is-on' : ''}" data-jig="wall" data-wall="${wall}" data-v="${k}"
+      aria-pressed="${k === kind}" title="${KIND_LABEL[k]}${k === 'none' ? '' : `, ${len(st[k])}`}" aria-label="${name}: ${what(k)}">${weightGlyph(k, vertical)}</button>`).join('');
+  const picked = jigPick && jigPick.id === it.id && ops.some(([, i]) => i === jigPick.i) ? jigPick.i : null;
+  const chips = ops.map(([o, i]) => `<button type="button" class="sh-jig-btn sh-jig-op${i === picked ? ' is-picked' : ''}${kind === 'none' ? ' is-idle' : ''}"
+      data-jig="pick" data-wall="${wall}" data-i="${i}" aria-pressed="${i === picked}" title="Opening ${i + 1}: ${SHAPE_LABEL[o.shape].toLowerCase()}, ${len(o.w)} × ${len(o.h)}"
+      aria-label="${name}, opening ${i + 1}">${shapeGlyph(o.shape)}</button>`).join('');
+  const del = picked != null ? `<button type="button" class="sh-jig-btn sh-jig-del" data-jig="del" data-wall="${wall}" data-i="${picked}"
+      title="Remove opening ${picked + 1}" aria-label="Remove opening ${picked + 1}">×</button>` : '';
+  const adds = kind === 'none' ? '' : JIG_ADDS[wall].map((a) => `<button type="button" class="sh-jig-btn sh-jig-add" data-jig="add" data-wall="${wall}" data-v="${a}"
+      title="Add a ${ADD_LABEL[a]}" aria-label="${name}: add a ${ADD_LABEL[a]}">${shapeGlyph(ADD_SHAPE[a])}</button>`).join('');
+  return `<div class="sh-jig-panel${vertical ? ' is-vertical' : ''}${jigWall === wall ? ' is-hot' : ''}" data-wall="${wall}" role="group" aria-label="${name}">
+    ${tab}
+    <span class="sh-jig-body">
+      <span class="sh-jig-set">${weights}</span>
+      ${chips || adds ? `<span class="sh-jig-set">${chips}${del}${adds}</span>` : ''}
+    </span>
+  </div>`;
+}
+
+const jig = document.createElement('div');
+jig.className = 'sh-jig no-print';
+mat.parentElement.append(jig);
+
+function renderJig(layout) {
+  const it = layout.items.find((i) => i.id === selectedId);
+  const focusKey = jig.contains(document.activeElement) ? jigKey(document.activeElement) : null;
+  if (!it || !isRoom(it) || (drag && drag.moved)) {
+    jig.replaceChildren();
+    if (!it || !isRoom(it)) jigWall = null;
+    drawWallHighlight(layout);
+    return;
+  }
+  jig.innerHTML = JIG_WALLS.map((w) => jigPanel(it, w)).join('');
+  placeJig(layout, it);
+  if (focusKey) jig.querySelector(focusKey)?.focus();
+  drawWallHighlight(layout);
+}
+
+const jigKey = (el) => {
+  const b = el.closest('[data-jig]');
+  if (!b) return null;
+  const attr = (k) => (b.dataset[k] != null ? `[data-${k}="${b.dataset[k]}"]` : '');
+  return `[data-jig="${b.dataset.jig}"]${attr('wall')}${attr('v')}${attr('i')}`;
+};
+
+// Dock each tab against its wall, just outside the selection outline. An
+// open panel unfolds away from its tab (rightwards along the top and bottom,
+// downwards at the sides), so the tab never moves from under the pointer.
+function placeJig(layout, it) {
+  const box = jig.getBoundingClientRect();
+  const ctm = mat.getScreenCTM();
+  if (!ctm || !box.width) return;
+  const a = absPos(layout, it), sz = sizeOf(it);
+  const pt = (x, y) => new DOMPoint(x, -y).matrixTransform(ctm);
+  const tl = pt(a.x - 3.5, a.y + sz.h + 3.5), br = pt(a.x + sz.w + 3.5, a.y - 3.5);
+  const r = { l: tl.x - box.left, t: tl.y - box.top, r: br.x - box.left, b: br.y - box.top };
+  const cx = (r.l + r.r) / 2, cy = (r.t + r.b) / 2, gap = 5;
+  const tabOf = (w) => jig.querySelector(`.sh-jig-panel[data-wall="${w}"] .sh-jig-tab`);
+  const put = (w, x, y) => {
+    const el = jig.querySelector(`.sh-jig-panel[data-wall="${w}"]`);
+    const fx = clamp(x, 2, box.width - el.offsetWidth - 2), fy = clamp(y, 2, box.height - el.offsetHeight - 2);
+    el.style.transform = `translate(${Math.round(fx)}px, ${Math.round(fy)}px)`;
+  };
+  const pad = 3; // the panel's padding around its tab
+  const ceiling = tabOf('ceiling'), floor = tabOf('floor'), back = tabOf('back'), side = tabOf('left');
+  put('ceiling', cx - ceiling.offsetWidth / 2 - pad, r.t - gap - ceiling.offsetHeight - 2 * pad);
+  put('floor', cx - floor.offsetWidth / 2 - pad, r.b + gap);
+  put('back', cx - back.offsetWidth / 2 - pad, r.b + gap + floor.offsetHeight + 2 * pad + 3);
+  put('left', r.l - gap - side.offsetWidth - 2 * pad, cy - side.offsetHeight / 2 - pad);
+  put('right', r.r + gap, cy - side.offsetHeight / 2 - pad);
+}
+
+// The wall being worked on, lit on the front view: a strip the thickness of
+// the wall, a dashed edge where there is no wall, or the whole face for the back.
+function drawWallHighlight(layout) {
+  mat.querySelector('.wall-hi')?.remove();
+  const it = layout.items.find((i) => i.id === selectedId);
+  if (!jigWall || !it || !isRoom(it)) return;
+  const a = absPos(layout, it), c = it.cfg, t = c.walls, b = innerBox(c);
+  const g = svgEl('g', { class: 'wall-hi' });
+  const rect = (x0, y0, x1, y1) => g.append(svgEl('rect', { x: a.x + x0, y: -(a.y + y1), width: x1 - x0, height: y1 - y0 }));
+  const edge = (x0, y0, x1, y1) => g.append(svgEl('line', { x1: a.x + x0, y1: -(a.y + y0), x2: a.x + x1, y2: -(a.y + y1), class: 'open' }));
+  const w = jigWall;
+  if (w === 'back') rect(b.x0, b.y0, b.x1, b.y1);
+  else if (!(t[w] > 0)) {
+    if (w === 'left') edge(0, 0, 0, c.h);
+    if (w === 'right') edge(c.w, 0, c.w, c.h);
+    if (w === 'ceiling') edge(0, c.h, c.w, c.h);
+    if (w === 'floor') edge(0, 0, c.w, 0);
+  } else {
+    if (w === 'left') rect(0, 0, t.left, c.h);
+    if (w === 'right') rect(c.w - t.right, 0, c.w, c.h);
+    if (w === 'ceiling') rect(0, b.y1, c.w, c.h);
+    if (w === 'floor') rect(0, 0, c.w, b.y0);
+  }
+  mat.append(g);
+}
+
+function setJigWall(w) {
+  if (jigWall === w) return;
+  jigWall = w;
+  for (const p of jig.querySelectorAll('.sh-jig-panel')) {
+    p.classList.toggle('is-hot', p.dataset.wall === w);
+    p.querySelector('.sh-jig-tab').setAttribute('aria-expanded', p.dataset.wall === w);
+  }
+  const it = selected();
+  if (it && isRoom(it)) placeJig(state, it);
+  drawWallHighlight(currentView());
+}
+const panelWall = (e) => e.target.closest?.('.sh-jig-panel')?.dataset.wall || null;
+jig.addEventListener('pointerover', (e) => setJigWall(panelWall(e)));
+jig.addEventListener('pointerleave', () => { if (!jig.contains(document.activeElement)) setJigWall(null); });
+jig.addEventListener('focusin', (e) => setJigWall(panelWall(e)));
+jig.addEventListener('focusout', (e) => { if (!jig.contains(e.relatedTarget) && !jig.matches(':hover')) setJigWall(null); });
+// The panels sit over the mat; a press on one is not a press on the shelf.
+jig.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+jig.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-jig]');
+  const it = selected();
+  if (!b || !it || !isRoom(it)) return;
+  const act = b.dataset.jig;
+  if (act === 'open') { setJigWall(b.dataset.wall); return; }
+  if (act === 'pick') {
+    const i = Number(b.dataset.i);
+    jigPick = jigPick && jigPick.id === it.id && jigPick.i === i ? null : { id: it.id, i };
+    renderJig(state);
+    if (jigPick) showOpening(i);
+    return;
+  }
+  const layout = layoutCopy();
+  const m = layout.items.find((i) => i.id === it.id);
+  const old = new Map(state.items.map((i) => [i.id, sizeOf(i)]));
+  if (act === 'wall') m.walls[b.dataset.wall] = b.dataset.v;
+  else if (act === 'add') {
+    const o = newOpening(b.dataset.v, b.dataset.wall);
+    o.x = freeX(m.cfg, o);
+    m.cfg.openings.push(o);
+    jigPick = { id: m.id, i: m.cfg.openings.length - 1 };
+  } else if (act === 'del') {
+    m.cfg.openings.splice(Number(b.dataset.i), 1);
+    jigPick = null;
+  } else return;
+  reflow(layout, old);
+  commit(layout);
+  if (act === 'add') showOpening(jigPick.i);
+  // The control that was used may have gone (a removed opening): stay in the panel.
+  if (!jig.contains(document.activeElement)) jig.querySelector(`.sh-jig-panel[data-wall="${b.dataset.wall}"] [data-jig="wall"].is-on`)?.focus();
+});
+
+// Mark an opening's settings on the rail for a moment. The page does not
+// scroll to them: editing in place keeps the shelf where it is.
+function showOpening(i) {
+  const el = insp.querySelectorAll('.sh-opening')[i];
+  if (!el) return;
+  el.classList.remove('is-shown');
+  void el.offsetWidth;
+  el.classList.add('is-shown');
+}
+
+window.addEventListener('resize', () => { if (selected()) renderJig(state); });
+
 // ------------------------------------------------------------------ shelf settings
 
 const SETTING_LABEL = { wide: 'Wide rooms', narrow: 'Narrow rooms', h: 'Height', d: 'Depth', thick: 'Thick walls', thin: 'Thin walls' };
@@ -1463,6 +1704,7 @@ function render() {
   renderMat(view);
   render3D(view);
   renderSelection(view);
+  renderJig(view);
   renderBom();
   updateHistoryButtons();
   let maxX = -Infinity, minX = Infinity, maxY = 0, maxD = 0;
