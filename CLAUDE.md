@@ -9,6 +9,146 @@ hugo --quiet          # build to public/
 cd test && npm test   # 120 tests: jsdom for behaviour, headless Chrome for layout
 ```
 
+## Pages and their files
+
+Each tool or game has a **slug**. Its URL, folders and file names all use that
+slug. When a request names a page, by slug or by title, start with the files listed
+for it below. Most pages use these five places:
+
+| | |
+|---|---|
+| `content/<section>/<slug>/index.md` | Title, description, `layout:`, URL aliases |
+| `themes/klmn-theme/layouts/<section>/<slug>.html` | Markup. A `{{ define "head" }}` block links its stylesheet; `<script>` tags come at the end |
+| `static/<section>/<slug>/<slug>.js` | Behaviour |
+| `static/<section>/<slug>/<slug>.css` | Styles only this page has (see *Where a style belongs*) |
+| `test/<slug>.test.js` | Its own tests, if it has any |
+
+`<section>` is `tools` or `games`. Each entry below lists the full set of files,
+including any file that sits outside this pattern or belongs to another page.
+
+### Tools — `/tools/<slug>/`
+
+**`adraw` — Abstract Drawing** · `/tools/adraw/`
+Pen-plotter line art (vortex, contour, flow field, hatching), exported as SVG or G-code.
+- `content/tools/adraw/index.md`
+- `themes/klmn-theme/layouts/tools/adraw.html`
+- `static/tools/adraw/adraw.js`, `adraw.css`: the page. This is ordinary site code and is changed here.
+- `static/tools/adraw/adraw.wasm`, `wasm_exec.js`, `wasm.js`, `adraw.json`: **build
+  output** of adraw (github.com/cccr/adraw), compiled to WebAssembly and
+  overwritten by adraw's `make deploy-klmn`. Make changes to them in adraw, not here.
+  `adraw.json` decides which pattern a visitor sees first.
+- Tests: `test/adraw.test.js`. These run in real Chrome only, because jsdom cannot run the engine.
+- Hands off to **wiggler**: the Wiggle button writes `klmn:wiggler-handoff`
+  to localStorage and opens `/tools/wiggler/`, which reads it once
+  (`wiggler.js`). If you change one side, check the other.
+
+**`mass-qr` — Mass QR Sheet** · `/tools/mass-qr/`, alias `/qrs`
+A printable grid of labelled QR codes, sized to fit exactly one page.
+- `content/tools/mass-qr/index.md` (the `/qrs` alias; `netlify.toml` also redirects it)
+- `themes/klmn-theme/layouts/tools/mass-qr.html`
+- `static/tools/mass-qr/mass-qr.js`, `mass-qr.css`: the container-query clamp
+  and the `@media print` block were measured so the sheet fits one page. They are not generic.
+- Uses two files from **qr**: `static/tools/qr/qrcodegen.js`, `static/tools/qr/qr-render.js`
+- Tests: `test/mass-qr.test.js` (jsdom), `test/layout.test.js` (sheet geometry,
+  Chrome), `test/print.test.js` (prints as one page, Chrome)
+- History: `docs/superpowers/specs/2026-09-19-mass-qr-design.md`,
+  `docs/superpowers/specs/2026-09-20-mass-qr-layout-fixes.md`, and the plans with
+  the same names in `docs/superpowers/plans/`
+
+**`milling` — CNC Feed & Speed Planner** · `/tools/milling/`
+Feeds, speeds, chipload, SFM and DOC/WOC for a cutter, material and machine.
+- `content/tools/milling/index.md` (has body text)
+- `themes/klmn-theme/layouts/tools/milling.html`
+- `static/tools/milling/milling.js`, `milling.css`
+- Tests: no test file of its own. `test/design.test.js` checks contrast on its `.field-value` and `.rail-hint`.
+
+**`qr` — QR Code Generator** · `/tools/qr/`, alias `/qr`
+Text or URL to a QR code; error correction, size, colours; PNG or SVG download.
+- `content/tools/qr/index.md` (the `/qr` alias; `netlify.toml` also redirects it)
+- `themes/klmn-theme/layouts/tools/qr.html`
+- `static/tools/qr/qr.js`, `qr.css`
+- `static/tools/qr/qrcodegen.js`: Project Nayuki's QR library, vendored. Do not edit it.
+- `static/tools/qr/qr-render.js`: rendering helpers that **mass-qr** also loads.
+  A change here affects both pages, so run both test files.
+- Tests: `test/qr.test.js`
+
+**`ripple` — Ripple Edge Profile** · `/tools/ripple/`
+A decaying sine-wave edge, exported as a DXF polyline for CNC or laser.
+- `content/tools/ripple/index.md` (has body text)
+- `themes/klmn-theme/layouts/tools/ripple.html`
+- `static/tools/ripple/ripple.js`, `ripple.css`
+- Tests: no test file of its own
+
+**`shelf-house` — Shelf House** · `/tools/shelf-house/`
+Modular dollhouse rooms stacked into a shelf, tuned one by one, checked in 3D and downloaded as STL.
+- `content/tools/shelf-house/index.md`
+- `themes/klmn-theme/layouts/tools/shelf-house.html`: markup and the import map
+- `static/tools/shelf-house/geometry.js`: **every size and solid, in mm.** It holds
+  `ROOM_DEFAULTS`, `PRESETS`, `blockSize`, the room/table/stairs/lift builders,
+  `frontProfile` and `toSTL`. Proportions and dimensions are set in this file.
+  It is a pure module with no DOM.
+- `static/tools/shelf-house/shelf-house.js`: the page. It covers the blocks and their
+  settings, the front view and editing on it, the three.js 3D view and the downloads.
+- `static/tools/shelf-house/shelf-house.css`
+- `static/tools/shelf-house/vendor/`: `three.module.js`, `OrbitControls.js`,
+  `manifold.js` + `manifold.wasm`, `fflate.js`, all at pinned versions. Do not edit
+  them. To upgrade one, replace the file with the same path from its npm package.
+- Tests: `test/shelf-house.test.js`. It imports `geometry.js` and the vendored
+  manifold directly under node, and drives the page in Chrome.
+- It is the one page written as ES modules, because three.js and manifold-3d ship only
+  as modules. The import map in the layout resolves them, so still nothing
+  loads from a CDN. Without WebGL the 3D pane shows a notice and the rest of the
+  page keeps working. Headless Chrome in the tests sees that notice too.
+
+**`wiggler` — SVG Wiggle Animator** · `/tools/wiggler/`
+Animates an uploaded SVG with a hand-drawn wiggle, exported as GIF or WebM.
+- `content/tools/wiggler/index.md`
+- `themes/klmn-theme/layouts/tools/wiggler.html`. It adds a `<script>` for every
+  file in `examples/` through `readDir`.
+- `static/tools/wiggler/wiggler.js`, `wiggler.css`
+- `static/tools/wiggler/wiggler-examples.js`: the example picker (`WigglerExamples`)
+- `static/tools/wiggler/examples/*.js`: one file per example set. Each file
+  calls `WigglerExamples.register`. To add a set, add a file; no other change is needed.
+- Receives drawings from **adraw** through `klmn:wiggler-handoff` (see adraw)
+- Tests: no test file of its own. The handoff is tested in `test/adraw.test.js`.
+
+### Games — `/games/<slug>/`
+
+**`11dots` — 11 Dots** · `/games/11dots/`
+Swap three stones across an eleven-dot board against an exact solver.
+- `content/games/11dots/index.md`
+- `themes/klmn-theme/layouts/games/11dots.html`
+- `static/games/11dots/11dots.js`: the engine and the retrograde solver, which are pure and
+  exposed as `window.elevenDots`, followed by the UI
+- `static/games/11dots/11dots.css`
+- Tests: `test/11dots.test.js`
+
+### Not a tool: the design system — `/design/`
+- `content/design/index.md`
+- `themes/klmn-theme/layouts/design/design.html`: one specimen for every token and component
+- `static/design/design.css`: styles only its own `ds-` scaffolding
+- `static/design/design.js`: reads each printed value back from `style.css`
+- Tests: `test/design.test.js`
+
+### Shared by every page
+
+- `themes/klmn-theme/static/css/style.css`: tokens and every shared primitive (see below)
+- `themes/klmn-theme/layouts/_default/baseof.html` (site chrome, class-free),
+  `list.html` (the `/tools/` and `/games/` lists, and the home page, which lists both
+  sections by title), `single.html`
+- `themes/klmn-theme/layouts/partials/head.html`: fonts and `style.css`
+- `content/_index.md` (home page text), `content/tools/_index.html`, `content/games/_index.html`
+- `hugo.toml` (menu), `netlify.toml` (build, Hugo version, the `/qr` and `/qrs` redirects)
+- `test/harness.js`: builds with Hugo and loads a page in jsdom. `test/cdp.js`:
+  the headless Chrome driver for layout tests. `test/safari.js`: a
+  WebDriver client for Safari, which `npm test` does not run.
+- `test/layout.test.js` checks that **no page scrolls sideways**, at four
+  widths, and has a list of every URL it checks.
+
+**Adding a page:** create the five places above. Then add its URL to the list in
+`test/layout.test.js`, and add an entry to this section. The section list and the home page
+pick it up without any other change.
+
 ## The design system is at /design/
 
 **Read <https://klmn.xyz/design/> — or `public/design/index.html` after a
@@ -60,28 +200,11 @@ Two constraints that came from rejected work, so they do not get re-proposed:
 ## Conventions
 
 - Page scripts are browser-ready ES5: `'use strict'`, `var`, function
-  declarations, wrapped in an IIFE. No bundler, no modules.
-- A tool or game page is a layout in
-  `themes/klmn-theme/layouts/<section>/<name>.html` (`tools` or `games`) with a
-  `{{ define "head" }}` block linking its own stylesheet, plus files under
-  `static/<section>/<name>/`. The home page lists both sections.
+  declarations, wrapped in an IIFE. No bundler, no modules — except
+  shelf-house (see its entry above).
 - `baseof.html` is deliberately class-free; the chrome is styled with element
   selectors.
 - Nothing loads from a CDN. `test/harness.js` throws on a remote `<script>`,
   and a test asserts no third-party host is needed.
 - `@page` may set `margin` but never `size` — WebKit ignores the size
   descriptor, which is what broke printing in Safari.
-- `/tools/adraw/` runs adraw (github.com/cccr/adraw) compiled to WebAssembly.
-  `adraw.wasm`, `wasm_exec.js`, `wasm.js` and `adraw.json` there are build
-  output, overwritten by adraw's `make deploy-klmn` — change them in adraw,
-  not here. The page itself (layout, `adraw.js`, `adraw.css`,
-  `test/adraw.test.js`) is ordinary site code and lives here. Its tests are
-  real-Chrome only: jsdom cannot run the engine.
-- `/tools/shelf-house/` is the one page written as ES modules, because
-  three.js and manifold-3d ship only as modules. Its libraries (three,
-  OrbitControls, manifold-3d with its `.wasm`, fflate) are vendored at pinned
-  versions under `static/tools/shelf-house/vendor/` and resolved by an import
-  map in the layout — still nothing from a CDN. To upgrade one, replace the
-  file there with the same path from the npm package. Without WebGL the 3D pane
-  shows a notice and the rest of the page keeps working, which is also what
-  headless Chrome in the tests sees.
