@@ -71,22 +71,48 @@ export const isStairs = (cfg) => cfg.form === 'stairs';
 // A lift: a shaft rising `floors` storeys from the room it stands in, and the
 // car that rides in it. The shaft's walls are built into every room it passes
 // (see liftShaft); the lift itself prints as the car. `w` is the shaft's inside
-// width; `rise`, `depth` and `wall` follow the room and the shelf's thick
-// walls and are set by the layout, like the stairs'. `rail` is the filament
-// glued into a groove up each shaft wall, half its diameter deep, and the car
-// has a notch up each side that rides on it.
+// width; `rise`, `depth`, `back` (the room's, behind the car), `wall` (the
+// shaft's) and `panel` (the car's) follow the room and the shelf's thick and
+// thin walls and are set by the layout, like the stairs'. A guide rib up the
+// outside of each side of the car runs in a V-groove up the shaft wall facing
+// it, and magnets in the car and the back wall latch it at each floor.
 export function defaultLift(over = {}) {
-  return { form: 'lift', w: 32, floors: 2, rail: 1.75, rise: 66, depth: 26.5, wall: 3, color: '#8d99ae', ...over };
+  return { form: 'lift', w: 32, floors: 2, rise: 66, depth: 26.5, back: 3, wall: 3, panel: 1.5, color: '#8d99ae', ...over };
 }
 
 export const isLift = (cfg) => cfg.form === 'lift';
-export const RAILS = [1.75, 2.85];
 
 // The car clears the shaft walls and the back by LIFT_GAP and the ceiling by
-// LIFT_HEADROOM; a groove is RAIL_FIT wider than its filament.
-const LIFT_GAP = 0.3, LIFT_HEADROOM = 1, RAIL_FIT = 0.2;
-// Shaft and car walls stay thick enough to take a groove or a notch.
-export const liftWall = (cfg) => Math.max(cfg.wall, cfg.rail / 2 + 0.8);
+// LIFT_HEADROOM. Rib and groove are 90° vees, so both print without support
+// lying on their backs. A rib stands RIB proud of the car; its groove is
+// LIFT_GAP clear of it on both flanks, which puts the groove's point
+// LIFT_GAP·√2 past the rib's, GROOVE deep in the wall.
+const LIFT_GAP = 0.3, LIFT_HEADROOM = 1, RIB = 1.5;
+const GROOVE = RIB - LIFT_GAP + LIFT_GAP * Math.SQRT2;
+// Shaft walls stay thick enough to take the groove.
+export const liftWall = (cfg) => Math.max(cfg.wall, GROOVE + 0.8);
+
+// The latch: disc magnets low on the back of the car, and as many in the
+// room's back wall at each storey, in line with them when the car stands on
+// that floor. Each sits in a pocket MAG_FIT bigger all round, behind SKIN of
+// plastic on the side toward its partner, so the pull seats it instead of
+// drawing it out: the car's pockets open inside the car, the room's on its
+// outside back face. Both stand upright as printed.
+const MAG_FIT = 0.1, SKIN = 0.6, BOSS = 0.8;
+// Disc magnets as sold, [diameter, height, hold] in mm and N, narrowest
+// first and thickest first within a diameter: what a pair holds against
+// sliding across the two skins, 1.2 mm (N35, by the magnetic charge model).
+// The car's pull on the back wall adds friction of about 60% of that again.
+const MAGNETS = [
+  [3, 2, 0.29], [3, 1, 0.15], [4, 2, 0.56], [4, 1, 0.27], [5, 2, 0.87], [5, 1, 0.38],
+  [6, 3, 1.75], [6, 2, 1.19], [6, 1, 0.49], [8, 3, 2.85], [8, 2, 1.81], [8, 1, 0.68],
+  [10, 3, 3.9], [10, 2, 2.36], [10, 1, 0.85], [12, 3, 4.88], [12, 2, 2.87],
+];
+// A car gets a magnet for every MAG_PITCH of its width, all of the narrowest
+// size, as thick as the back allows, that together hold MAG_MARGIN times its
+// weight in solid PLA (g/mm³) on the magnets alone; more of them if no size
+// it has room for does.
+const MAG_PITCH = 50, MAG_MARGIN = 3, PLA = 1.24e-3;
 
 const onWall = (o) => o.wall === 'back' || o.wall === 'left' || o.wall === 'right';
 
@@ -174,6 +200,17 @@ export function blockSize(kind, cfg) {
 
 const rect = (k, x0, y0, x1, y1) => k.CrossSection.square([x1 - x0, y1 - y0]).translate([x0, y0]);
 const cuboid = (k, x0, x1, y0, y1, z0, z1) => k.Manifold.cube([x1 - x0, y1 - y0, z1 - z0]).translate([x0, y0, z0]);
+
+// A round post or hole along z, from z0 to z1, centred on (x, y).
+const disc = (k, x, y, r, z0, z1) => k.Manifold.cylinder(z1 - z0, r, r, SEG * 4).translate([x, y, z0]);
+
+// A 90° vee running up y from y0 to y1: its mouth on the plane x, `half`
+// either side of zm, its point `half` from the mouth toward `dir` (±1).
+function vee(k, x, dir, zm, half, y0, y1) {
+  const pts = [[x, zm - half], [x + dir * half, zm], [x, zm + half]];
+  // Counter-clockwise in x–z; the turn stands it up along y.
+  return k.CrossSection.ofPolygons([dir > 0 ? pts : pts.reverse()]).extrude(y1 - y0).rotate([90, 0, 0]).translate([0, y1, 0]);
+}
 
 // Rectangle with an independent radius per corner (radii: {tl,tr,br,bl}).
 function cornerRect(k, x0, y0, x1, y1, radii) {
@@ -293,14 +330,19 @@ function wallHoles(k, cfg, wall) {
   return clipped.isEmpty() ? null : clipped;
 }
 
-// A lift shaft's two walls in a room, [x0, x1] each, and the groove up the
-// face of each toward the car, [x0, x1, z0, z1], centred on the shaft's depth.
-function shaftParts(s) {
+// A lift shaft's two walls in a room, [x0, x1] each; the face of each toward
+// the car and which way is into the wall from it, [x, dir]; the middle of
+// the shaft's depth, where the grooves run; and how far up they run: from the
+// floor and to the ceiling, or on through either where the shaft does.
+function shaftParts(s, cfg) {
   const l = s.x + s.t, r = l + s.w; // the faces the car runs between
-  const zm = (s.z0 + s.z1) / 2, gw = s.rail + RAIL_FIT, gd = s.rail / 2;
+  const b = innerBox(cfg);
   return {
     walls: [[s.x, l], [r, r + s.t]],
-    grooves: [[l - gd, l], [r, r + gd]].map(([x0, x1]) => [x0, x1, zm - gw / 2, zm + gw / 2]),
+    faces: [[l, -1], [r, 1]],
+    zm: (s.z0 + s.z1) / 2,
+    y0: s.floor ? 0 : b.y0,
+    y1: s.ceiling ? cfg.h : b.y1,
   };
 }
 
@@ -311,12 +353,33 @@ function shaftParts(s) {
 function shaftWalls(k, cfg) {
   const b = innerBox(cfg);
   const parts = cfg.shafts.map((s) => {
-    const { walls, grooves } = shaftParts(s);
     const back = Math.min(s.z0, cfg.walls.back) - 0.5;
-    const solid = k.Manifold.union(walls.map(([x0, x1]) => cuboid(k, x0, x1, b.y0 - 0.5, b.y1 + 0.5, back, s.z1)));
-    return solid.subtract(k.Manifold.union(grooves.map(([x0, x1, z0, z1]) => cuboid(k, x0, x1, b.y0 - 1, b.y1 + 1, z0, z1))));
+    return k.Manifold.union(shaftParts(s, cfg).walls.map(([x0, x1]) => cuboid(k, x0, x1, b.y0 - 0.5, b.y1 + 0.5, back, s.z1)));
   });
   return k.Manifold.union(parts).intersect(outerSection(k, cfg).extrude(cfg.d));
+}
+
+// The V-groove up each shaft wall, cut from the room once the walls are on it
+// so that it carries on through an open floor or ceiling, where the car's
+// ribs pass on their way to the next storey. Each starts half a millimetre
+// out in the shaft, which is open there.
+function shaftGrooves(k, cfg) {
+  return k.Manifold.union(cfg.shafts.flatMap((s) => {
+    const { faces, zm, y0, y1 } = shaftParts(s, cfg);
+    // Clean out through an open floor or ceiling; flush with a closed one.
+    const lo = s.floor ? y0 - 1 : y0, hi = s.ceiling ? y1 + 1 : y1;
+    return faces.map(([x, dir]) => vee(k, x - dir * 0.5, dir, zm, GROOVE + 0.5, lo, hi));
+  }));
+}
+
+// A seat for each magnet behind the shaft: a pocket in from the outside back
+// face that stops a skin short of the face the car runs against, in a pad
+// that makes up a back thinner than the one the lift stands in.
+function magnetSeats(k, cfg) {
+  return cfg.shafts.filter((s) => s.magnets).flatMap((s) => {
+    const r = s.magnets.d / 2 + MAG_FIT;
+    return s.magnets.at.map(([x, y]) => ({ pad: disc(k, x, y, r + BOSS, 0, s.z0), pocket: disc(k, x, y, r, -1, s.z0 - SKIN) }));
+  });
 }
 
 // ---------------------------------------------------------------- 3D parts
@@ -349,7 +412,11 @@ export function buildRoom(k, cfg) {
     cuts.push(holes.extrude(th).rotate([90, 0, 0]).translate([0, y, 0]));
   }
   if (cuts.length) body = body.subtract(Manifold.union(cuts));
-  if (cfg.shafts?.length) body = Manifold.union([body, shaftWalls(k, cfg)]);
+  if (cfg.shafts?.length) {
+    const seats = magnetSeats(k, cfg);
+    body = Manifold.union([body, shaftWalls(k, cfg), ...seats.map((m) => m.pad)])
+      .subtract(Manifold.union([shaftGrooves(k, cfg), ...seats.map((m) => m.pocket)]));
+  }
   return body;
 }
 
@@ -381,31 +448,65 @@ export function buildStairs(k, cfg) {
 }
 
 // The car, in the lift's own coordinates: x from the shaft's outer left edge,
-// y up from the floor, z forward from the room's back wall. `inside` is null
-// when the car is too small to hollow out.
+// y up from the floor, z forward from the room's back wall. It stops short of
+// the front edge of the openings it rides through by the gap too. Its panels
+// are `panel` thick; `inside` is null when the car is too small to hollow out.
 function carBox(cfg) {
-  const t = liftWall(cfg);
-  const c = { x0: t + LIFT_GAP, x1: t + cfg.w - LIFT_GAP, y0: 0, y1: cfg.rise - LIFT_HEADROOM, z0: LIFT_GAP, z1: cfg.depth, t };
-  const big = c.x1 - c.x0 > 2 * t + 0.5 && c.y1 - c.y0 > 2 * t + 0.5 && c.z1 - c.z0 > t + 0.5;
-  c.inside = big ? { x0: c.x0 + t, x1: c.x1 - t, y0: c.y0 + t, y1: c.y1 - t, z0: c.z0 + t } : null;
+  const t = liftWall(cfg), p = cfg.panel;
+  const c = { x0: t + LIFT_GAP, x1: t + cfg.w - LIFT_GAP, y0: 0, y1: cfg.rise - LIFT_HEADROOM, z0: LIFT_GAP, z1: cfg.depth - LIFT_GAP, t };
+  const big = c.x1 - c.x0 > 2 * p + 0.5 && c.y1 - c.y0 > 2 * p + 0.5 && c.z1 - c.z0 > p + 0.5;
+  c.inside = big ? { x0: c.x0 + p, x1: c.x1 - p, y0: c.y0 + p, y1: c.y1 - p, z0: c.z0 + p } : null;
   return c;
 }
 
-// A notch up each side, opposite the shaft wall's groove: half the rail deep,
-// so the strand's edge clears it by the gap, and the rail plus the gap each
-// side wide.
-function carNotches(cfg, c) {
-  const d = cfg.rail / 2, nw = cfg.rail + 2 * LIFT_GAP, zm = cfg.depth / 2;
-  return [[c.x0, c.x0 + d], [c.x1 - d, c.x1]].map(([x0, x1]) => [x0, x1, zm - nw / 2, zm + nw / 2]);
+// The car's volume in mm³, ribs and all.
+function carVolume(c) {
+  const n = c.inside, box = (c.x1 - c.x0) * (c.y1 - c.y0) * (c.z1 - c.z0);
+  return box - (n ? (n.x1 - n.x0) * (n.y1 - n.y0) * (c.z1 - n.z0) : 0) + 2 * RIB * RIB * (c.y1 - c.y0);
 }
 
-// An open-fronted box: floor, roof, back and two sides. Built standing, so
-// it prints lying on its back like the rooms.
+// The car's magnets: their diameter `d` and height `h`, and `at`, where each
+// sits, [x, y] in the car's own coordinates, spread across its back with
+// their posts standing on its floor. Null when none fits: the back of the
+// room is too thin to seat one behind its skin, or the car to take its post.
+export function liftMagnets(cfg) {
+  const c = carBox(cfg), w = c.x1 - c.x0, tall = c.y1 - c.y0 - 2 * cfg.panel;
+  const post = (d) => d + 2 * (MAG_FIT + BOSS);
+  const across = (d) => Math.floor(w / post(d));
+  const fits = MAGNETS.filter(([d, h]) => cfg.back >= SKIN + h + MAG_FIT && post(d) <= Math.min(w, tall));
+  if (!fits.length) return null;
+  const load = MAG_MARGIN * carVolume(c) * PLA * 9.81e-3;
+  const most = Math.max(...fits.map(([d]) => across(d)));
+  let pick = null;
+  for (let n = Math.max(1, Math.ceil(w / MAG_PITCH)); !pick && n <= most; n++) {
+    const m = fits.find(([d, , hold]) => n <= across(d) && n * hold >= load);
+    if (m) pick = [m, n];
+  }
+  // Nothing holds it that much: as many of whichever holds most.
+  if (!pick) {
+    const m = fits.reduce((a, b) => (across(b[0]) * b[2] > across(a[0]) * a[2] ? b : a));
+    pick = [m, across(m[0])];
+  }
+  const [[d, h], n] = pick, y = c.y0 + cfg.panel + d / 2 + MAG_FIT + BOSS;
+  return { d, h, at: Array.from({ length: n }, (_, i) => [c.x0 + ((i + 0.5) * w) / n, y]) };
+}
+
+// An open-fronted box: floor, roof, back and two sides, with a guide rib up
+// the outside of each side, in line with the shaft wall's groove. Each rib
+// starts halfway into its side so the two fuse. Each magnet drops into a post
+// on the back from inside, onto a skin of the back panel; where the car is
+// solid, its hole runs out through the front. Built standing, so it prints
+// lying on its back like the rooms.
 export function buildLift(k, cfg) {
-  const c = carBox(cfg), n = c.inside;
+  const c = carBox(cfg), n = c.inside, e = cfg.panel / 2;
   let car = cuboid(k, c.x0, c.x1, c.y0, c.y1, c.z0, c.z1);
   if (n) car = car.subtract(cuboid(k, n.x0, n.x1, n.y0, n.y1, n.z0, c.z1 + 1));
-  return car.subtract(k.Manifold.union(carNotches(cfg, c).map(([x0, x1, z0, z1]) => cuboid(k, x0, x1, c.y0 - 1, c.y1 + 1, z0, z1))));
+  const ribs = [[c.x0 + e, -1], [c.x1 - e, 1]].map(([x, dir]) => vee(k, x, dir, cfg.depth / 2, RIB + e, c.y0, c.y1));
+  const m = liftMagnets(cfg);
+  if (!m) return k.Manifold.union([car, ...ribs]);
+  const r = m.d / 2 + MAG_FIT, seat = c.z0 + SKIN;
+  car = k.Manifold.union([car, ...ribs, ...m.at.map(([x, y]) => disc(k, x, y, r + BOSS, c.z0, seat + m.h + MAG_FIT))]);
+  return car.subtract(k.Manifold.union(m.at.map(([x, y]) => disc(k, x, y, r, seat, c.z1 + 1))));
 }
 
 export function buildBlock(k, kind, cfg) {
@@ -432,9 +533,15 @@ export function stairwell(room, x0, x1, z0, z1, wall) {
 
 // The piece of a lift's shaft in `room`, in the room's own coordinates: its
 // outer left edge at absolute x0, its depth from z0 (measured from the back
-// face) forward.
+// face) forward. `floor` and `ceiling` are set where the shaft carries on
+// through them, and its grooves with it. `magnets` are the car's, where they
+// are when it stands on this room's floor, or null.
 export function liftShaft(room, x0, cfg, z0) {
-  return { x: x0 - room.x, w: cfg.w, t: liftWall(cfg), z0, z1: z0 + cfg.depth, rail: cfg.rail };
+  const x = x0 - room.x, y = innerBox(room.cfg).y0, m = liftMagnets(cfg);
+  return {
+    x, w: cfg.w, t: liftWall(cfg), z0, z1: z0 + cfg.depth, floor: false, ceiling: false,
+    magnets: m && { d: m.d, h: m.h, at: m.at.map(([mx, my]) => [x + mx, y + my]) },
+  };
 }
 
 // ---------------------------------------------------------------- 2D front view
@@ -446,9 +553,9 @@ export function frontProfile(k, kind, cfg) {
   if (kind === 'furniture' && isStairs(cfg)) {
     return { shell: stairsSection(k, cfg).toPolygons(), room: [], holes: [], marks: [] };
   }
-  // The car's frame round its inside, and its notches edge-on, in line with
-  // the grooves in the shaft walls. `shaft`, the two walls it runs between,
-  // belongs to the rooms on the shelf and is drawn only on the palette.
+  // The car's frame round its inside, and its ribs end-on, standing off its
+  // sides into the grooves in the shaft walls. `shaft`, the two walls it runs
+  // between, belongs to the rooms on the shelf and is drawn only on the palette.
   if (kind === 'furniture' && isLift(cfg)) {
     const c = carBox(cfg), n = c.inside, { w, h } = blockSize(kind, cfg);
     const box = rect(k, c.x0, c.y0, c.x1, c.y1);
@@ -457,7 +564,7 @@ export function frontProfile(k, kind, cfg) {
       shell: (inside ? box.subtract(inside) : box).toPolygons(),
       room: inside ? inside.toPolygons() : [],
       holes: [],
-      marks: carNotches(cfg, c).map(([x0, x1]) => [x0, c.y0, x1, c.y1]),
+      marks: [[c.x0 - RIB, c.y0, c.x0, c.y1], [c.x1, c.y0, c.x1 + RIB, c.y1]],
       shaft: [...rect(k, 0, 0, c.t, h).toPolygons(), ...rect(k, w - c.t, 0, w, h).toPolygons()],
     };
   }
@@ -485,13 +592,14 @@ export function frontProfile(k, kind, cfg) {
     if (wall === 'ceiling') marks.push([bb.min[0], b.y1, bb.max[0], cfg.h]);
     if (wall === 'floor') marks.push([bb.min[0], 0, bb.max[0], b.y0]);
   }
-  // Lift shaft walls are part of the room's frame; their grooves show edge-on
-  // up the faces the car runs between, lined up from floor to floor.
+  // Lift shaft walls are part of the room's frame; their grooves show end-on
+  // up the faces the car runs between, and on through an open floor or
+  // ceiling, lined up from storey to storey.
   let shell = outer.subtract(inner);
   for (const s of cfg.shafts || []) {
-    const { walls, grooves } = shaftParts(s);
+    const { walls, faces, y0, y1 } = shaftParts(s, cfg);
     shell = shell.add(k.CrossSection.union(walls.map(([x0, x1]) => rect(k, x0, b.y0, x1, b.y1))).intersect(outer));
-    for (const [x0, x1] of grooves) marks.push([x0, b.y0, x1, b.y1]);
+    for (const [x, dir] of faces) marks.push([Math.min(x, x + dir * GROOVE), y0, Math.max(x, x + dir * GROOVE), y1]);
   }
   return {
     shell: shell.toPolygons(),

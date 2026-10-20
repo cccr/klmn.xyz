@@ -6,7 +6,7 @@ import {
   PRESETS, OPENING_PRESETS, CORNERS, WALLS, SHAPES,
   blockSize, buildBlock, frontProfile, meshArrays, toSTL, innerBox,
   defaultStairs, isStairs, stairwell, ROOM_DEFAULTS, migrateOpening,
-  defaultLift, isLift, liftShaft, liftWall, RAILS,
+  defaultLift, isLift, liftShaft, liftWall, liftMagnets,
 } from './geometry.js';
 
 const k = await Module();
@@ -134,6 +134,8 @@ const defaultFor = (it, dim, s = state.settings) => (dim === 'w' ? s[it.size ===
 const FACTORY_V2 = { ...ROOM_DEFAULTS, narrow: 78 };
 
 function migrateItem(it) {
+  // Lifts used to run on a strand of filament glued into each shaft wall.
+  if (isLift(it.cfg)) delete it.cfg.rail;
   if (it.kind !== 'room') return it;
   const c = it.cfg;
   if (it.size !== 'wide' && it.size !== 'narrow') it.size = c.w <= (FACTORY_V2.wide + FACTORY_V2.narrow) / 2 ? 'narrow' : 'wide';
@@ -336,35 +338,39 @@ function cutStairwells(layout, rooms) {
 }
 
 // A lift's car takes its height from the room it stands in, its depth as the
-// stairs do, and its walls from the shelf's thick walls. Its shaft rises
-// through `floors` storeys: each room on the way gets the shaft's walls, and
-// each ceiling it passes opens along with the floor above, until no room on
-// top holds the whole shaft. The info records how far it got. Recomputed
-// from scratch on every settle, after the stairs.
+// stairs do, and its panels from the shelf's thin walls; the shaft's walls
+// are the shelf's thick ones, and its magnets sit in that room's back. Its
+// shaft rises through `floors` storeys: each room on the way gets the shaft's
+// walls, and each ceiling it passes opens along with the floor above, the
+// grooves running on through both, until no room on top holds the whole
+// shaft. The info records how far it got. Recomputed from scratch on every
+// settle, after the stairs.
 function raiseLifts(layout, rooms, info) {
   for (const m of rooms) m.cfg.shafts = [];
   for (const it of layout.items) {
     if (isRoom(it) || !isLift(it.cfg)) continue;
     const c = it.cfg;
     c.wall = layout.settings.thick;
+    c.panel = layout.settings.thin;
     const host = it.parent != null && rooms.find((m) => m.id === it.parent);
     if (!host) {
       const d = defaultLift();
-      Object.assign(c, { rise: d.rise, depth: d.depth });
+      Object.assign(c, { rise: d.rise, depth: d.depth, back: d.back });
       info.set(it.id, { reach: 0 });
       continue;
     }
     const b = innerBox(host.cfg);
     c.rise = b.y1 - b.y0;
     c.depth = (host.cfg.d - host.cfg.walls.back) / 2;
+    c.back = host.cfg.walls.back;
     const t = liftWall(c), x0 = host.x + it.x, x1 = x0 + sizeOf(it).w;
     const z0 = host.cfg.walls.back, z1 = z0 + c.depth;
     const holds = (m) => {
       const mb = innerBox(m.cfg);
       return x0 - m.x >= mb.x0 - 0.01 && x1 - m.x <= mb.x1 + 0.01 && m.cfg.walls.back <= z0 + 0.01 && m.cfg.d >= z1 - 0.01;
     };
-    let room = host, reach = 1;
-    host.cfg.shafts.push(liftShaft(host, x0, c, z0));
+    let room = host, reach = 1, shaft = liftShaft(host, x0, c, z0);
+    host.cfg.shafts.push(shaft);
     while (reach < c.floors) {
       const top = room.y + sizeOf(room).h;
       const above = rooms.find((m) => Math.abs(m.y - top) < 0.01 && holds(m));
@@ -373,7 +379,9 @@ function raiseLifts(layout, rooms, info) {
         const o = stairwell(m, x0 + t, x1 - t, z0, z1, wall);
         if (o) m.cfg.stairwells.push(o);
       }
-      above.cfg.shafts.push(liftShaft(above, x0, c, z0));
+      shaft.ceiling = true;
+      shaft = { ...liftShaft(above, x0, c, z0), floor: true };
+      above.cfg.shafts.push(shaft);
       room = above;
       reach++;
     }
@@ -945,10 +953,15 @@ function renderSelection(layout) {
   box.innerHTML = `${where}${info?.tips ? ', <span class="sh-warn">overhangs and will tip</span>' : ''}${isLift(it.cfg) && info?.reach ? liftReach(it.cfg, info.reach) : ''}`;
 }
 
-// How far a lift's shaft got, and why it stopped short.
+// How far a lift's shaft got, and why it stopped short; and what holds the
+// car at a floor, or that nothing does.
 function liftReach(c, reach) {
-  if (reach >= c.floors) return `, serving ${reach} floors`;
-  return `, <span class="sh-warn">serving ${reach} of ${c.floors} floors: no room above holds the shaft</span>`;
+  const m = liftMagnets(c);
+  const n = m?.at.length;
+  const latch = m ? `, ${n} magnet${n === 1 ? '' : 's'} ${m.d} × ${m.h} mm a floor`
+    : `, <span class="sh-warn">no magnets: the back of its room is too thin, or the car too small, to seat one</span>`;
+  if (reach >= c.floors) return `, serving ${reach} floors${latch}`;
+  return `, <span class="sh-warn">serving ${reach} of ${c.floors} floors: no room above holds the shaft</span>${latch}`;
 }
 
 // ------------------------------------------------------------------ block line
@@ -1392,8 +1405,6 @@ function furniturePanels(it, layout) {
   const c = it.cfg;
   if (isLift(c)) {
     const reach = layout.info?.get(it.id)?.reach ?? 0;
-    const rail = (v) => `<button type="button" class="sh-jig-btn sh-jig-wide${v === c.rail ? ' is-on' : ''}" data-jig="rail" data-v="${v}"
-      aria-pressed="${v === c.rail}" title="${v} mm filament" aria-label="Rail: ${v} mm filament">${v} mm</button>`;
     return [
       sizePanel(it, 'floors', 'top', 'Floors', 'Floors', 'cfg.floors', {
         unit: '', step: 1, min: 2, max: 12,
@@ -1402,14 +1413,8 @@ function furniturePanels(it, layout) {
             : 'Each room the shaft passes gets its walls, and its ceiling and the floor above open for the car',
       }),
       sizePanel(it, 'width', 'bottom', 'Shaft width', 'Width', 'cfg.w', {
-        min: 12, max: 200, hint: `Inside the shaft walls; the car is ${len(0.3)} narrower each side`,
+        min: 12, max: 200, hint: `Inside the shaft walls; the car is ${len(0.3)} narrower each side, and a rib up each side runs in a groove up the wall`,
       }),
-      {
-        id: 'rail', side: 'right', name: 'Rail',
-        title: `Rail: ${c.rail} mm filament, glued into the groove up each shaft wall. The car's notches ride on it`,
-        tab: { html: `<span class="sh-jig-name">Rail</span><span class="sh-jig-val">${c.rail} mm</span>` },
-        body: RAILS.map(rail).join(''),
-      },
     ];
   }
   if (isStairs(c)) {
@@ -1671,10 +1676,8 @@ function drawJigHighlight(layout) {
   if (!isRoom(it)) {
     if (isStairs(c)) rect(0, 0, sz.w, sz.h);
     else if (isLift(c)) {
-      // The shaft up to the ceiling of its last floor; for the rail, its two walls.
-      const top = (layout.info?.get(it.id)?.top ?? a.y + sz.h) - a.y, t = liftWall(c);
-      if (w === 'rail') { rect(0, 0, t, top); rect(sz.w - t, 0, sz.w, top); }
-      else rect(0, 0, sz.w, top);
+      // The shaft up to the ceiling of its last floor.
+      rect(0, 0, sz.w, (layout.info?.get(it.id)?.top ?? a.y + sz.h) - a.y);
     } else {
       const mid = sz.w / 2;
       if (w === 'topD') rect(mid - c.topD / 2, c.height - 3, mid + c.topD / 2, c.height);
@@ -1802,7 +1805,6 @@ jig.addEventListener('click', (e) => {
     if (e.shiftKey) for (const key of CORNERS) m.cfg[ring][key] = to;
     else m.cfg[ring][c] = to;
   } else if (act === 'flip') m.cfg.flip = !m.cfg.flip;
-  else if (act === 'rail') m.cfg.rail = Number(b.dataset.v);
   else return;
   reflow(layout, old);
   commit(layout);
@@ -2274,8 +2276,21 @@ $('zip').onclick = () => {
     files[`${g.file}_x${g.qty}.stl`] = new Uint8Array(stlFor(g));
     lines.push(`${g.qty} x ${g.file}.stl  (${g.label})`);
   }
-  const rails = [...new Set(state.items.filter((i) => !isRoom(i) && isLift(i.cfg)).map((i) => i.cfg.rail))];
-  if (rails.length) lines.push('', `Lifts: glue a strand of ${rails.join(' or ')} mm filament into the groove up each shaft wall, in every room the shaft passes. The car's notches ride on them.`);
+  const lifts = state.items.filter((i) => !isRoom(i) && isLift(i.cfg));
+  if (lifts.length) {
+    // Disc magnets by size: the car's, and as many again on each floor it serves.
+    const mags = new Map();
+    for (const i of lifts) {
+      const m = liftMagnets(i.cfg);
+      if (!m) continue;
+      const key = `${m.d} x ${m.h} mm`;
+      mags.set(key, (mags.get(key) || 0) + m.at.length * (1 + (state.info?.get(i.id)?.reach ?? 0)));
+    }
+    lines.push('', 'Lifts: the ribs up the car run in the grooves up the shaft walls. Lower the car into its shaft through the open ceiling of the room it stands in, before stacking the room above.');
+    if (mags.size) {
+      lines.push(`Magnets (disc, N35 or stronger): ${[...mags].map(([key, n]) => `${n} x ${key}`).join(', ')}. Press one into each post inside a car, then one into each pocket in the back of every room its shaft passes. Before each room magnet goes in, let it jump onto the back of the car over a car magnet: the face that touches the car goes into the pocket first.`);
+    }
+  }
   files['print_list.txt'] = new TextEncoder().encode(lines.join('\n'));
   files['layout.json'] = new TextEncoder().encode(layoutFile());
   save(new Blob([zipSync(files, { level: 6 })], { type: 'application/zip' }), 'shelf_house.zip');

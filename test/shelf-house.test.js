@@ -70,44 +70,57 @@ test('a room cuts its stairwells and shows them edge-on in the front view', asyn
   assert.deepStrictEqual(g.frontProfile(k, 'room', wide).marks, [[90, 0, cfg.w - cfg.walls.right, cfg.walls.floor]]);
 });
 
-test('a lift car is one open-fronted solid, clear of its shaft, with a notch up each side', async () => {
+// A guide rib stands 1.5 mm off each side of the car; its V-groove is 0.3 mm
+// clear of it on both flanks, so its point is 0.3·√2 past the rib's.
+const RIB = 1.5, GROOVE = RIB - 0.3 + 0.3 * Math.SQRT2;
+
+test('a lift car is one open-fronted solid, clear of its shaft, with a guide rib up each side', async () => {
   const { g, k } = await geometry();
-  const cfg = g.defaultLift({ w: 32, rise: 66, depth: 26.5, wall: 3, rail: 1.75 });
+  // No back to seat magnets in: the latch has a test of its own.
+  const cfg = g.defaultLift({ w: 32, rise: 66, depth: 26.5, back: 0, wall: 3, panel: 1.5 });
   const car = g.buildLift(k, cfg);
   assert.strictEqual(car.status(), 'NoError');
   assert.strictEqual(car.genus(), 0);
-  // 0.3 mm clear of each shaft wall and of the back, 1 mm under the ceiling.
+  // 0.3 mm clear of each shaft wall, of the back and of the front edge of
+  // the openings it rides through, 1 mm under the ceiling; the ribs reach
+  // past the walls' faces into their grooves.
   const bb = car.boundingBox();
-  assert.deepStrictEqual([...bb.min, ...bb.max].map((v) => Math.round(v * 100) / 100), [3.3, 0, 0.3, 34.7, 65, 26.5]);
+  assert.deepStrictEqual([...bb.min, ...bb.max].map((v) => Math.round(v * 100) / 100), [1.8, 0, 0.3, 36.2, 65, 26.2]);
   assert.deepStrictEqual(g.blockSize('furniture', cfg), { w: 38, h: 66, d: 26.5 });
-  // Floor, roof, back and two sides, less a notch half the rail deep and the
-  // rail plus 0.3 mm each side wide up each side.
-  const box = 31.4 * 65 * 26.2, inside = 25.4 * 59 * 23.2, notches = 2 * 0.875 * 2.35 * 65;
-  assert.ok(Math.abs(car.volume() - (box - inside - notches)) < 1e-3, `${car.volume()}`);
-  // Seen from the front: a frame round its inside, the notches edge-on.
+  // Floor, roof, back and two sides, 1.5 mm panels, and up each side a
+  // right-angled triangle 3 mm across its base and 1.5 mm high.
+  const box = 31.4 * 65 * 25.9, inside = 28.4 * 62 * 24.4, ribs = 2 * RIB * RIB * 65;
+  assert.ok(Math.abs(car.volume() - (box - inside + ribs)) < 1e-3, `${car.volume()}`);
+  // Its panels follow the shelf's thin walls.
+  const thinner = g.buildLift(k, { ...cfg, panel: 1 });
+  assert.ok(Math.abs(thinner.volume() - (box - 29.4 * 63 * 24.9 + ribs)) < 1e-3, `${thinner.volume()}`);
+  // Seen from the front: a frame round its inside, the ribs end-on.
   const prof = g.frontProfile(k, 'furniture', cfg);
-  assert.deepStrictEqual(prof.marks, [[3.3, 0, 4.175, 65], [33.825, 0, 34.7, 65]]);
+  assert.deepStrictEqual(prof.marks.map((m) => m.map((v) => Math.round(v * 100) / 100)), [[1.8, 0, 3.3, 65], [34.7, 0, 36.2, 65]]);
   assert.ok(prof.room.length && prof.shell.length);
 });
 
-test('a lift shaft is built into a room, and a strand glued in its grooves clears the car', async () => {
+test('a lift shaft is built into a room, and the car runs in its grooves on a sliding fit', async () => {
   const { g, k } = await geometry();
   const cfg = g.defaultRoom();
-  const lift = g.defaultLift({ rise: 66, depth: 26.5, wall: 3, rail: 1.75 });
+  // Without magnets, which have a test of their own.
+  const lift = g.defaultLift({ rise: 66, depth: 26.5, back: 0, wall: 3, panel: 1.5 });
   // Outer left edge at x 40, from the back wall's inside face forward.
   const s = g.liftShaft({ x: 0, y: 0, cfg }, 40, lift, 3);
-  assert.deepStrictEqual(s, { x: 40, w: 32, t: 3, z0: 3, z1: 29.5, rail: 1.75 });
+  assert.deepStrictEqual(s, { x: 40, w: 32, t: 3, z0: 3, z1: 29.5, floor: false, ceiling: false, magnets: null });
   const shaft = { ...cfg, shafts: [s] };
   const room = g.buildRoom(k, shaft);
   assert.strictEqual(room.status(), 'NoError');
   const b = g.innerBox(cfg), ih = b.y1 - b.y0;
-  // Two walls the shaft's depth and the room's inside height, less a groove
-  // half the rail deep and 0.2 mm wider than it up each.
+  // Two walls the shaft's depth and the room's inside height, less a 90°
+  // V-groove up each, GROOVE deep and twice that across its mouth.
   const added = room.volume() - g.buildRoom(k, cfg).volume();
-  assert.ok(Math.abs(added - 2 * (3 * ih * 26.5 - 0.875 * 1.95 * ih)) < 0.01, `added ${added} mm³`);
-  // The walls join the room's frame on the front view; the grooves show edge-on.
+  assert.ok(Math.abs(added - 2 * (3 * ih * 26.5 - GROOVE * GROOVE * ih)) < 0.01, `added ${added} mm³`);
+  // The walls join the room's frame on the front view; the grooves show end-on.
+  const near = (a, e) => a.length === e.length && a.every((v, i) => Math.abs(v - e[i]) < 1e-9);
   const prof = g.frontProfile(k, 'room', shaft);
-  assert.deepStrictEqual(prof.marks, [[42.125, b.y0, 43, b.y1], [75, b.y0, 75.875, b.y1]]);
+  assert.strictEqual(prof.marks.length, 2);
+  assert.ok(near(prof.marks[0], [43 - GROOVE, b.y0, 43, b.y1]) && near(prof.marks[1], [75, b.y0, 75 + GROOVE, b.y1]), JSON.stringify(prof.marks));
   const area = (polys) => polys.reduce((sum, p) => sum + p.reduce((a, [x, y], i) => {
     const [x2, y2] = p[(i + 1) % p.length];
     return a + (x * y2 - x2 * y) / 2;
@@ -115,22 +128,95 @@ test('a lift shaft is built into a room, and a strand glued in its grooves clear
   const plain = g.frontProfile(k, 'room', cfg);
   assert.ok(Math.abs(area(prof.shell) - area(plain.shell) - 2 * 3 * ih) < 0.01);
 
-  // A strand of filament in each groove, its middle on the wall's face: it
-  // fits the groove and rides in the car's notch without touching either.
+  // The car in its shaft touches nothing, nor when it is pushed nearly the
+  // whole running clearance any way across or along the shaft. Pulled
+  // forward further, its ribs bear on the grooves' flanks: they hold it in.
   const car = g.buildLift(k, lift).translate([40, b.y0, 3]);
-  for (const x of [43, 75]) {
-    const strand = k.Manifold.cylinder(ih, 0.875, 0.875, 24).rotate([-90, 0, 0]).translate([x, b.y0, (3 + 29.5) / 2]);
-    assert.ok(strand.intersect(room).volume() < 1e-6, `room at x ${x}`);
-    assert.ok(strand.intersect(car).volume() < 1e-6, `car at x ${x}`);
-  }
+  const hits = (dx, dz) => car.translate([dx, 0, dz]).intersect(room).volume() > 1e-6;
+  for (const [dx, dz] of [[0, 0], [-0.29, 0], [0.29, 0], [0, -0.29], [0, 0.29]]) assert.ok(!hits(dx, dz), `car moved ${dx}, ${dz}`);
+  assert.ok(hits(0, 0.6));
 
-  // With the floor and ceiling open between the walls, the car rides up
-  // from the room below, through this one and on into the room above.
+  // With the floor and ceiling open between the walls and the grooves carried
+  // on through both, the car rides up from the room below, through this one
+  // and on into the room above.
   const open = ['floor', 'ceiling'].map((wall) => g.stairwell({ x: 0, y: 0, cfg }, 43, 75, 3, 29.5, wall));
-  const passed = g.buildRoom(k, { ...shaft, stairwells: open });
+  const through = { ...s, floor: true, ceiling: true };
+  const passed = g.buildRoom(k, { ...shaft, shafts: [through], stairwells: open });
   for (const dy of [-40, -10, 0, 30, 60]) {
     assert.ok(car.translate([0, dy, 0]).intersect(passed).volume() < 1e-6, `car ${dy} mm up`);
+    // Its front clears the front edge of the openings, as its sides clear the walls.
+    assert.ok(car.translate([0, dy, 0.29]).intersect(passed).volume() < 1e-6, `car ${dy} mm up and forward`);
   }
+  // The grooves run out through the floor and the ceiling, and show so.
+  const t = cfg.walls;
+  const shut = g.buildRoom(k, { ...shaft, stairwells: open });
+  const lost = shut.volume() - passed.volume();
+  assert.ok(Math.abs(lost - 2 * GROOVE * GROOVE * (t.floor + t.ceiling)) < 0.01, `removed ${lost} mm³`);
+  const marks = g.frontProfile(k, 'room', { ...shaft, shafts: [through] }).marks;
+  assert.ok(near(marks[0], [43 - GROOVE, 0, 43, cfg.h]), JSON.stringify(marks));
+  // Without them the ceiling stops the ribs.
+  assert.ok(car.translate([0, 30, 0]).intersect(shut).volume() > 1e-6);
+});
+
+test('magnets in the car and the back wall latch it at each floor', async () => {
+  const { g, k } = await geometry();
+  const cfg = g.defaultRoom();
+  const lift = g.defaultLift({ w: 32, rise: 66, depth: 26.5, back: 3, wall: 3, panel: 1.5 });
+  const b = g.innerBox(cfg);
+  const round = (at) => at.map(([x, y]) => [Math.round(x * 100) / 100, Math.round(y * 100) / 100]);
+  // A car this size takes one 4 × 2 mm disc, which holds it three times over:
+  // on its back, centred, its post standing on the floor panel.
+  const m = g.liftMagnets(lift);
+  assert.deepStrictEqual({ ...m, at: round(m.at) }, { d: 4, h: 2, at: [[19, 4.4]] });
+  const car = g.buildLift(k, lift);
+  assert.strictEqual(car.status(), 'NoError');
+  assert.strictEqual(car.genus(), 0);
+
+  // The disc fits the car's pocket, 0.6 mm in front of its back face, and the
+  // pocket is open above it; the room's fits its pocket from behind, 0.6 mm
+  // short of the face the car runs on.
+  const disc = (x, y, z) => k.Manifold.cylinder(m.h, m.d / 2, m.d / 2, 64).translate([x, y, z]);
+  const [[mx, my]] = m.at;
+  assert.ok(disc(mx, my, 0.9).intersect(car).volume() < 1e-6);
+  assert.ok(disc(mx, my, 0.85).intersect(car).volume() > 1e-6);
+  assert.ok(disc(mx, my, 3).intersect(car).volume() < 1e-6, 'drops in from inside');
+  const s = g.liftShaft({ x: 0, y: 0, cfg }, 40, lift, 3);
+  assert.deepStrictEqual({ ...s.magnets, at: round(s.magnets.at) }, { d: 4, h: 2, at: [[59, b.y0 + 4.4]] });
+  const room = g.buildRoom(k, { ...cfg, shafts: [s] });
+  assert.strictEqual(room.status(), 'NoError');
+  const [[rx, ry]] = s.magnets.at;
+  assert.ok(disc(rx, ry, 0.4).intersect(room).volume() < 1e-6);
+  assert.ok(disc(rx, ry, 0.45).intersect(room).volume() > 1e-6);
+  assert.ok(disc(rx, ry, -1.5).intersect(room).volume() < 1e-6, 'goes in from the back');
+  // Standing on the floor, the car's magnet is square in front of the room's.
+  assert.ok(Math.abs(40 + mx - rx) < 1e-9 && Math.abs(b.y0 + my - ry) < 1e-9);
+
+  // A room with a thinner back than the one the lift stands in gets a pad up
+  // to the car, so its magnet sits the same distance behind the car.
+  const thin = { ...cfg, walls: { ...cfg.walls, back: 1.5 } };
+  const padded = g.buildRoom(k, { ...thin, shafts: [s] });
+  assert.ok(disc(rx, ry, 0.4).intersect(padded).volume() < 1e-6);
+  assert.ok(disc(rx, ry, 0.45).intersect(padded).volume() > 1e-6);
+
+  // Size follows the car's weight and the count its width: a taller car
+  // takes a bigger magnet, a wider one more of them, one each 50 mm, spread
+  // evenly across its back; a car with more posts than a size has room for
+  // takes another.
+  const vol = (q) => q.d * q.d * q.h;
+  const tall = g.liftMagnets({ ...lift, rise: 200 });
+  assert.strictEqual(tall.at.length, 1);
+  assert.ok(vol(tall) > vol(m), JSON.stringify(tall));
+  const wide = g.liftMagnets({ ...lift, w: 200 });
+  assert.strictEqual(wide.at.length, 4);
+  const gaps = wide.at.slice(1).map(([x], i) => x - wide.at[i][0]);
+  assert.ok(gaps.every((d) => Math.abs(d - gaps[0]) < 1e-9) && wide.at.every(([, y]) => y === wide.at[0][1]));
+  // A thinner back takes a thinner magnet; one too thin for any, or a car
+  // too small for a post, takes none, and the car is left plain.
+  assert.strictEqual(g.liftMagnets({ ...lift, back: 2.5 }).h, 1);
+  assert.strictEqual(g.liftMagnets({ ...lift, back: 1.5 }), null);
+  assert.strictEqual(g.liftMagnets({ ...lift, w: 4 }), null);
+  assert.strictEqual(g.buildLift(k, { ...lift, back: 1.5 }).volume(), g.buildLift(k, { ...lift, back: 0 }).volume());
+  assert.strictEqual(g.liftShaft({ x: 0, y: 0, cfg }, 40, { ...lift, back: 1.5 }, 3).magnets, null);
 });
 
 test('a centred window stays in the middle of its wall when the room gets shorter', async () => {
@@ -729,10 +815,14 @@ test('a lift raises its shaft through the floors set, as far as rooms above hold
 
     await p.evalJson("(__sh.pick(1), document.querySelector('#palette [aria-label=\"Add Lift\"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), true)");
     const id = await p.evalJson("Math.max(...JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items.map((i) => i.id))");
-    assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('.sh-jig-panel')].map((e) => e.dataset.panel)"), ['floors', 'width', 'rail']);
+    assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('.sh-jig-panel')].map((e) => e.dataset.panel)"), ['floors', 'width']);
     assert.deepStrictEqual(await shafts(), [1, 1, 0]);
     assert.deepStrictEqual(await holes(), [['ceiling'], ['floor'], []]);
     assert.match(await where(), /serving 2 floors/);
+    // The room's thick back seats the magnets that latch the car at each floor.
+    assert.doesNotMatch(await where(), /no magnets/);
+    assert.match(await where(), /1 magnet 4 × 2 mm a floor/);
+    assert.ok((await column('shafts')).slice(0, 2).every((s) => s[0].magnets.at.length === 1));
     assert.ok(await p.evalJson("[...document.querySelectorAll('#bom td')].some((td) => td.textContent.trim() === 'Lift')"));
 
     // Three floors: room 5's left wall stands where the shaft would go up, so it stops.
@@ -745,19 +835,23 @@ test('a lift raises its shaft through the floors set, as far as rooms above hold
     assert.deepStrictEqual(await shafts(), [1, 1, 1]);
     assert.deepStrictEqual(await holes(), [['ceiling'], ['floor', 'ceiling'], ['floor']]);
     assert.match(await where(), /serving 3 floors/);
-    // Every room's grooves are in the same place, so one rail runs up through them.
-    const lines = await p.evalJson(`[1, 3, 5].map((id) => {
+    // Every room's grooves are in the same place, and the car's ribs in line
+    // with them, so the car runs up through them all.
+    const lines = await p.evalJson(`[1, 3, 5, ${id}].map((id) => {
       const r = document.querySelector('#mat .block[data-id="' + id + '"]');
-      return [...r.querySelectorAll('.mark')].map((m) => m.getBBox()).filter((b) => b.width < 1).map((b) => Math.round(b.x * 1000) / 1000).sort((a, b) => a - b);
+      // The edge toward the car: the left mark's right edge, the right mark's left.
+      return [...r.querySelectorAll('.mark')].map((m) => m.getBBox()).filter((b) => b.width < 2).sort((a, b) => a.x - b.x)
+        .map((b, i) => Math.round((i ? b.x : b.x + b.width) * 1000) / 1000);
     })`);
     assert.strictEqual(lines[0].length, 2);
     assert.deepStrictEqual(lines[1], lines[0]);
     assert.deepStrictEqual(lines[2], lines[0]);
-
-    // The other common filament: every groove and both notches follow.
-    await p.evalJson("(document.querySelector('[data-panel=rail] .sh-jig-tab').focus(), document.querySelector('[data-jig=rail][data-v=\"2.85\"]').click(), true)");
-    assert.strictEqual((await items()).find((i) => i.id === id).cfg.rail, 2.85);
-    assert.deepStrictEqual((await column('shafts')).map((s) => s[0].rail), [2.85, 2.85, 2.85]);
+    // The ribs stand 0.3 mm in from the walls' faces: the running clearance.
+    assert.deepStrictEqual(lines[3].map((x, i) => Math.round((x - lines[0][i]) * 10) / 10), [0.3, -0.3]);
+    // The grooves run on through the ceilings and floors between the three.
+    assert.deepStrictEqual((await column('shafts')).map((s) => [s[0].floor, s[0].ceiling]), [[false, true], [true, true], [true, false]]);
+    // The car's panels are the shelf's thin walls.
+    assert.strictEqual((await items()).find((i) => i.id === id).cfg.panel, await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).settings.thin"));
 
     // Deleting it closes every room again.
     await p.evalJson("(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' })), true)");
