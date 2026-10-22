@@ -242,6 +242,38 @@ test('a doorway stands on the floor whatever the room height', async () => {
   }
 });
 
+// An arch is a straight body under a round top. The top used to be a whole
+// circle, so on an opening wider than it was tall (the + adds a 34 × 30 window)
+// its lower half poked out under the bottom and gave the hole a curve there.
+test('an arch stays inside its own box, with a flat bottom, whatever its proportions', async () => {
+  const { g, k } = await geometry();
+  const cfg0 = g.defaultRoom();
+  const b = g.innerBox(cfg0);
+  const mid = (b.y0 + b.y1) / 2, cx = cfg0.w / 2;
+  for (const [w, h] of [[22, 40], [34, 34], [34, 30], [40, 20], [40, 12], [60, 8]]) {
+    const cfg = g.defaultRoom({ openings: [g.defaultOpening({ wall: 'back', shape: 'arch', w, h })] });
+    const [hole] = g.frontProfile(k, 'room', cfg).holes;
+    const xs = hole.map(([x]) => x), ys = hole.map(([, y]) => y);
+    const label = `${w} × ${h}`;
+    const near = (a, v) => Math.abs(a - v) < 1e-6;
+    assert.ok(near(Math.min(...ys), mid - h / 2), `${label}: bottom ${Math.min(...ys)}`);
+    assert.ok(near(Math.max(...ys), mid + h / 2), `${label}: top ${Math.max(...ys)}`);
+    assert.ok(near(Math.min(...xs), cx - w / 2) && near(Math.max(...xs), cx + w / 2), `${label}: width`);
+    // The bottom is straight: it has just its two corners, and nothing between.
+    assert.strictEqual(hole.filter(([, y]) => near(y, mid - h / 2)).length, 2, `${label}: flat bottom`);
+    // A semicircle on a body where it fits, a flatter arch where it does not.
+    const r = w / 2, ry = Math.min(r, h);
+    const area = w * (h - ry) + (Math.PI * r * ry) / 2;
+    const got = Math.abs(hole.reduce((a, [x, y], i) => { const [x2, y2] = hole[(i + 1) % hole.length]; return a + (x * y2 - x2 * y); }, 0)) / 2;
+    assert.ok(Math.abs(got - area) / area < 0.01, `${label}: area ${got.toFixed(1)} against ${area.toFixed(1)}`);
+    // The solid loses exactly that much of the back wall, and is still one piece.
+    const room = g.buildRoom(k, cfg);
+    const lost = g.buildRoom(k, { ...cfg, openings: [] }).volume() - room.volume();
+    assert.ok(Math.abs(lost - got * cfg.walls.back) / (got * cfg.walls.back) < 0.01, `${label}: the solid loses ${lost.toFixed(1)} mm³`);
+    assert.strictEqual(room.decompose().length, 1, `${label}: one solid`);
+  }
+});
+
 test('an opening saved before anchors cuts the same hole after migration', async () => {
   const { g, k } = await geometry();
   const cfg = g.defaultRoom({ h: 80 });

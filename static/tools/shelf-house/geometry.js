@@ -264,9 +264,13 @@ function openingShape(k, o) {
   const w = Math.max(o.w, 0.5), h = Math.max(o.h, 0.5);
   let s;
   if (o.shape === 'arch') {
-    const r = w / 2;
-    const body = rect(k, -r, 0, r, Math.max(h - r, 0.01));
-    s = body.add(k.CrossSection.circle(r, SEG * 4).translate([0, Math.max(h - r, 0.01)]));
+    // A straight body under the top half of an ellipse: a semicircle where the
+    // opening is tall enough for one, a flatter arch where it is not. Only the
+    // upper half is kept, or the lower half would reach under the bottom of an
+    // opening wider than it is tall.
+    const r = w / 2, ry = Math.min(r, h), spring = h - ry;
+    const top = k.CrossSection.circle(r, SEG * 4).scale([1, ry / r]).translate([0, spring]).intersect(rect(k, -r, spring, r, h));
+    s = spring > 0.001 ? rect(k, -r, 0, r, spring).add(top) : top;
   } else if (o.shape === 'round') {
     s = k.CrossSection.circle(0.5, SEG * 4).scale([w, h]).translate([0, h / 2]);
   } else {
