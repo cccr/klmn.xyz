@@ -1,0 +1,73 @@
+{{ define "head" }}
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="/notes/shelf-house-opening-tile/shelf-house-opening-tile.css">
+{{ end }}
+
+{{ define "main" }}
+{{- /* A design note, reachable only by direct link like /design/. The front
+       view below is a working mock-up of the Shelf House room editor, not the
+       tool itself; every number on the page is measured from it when the page
+       loads, so the ranking cannot drift from what the mock-up does. */ -}}
+<div class="ot">
+    <header class="tool-head">
+        <h1>Where an opening's settings go</h1>
+        <p>In <a href="/tools/shelf-house/">Shelf House</a>'s front view, clicking a room unwraps it.
+           Every wall's controls and openings are laid out around the room, and the view zooms to fit.
+           But an opening's settings panel takes space, and whatever space it takes comes out of the room.
+           Here are six ways to handle that, each measured on the live front view below.</p>
+    </header>
+
+    <section class="ot-hero" aria-labelledby="ot-hero-head">
+        <h2 id="ot-hero-head">How small the room gets</h2>
+        <p>The worst case for each idea, with any opening's panel open, on a laptop-sized front view.
+           The dashed outline is the room with nothing open. Each room is drawn to the same scale.</p>
+        <ol class="ot-figs" id="ot-figs"></ol>
+    </section>
+
+    <nav class="ot-tabs" id="ot-tabs" role="tablist" aria-label="Ideas, best first"></nav>
+
+    <div class="ot-split">
+        <div class="ot-col" id="ot-col">
+            <div class="ot-opts">
+                <span class="ot-opt">View
+                    <span class="seg" role="group" aria-label="View size">
+                        <button type="button" data-size="laptop" class="is-on">760 × 600</button>
+                        <button type="button" data-size="small">560 × 460</button>
+                    </span>
+                </span>
+                <span class="ot-opt">Room card
+                    <span class="seg" role="group" aria-label="Room card">
+                        <button type="button" data-side="left" class="is-on">top left</button>
+                        <button type="button" data-side="right">top right</button>
+                    </span>
+                </span>
+            </div>
+            <div class="trim trim-fit">
+                <div class="ot-fit" id="ot-fit">
+                    <div class="ot-stage" id="ot-stage">
+                        <div class="ot-pane-head">
+                            <h2 id="ot-vname"></h2>
+                            <button type="button" class="chip" id="ot-zout" title="Zoom out">−</button>
+                            <span class="ot-pct num" id="ot-pct">100%</span>
+                            <button type="button" class="chip" id="ot-zin" title="Zoom in">+</button>
+                            <button type="button" class="chip" id="ot-fitbtn" title="Fit the room you are editing, or the whole shelf">fit</button>
+                        </div>
+                        <div class="ot-view" id="ot-view">
+                            <svg id="ot-svg"></svg>
+                            <div class="ot-jig" id="ot-jig"></div>
+                            <span class="ot-readout" id="ot-readout"></span>
+                            <div class="ot-flash" id="ot-flash" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="ot-try">It opens on the floor panel, the worst case. Click other tabs on the room to compare.
+               A click anywhere else on the front view closes the panel, and a second click picks another room.
+               Pinch or Ctrl+scroll to zoom, and drag empty paper to pan.</p>
+        </div>
+        <div class="ot-report prose" id="ot-report" aria-live="polite"></div>
+    </div>
+</div>
+
+<script src="/notes/shelf-house-opening-tile/shelf-house-opening-tile.js"></script>
+{{ end }}

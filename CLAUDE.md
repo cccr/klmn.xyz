@@ -6,7 +6,7 @@ the visitor's browser and ships as plain HTML, CSS and ES5-flavoured JS.
 
 ```
 hugo --quiet          # build to public/
-cd test && npm test   # 120 tests: jsdom for behaviour, headless Chrome for layout
+cd test && npm test   # 162 tests: jsdom for behaviour, headless Chrome for layout
 ```
 
 ## Pages and their files
@@ -129,6 +129,22 @@ Swap three stones across an eleven-dot board against an exact solver.
 - `static/design/design.css`: styles only its own `ds-` scaffolding
 - `static/design/design.js`: reads each printed value back from `style.css`
 - Tests: `test/design.test.js`
+
+### Not a tool: notes — `/notes/<slug>/`
+Design write-ups kept on the site so they can be shared by direct link. Like
+`/design/` they are unlisted: `content/notes/_index.md` renders no section page,
+each note has `_build: list: never` and a noindex meta, and `test/notes.test.js`
+checks that nothing on the site leads to them.
+
+**`shelf-house-opening-tile` — Where an opening's settings go** · `/notes/shelf-house-opening-tile/`
+Six ways to fit an opening's settings panel beside an unwrapped Shelf House room,
+measured on a working mock-up of the front view and ranked.
+- `content/notes/shelf-house-opening-tile/index.md`
+- `themes/klmn-theme/layouts/notes/shelf-house-opening-tile.html`
+- `static/notes/shelf-house-opening-tile/shelf-house-opening-tile.js`, `.css`: the
+  mock-up is self-contained and does not load shelf-house's code. Every number
+  on the page is measured from it once the web fonts have loaded.
+- Tests: `test/notes.test.js`, and its URL is in `test/layout.test.js`
 
 ### Shared by every page
 

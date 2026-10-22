@@ -1,0 +1,185 @@
+/* The opening-tile note. Two halves: the report around it (hero figures,
+   tabs, tables), set in the site's own type and tokens; and the front-view
+   mock-up, which draws the Shelf House room editor as proposed. The mock-up's
+   controls are prefixed m- where a name would otherwise pick up a shared
+   primitive (.btn, .chip, .seg) from style.css. */
+
+/* ── The report ──────────────────────────────────────────────────────── */
+
+.ot .tool-head a { color: var(--reg); text-decoration: underline; }
+
+.ot-hero > h2 {
+    font-family: var(--cond); font-size: var(--fs-head); font-weight: 600;
+    padding-bottom: .375rem; border-bottom: 1px solid var(--rule);
+}
+.ot-hero > p { max-width: 68ch; margin-top: .5rem; font-size: var(--fs-label); line-height: 1.55; color: var(--ink-soft); }
+
+.ot-figs {
+    display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1.25rem;
+    margin-top: 1.25rem;
+}
+@media (max-width: 1000px) { .ot-figs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .ot-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; } }
+.ot-fig { display: block; width: 100%; padding: 0; text-align: left; cursor: pointer; border: 0; }
+.ot-fig > svg { width: 100%; height: auto; background: var(--paper); }
+.ot-fig .ot-frame { fill: none; stroke: var(--rule); stroke-width: 2; stroke-dasharray: 8 6; }
+.ot-fig.is-best .ot-frame { stroke: var(--reg); stroke-dasharray: none; }
+.ot-fig-name { display: flex; gap: .5rem; align-items: baseline; margin-top: .5rem; font-family: var(--cond); font-weight: 600; font-size: var(--fs-label); line-height: 1.3; }
+.ot-fig-size { display: block; margin-top: .125rem; font-family: var(--mono); font-size: var(--fs-note); color: var(--ink-soft); }
+.ot-fig-size.is-lost { color: var(--alert); }
+.ot-fig:hover .ot-fig-name span:last-child { text-decoration: underline; }
+
+/* The rank, a real order: best first. */
+.ot-rank {
+    flex: none; display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem;
+    font-family: var(--mono); font-size: var(--fs-note); font-weight: 600;
+    color: var(--ink); background: var(--paper); border: 1px solid var(--rule);
+}
+.ot-rank.is-best { color: var(--paper); background: var(--reg); border-color: var(--reg); }
+
+.ot-tabs {
+    display: flex; flex-wrap: wrap; gap: 0 1.25rem;
+    margin-top: 2.5rem; border-bottom: 1px solid var(--rule);
+}
+.ot-tab {
+    display: flex; gap: .5rem; align-items: center;
+    padding: .625rem 0; margin-bottom: -1px;
+    font-family: var(--cond); font-weight: 600; font-size: var(--fs-label);
+    color: var(--ink-soft); border: 0; border-bottom: 2px solid transparent; cursor: pointer;
+}
+.ot-tab:hover { color: var(--ink); }
+.ot-tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+
+.ot-split { display: flex; flex-wrap: wrap; gap: 1.5rem 2rem; align-items: flex-start; margin-top: 1.5rem; }
+.ot-col { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.ot-report { flex: 1 1 22rem; min-width: 0; margin-top: 0; }
+.ot-report > h2:first-child { margin-top: 0; }
+
+.ot-opts { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; margin-bottom: .75rem; }
+.ot-opt { display: flex; align-items: center; gap: .5rem; font-size: var(--fs-fine); color: var(--ink-soft); }
+.ot-opt .seg { margin-top: 0; }
+.ot-opt .seg button { padding-inline: .625rem; white-space: nowrap; }
+
+/* The front view keeps its real pixel size and is scaled down as a whole
+   when the column is narrower, so the measurements stay true to it. */
+.ot-fit { position: relative; overflow: hidden; }
+.ot-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.ot-pane-head { display: flex; align-items: center; gap: .375rem; padding-bottom: .5rem; }
+.ot-pane-head h2 { margin-right: auto; font-family: var(--cond); font-weight: 600; font-size: var(--fs-label); }
+.ot-pct { min-width: 3rem; text-align: center; font-family: var(--mono); font-size: var(--fs-note); color: var(--ink-soft); }
+.ot .chip.is-paused { color: var(--reg); border-color: var(--reg); }
+.ot-try { max-width: 62ch; margin-top: .5rem; font-size: var(--fs-fine); line-height: 1.5; color: var(--ink-soft); }
+
+.ot-table-wrap { overflow-x: auto; margin-top: .75rem; }
+.ot-table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: var(--fs-note); }
+.ot-table th, .ot-table td { padding: .3125rem .625rem .3125rem 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rule); }
+.ot-table th { font-family: var(--cond); font-weight: 600; font-size: var(--fs-note); color: var(--ink-soft); }
+.ot-table td { white-space: nowrap; }
+.ot-table td.ot-idea { white-space: normal; font-family: var(--sans); font-size: var(--fs-fine); }
+.ot-table th[colspan] { padding-bottom: 0; border-bottom: 0; }
+.ot-table .is-kept { color: var(--reg); font-weight: 600; }
+.ot-table .is-lost { color: var(--alert); font-weight: 600; }
+.ot-table tr[data-tab] { cursor: pointer; }
+.ot-table tr[data-tab]:hover td { background: var(--ground-sunk); }
+.ot-key { font-size: var(--fs-fine); color: var(--ink-soft); }
+
+.ot-report .notice.is-best { border-left-color: var(--reg); }
+.ot-report .notice.is-poor { border-left-color: var(--alert); }
+.ot-pc { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+@media (max-width: 560px) { .ot-pc { grid-template-columns: 1fr; } }
+.ot-pc h3 { margin-top: 0; }
+
+/* ── The front-view mock-up ──────────────────────────────────────────── */
+
+.ot-view { position: relative; background: var(--paper); border: 1px solid var(--rule); overflow: hidden; touch-action: none; }
+.ot-view > svg { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; }
+.ot-view .rm { cursor: pointer; }
+.ot-jig { position: absolute; inset: 0; pointer-events: none; font-family: var(--sans); font-size: 14px; line-height: 1.45; }
+/* Every control keeps its natural width wherever it is docked: an absolute
+   box near the view's right edge would otherwise shrink to the room left
+   there, and the measurements would depend on where things happen to sit. */
+.ot-jig > * { position: absolute; width: max-content; pointer-events: auto; }
+.ot-readout { position: absolute; left: 8px; bottom: 6px; z-index: 6; padding: 1px 4px; font: 11px var(--mono); color: var(--ink-soft); background: rgba(255, 255, 255, .88); pointer-events: none; }
+.ot-readout b { color: var(--ink); font-weight: 600; }
+.ot-readout b.is-lost { color: var(--alert); }
+
+@keyframes ot-unwrap { from { opacity: 0; transform: translate(var(--fx), var(--fy)) scale(.5); } }
+.ot-jig.anim > * { animation: ot-unwrap .34s cubic-bezier(.2, .8, .2, 1) both; }
+
+.ot-jig .panel { background: var(--paper); border: 1px solid var(--rule); border-radius: 3px; }
+.ot-jig .strip { display: flex; gap: 3px; padding: 3px; }
+.ot-jig .strip.v { flex-direction: column; }
+.ot-jig .m-btn { width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 2px; color: var(--ink-soft); cursor: pointer; }
+.ot-jig .m-btn svg { width: 16px; height: 16px; fill: currentColor; }
+.ot-jig .m-btn:hover { border-color: var(--rule); color: var(--ink); }
+.ot-jig .m-btn.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.ot-jig .tabs { display: flex; gap: 3px; z-index: 2; }
+.ot-jig .tabs.down { align-items: flex-end; }
+.ot-jig .tabs.up { align-items: flex-start; }
+.ot-jig .tabs.side-r, .ot-jig .tabs.side-l { flex-direction: column; }
+.ot-jig .tabs.side-r { align-items: flex-end; }
+.ot-jig .tabs.side-l { align-items: flex-start; }
+.ot-jig .tab { width: 32px; height: 28px; display: grid; place-items: center; padding: 0; background: var(--paper); border: 1px solid var(--rule); border-radius: 3px; color: var(--ink); cursor: pointer; }
+.ot-jig .tab svg { width: 16px; height: 16px; }
+.ot-jig .tab:hover { border-color: var(--ink-soft); }
+.ot-jig .tab.picked { color: var(--reg); border-color: var(--reg); }
+.ot-jig .tabs.down .tab.picked { height: 32px; border-radius: 3px 3px 0 0; border-bottom-color: var(--paper); }
+.ot-jig .tabs.up .tab.picked { height: 32px; border-radius: 0 0 3px 3px; border-top-color: var(--paper); }
+.ot-jig .tabs.side-r .tab.picked { width: 36px; border-radius: 3px 0 0 3px; border-right-color: var(--paper); }
+.ot-jig .tabs.side-l .tab.picked { width: 36px; border-radius: 0 3px 3px 0; border-left-color: var(--paper); }
+.ot-jig .tab.add { border-style: dashed; color: var(--ink-soft); }
+.ot-jig .tab.add:hover { color: var(--reg); border-color: var(--reg); }
+.ot-jig .nowall { padding: 5px 2px; font: italic 12px var(--sans); color: #8b8d87; white-space: nowrap; }
+
+.ot-jig .tile { width: 250px; padding: 8px 10px 10px; z-index: 1; border-color: var(--reg); }
+.ot-jig .tile .head { display: flex; align-items: center; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--rule); font: 600 12px var(--cond); white-space: nowrap; }
+.ot-jig .tile .head select { margin-right: auto; font-size: 12px; border: 1px solid var(--rule); padding: 1px 2px; }
+.ot-jig .sp { flex: 1; }
+.ot-jig .x { flex: none; width: 22px; height: 22px; padding: 0; border: 1px solid var(--rule); border-radius: 2px; color: var(--ink-soft); cursor: pointer; }
+.ot-jig .seg-row { display: flex; justify-content: space-between; padding: 6px 0; }
+.ot-jig .m-seg { display: flex; gap: 2px; }
+.ot-jig .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; padding: 6px 0; border-top: 1px solid var(--paper-rule); }
+.ot-jig .f { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+.ot-jig .f label { min-width: 38px; font: 600 12px var(--cond); color: var(--ink-soft); }
+.ot-jig .f input { width: 46px; padding: 1px 3px; font: 12px var(--mono); text-align: right; border: 1px solid var(--rule); border-radius: 2px; }
+.ot-jig .f input.s { width: 26px; }
+.ot-jig .f span { font: 11px var(--mono); color: var(--ink-soft); }
+.ot-jig .acts { display: flex; justify-content: flex-end; gap: 6px; padding-top: 7px; border-top: 1px solid var(--paper-rule); }
+.ot-jig .m-chip { padding: 3px 8px; font: 12px var(--mono); white-space: nowrap; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 2px; cursor: pointer; }
+.ot-jig .m-chip:hover { border-color: var(--ink-soft); }
+.ot-jig .m-chip.del:hover { color: var(--alert); border-color: var(--alert); }
+
+/* The panel shaped by the way it opens: wide and short when it opens up or
+   down, narrow and tall when it opens sideways. */
+.ot-jig .tile.wide { width: max-content; }
+.ot-jig .tile.wide .head select { margin-right: 0; }
+.ot-jig .tile.wide .head .m-seg { margin-left: 4px; }
+.ot-jig .tile.wide .head .m-btn { width: 24px; height: 24px; }
+.ot-jig .grid2r { display: grid; grid-auto-flow: column; grid-template-rows: auto auto; gap: 5px 12px; padding-top: 7px; }
+.ot-jig .tile.narrow { width: 152px; }
+.ot-jig .tile.narrow .wallsel { width: 100%; margin: 6px 0 4px; font-size: 12px; border: 1px solid var(--rule); padding: 1px 2px; }
+.ot-jig .seg-col { display: flex; justify-content: space-between; padding: 2px 0 6px; }
+.ot-jig .grid1 { display: grid; gap: 4px; padding: 6px 0; border-top: 1px solid var(--paper-rule); }
+.ot-jig .tile.narrow .f label { min-width: 44px; }
+.ot-jig .tile.narrow .acts { justify-content: space-between; }
+
+.ot-jig .ident { width: 330px; padding: 10px 12px; }
+.ot-jig .ident .top { display: flex; align-items: center; gap: 10px; }
+.ot-jig .ident input[type=text] { flex: 1; min-width: 0; padding: 2px 0; font: 600 16px var(--sans); border: 0; border-bottom: 1.5px solid var(--ink); background: none; }
+.ot-jig .swatch { display: flex; align-items: center; gap: 6px; padding: 2px 8px 2px 3px; font: 12px var(--mono); border: 1px solid var(--rule); border-radius: 2px; cursor: pointer; }
+.ot-jig .swatch input { width: 20px; height: 18px; padding: 0; border: 0; background: none; cursor: pointer; }
+.ot-jig .dims { display: flex; gap: 14px; margin-top: 9px; }
+.ot-jig .dim { display: flex; align-items: baseline; gap: 5px; }
+.ot-jig .dim b { font: 600 13px var(--cond); }
+.ot-jig .dim input { width: 50px; padding: 2px 4px; font: 14px var(--mono); text-align: right; border: 1px solid var(--rule); border-radius: 2px; }
+.ot-jig .dim span { font: 12px var(--mono); color: var(--ink-soft); }
+.ot-jig .where { margin-top: 6px; font: 12px var(--mono); color: var(--ink-soft); }
+.ot-jig .ident .acts { justify-content: flex-start; margin-top: 8px; }
+.ot-jig .backlabel { font: 600 13px var(--cond); }
+.ot-jig .dot { width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; padding: 0; border: 1.5px solid var(--reg); border-radius: 50%; background: var(--paper); cursor: pointer; }
+.ot-jig .dot.on { background: var(--reg); }
+.ot-jig .dot:disabled { opacity: .3; cursor: not-allowed; }
+
+.ot-flash { position: absolute; left: 50%; bottom: 14px; z-index: 9; padding: 5px 10px; transform: translateX(-50%); font: 12px var(--mono); color: var(--paper); background: var(--ink); border-radius: 3px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+.ot-flash.show { opacity: 1; }
