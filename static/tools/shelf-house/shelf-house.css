@@ -50,12 +50,6 @@
 .sh-warn { color: var(--alert); }
 
 
-.sh-opening { margin-top: .75rem; padding-top: .5rem; border-top: 1px solid var(--rule); }
-.sh-opening-head {
-    display: flex; align-items: center; justify-content: space-between; gap: .5rem;
-    font-size: var(--fs-label); font-weight: 600;
-}
-.sh-opening-head .chips { margin: 0; }
 
 /* ── Bed ───────────────────────────────────────────────────────────────── */
 
@@ -117,9 +111,13 @@
 .sh-explode input { width: 6rem; accent-color: var(--reg); }
 
 .sh-mat, .sh-3d { position: relative; height: clamp(20rem, 60vh, 38rem); overflow: hidden; }
+/* The camera reads the view's size as it redraws, so a change of height must be
+   there at once (with reduced motion every element gets a near-instant transition). */
+.sh-mat { transition: none; }
 #mat { width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
 #mat .block { cursor: grab; }
 #mat .block.dragging { cursor: grabbing; }
+#mat .block.dimmed { opacity: .3; }
 #mat .ruler { fill: var(--mat-text); font: 9px var(--mono); }
 #mat .ground { stroke: var(--ink); stroke-width: 1.2; }
 #mat .sel { fill: none; stroke: var(--reg); stroke-width: 1.6; stroke-dasharray: 5 3; pointer-events: none; }
@@ -137,49 +135,87 @@
 #mat .wall-hi .arc { fill: none; stroke: var(--reg); stroke-width: 2.4; stroke-linecap: round; }
 
 /* ── In-place panels ───────────────────────────────────────────────────
-   Docked to the walls of the selected room, in the selection's cyan so they
-   read as part of it. Folded, each is a tab showing its wall's weight; it
-   opens on hover or focus. A weight is chosen by drawing it: a heavy bar, a
-   light one, a broken line for no wall. */
+   Docked around the selected block, in the selection's cyan so they read as
+   part of it, and all out at once. A wall's weight is chosen by drawing it: a
+   heavy bar, a light one, a broken line for no wall. Its openings are a row of
+   tabs with a + to add one, and the picked tab runs into its tile. The panels
+   are the size they are at every zoom; only the drawing scales. */
 
 .sh-jig { position: absolute; inset: 0; pointer-events: none; }
-.sh-jig-panel {
-    position: absolute; top: 0; left: 0; z-index: 1;
-    display: flex; align-items: center; gap: .25rem;
-    padding: 2px;
+/* Placed by script and measured at once, so no transition may run on where they
+   are: with reduced motion the site gives every element a near-instant
+   `transition: all`, which would leave the old position to read back. */
+.sh-jig > * { position: absolute; top: 0; left: 0; width: max-content; pointer-events: auto; transition: none; }
+@keyframes sh-unwrap { from { opacity: 0; transform: translate(var(--fx, 0), var(--fy, 0)) scale(.5); } }
+.sh-jig.is-unwrapping > [data-el] { animation: sh-unwrap .34s cubic-bezier(.2, .8, .2, 1) both; }
+
+.sh-jig-panel, .sh-ident-card {
     background: var(--paper);
     border: 1px solid color-mix(in srgb, var(--reg) 50%, var(--rule));
     box-shadow: 0 1px 2px rgba(20, 24, 26, .08);
-    pointer-events: auto;
     transition: border-color .12s, box-shadow .12s;
 }
+.sh-jig-panel { z-index: 1; display: flex; align-items: center; gap: 2px; padding: 2px; }
 .sh-jig-panel.is-vertical { flex-direction: column; }
 .sh-jig-panel.is-hot {
-    z-index: 2;
-    border-color: var(--reg);
+    z-index: 2; border-color: var(--reg);
     box-shadow: 0 0 0 1px var(--reg), 0 4px 12px rgba(20, 24, 26, .12);
 }
-.sh-jig-body { display: none; align-items: center; gap: .25rem; }
-.sh-jig-panel.is-hot .sh-jig-body { display: flex; }
-.sh-jig-panel.is-vertical .sh-jig-body { flex-direction: column; }
 
-.sh-jig-tab {
-    display: flex; align-items: center; gap: .25rem;
-    height: 1.375rem; min-width: 1.375rem; padding: 0 .25rem;
-    color: var(--ink-soft); background: none; border: 0;
+.sh-jig-btn {
+    display: grid; place-items: center;
+    width: 1.5rem; height: 1.5rem; padding: 0;
+    color: var(--ink-soft); background: var(--paper);
+    border: 1px solid transparent;
+    font: 600 var(--fs-label)/1 var(--sans);
     cursor: pointer;
+    transition: color .12s, background-color .12s, border-color .12s;
 }
-.sh-jig-panel.is-vertical .sh-jig-tab { flex-direction: column; justify-content: center; height: auto; min-height: 1.375rem; padding: .25rem 0; }
-.sh-jig-tab svg { width: .875rem; height: .875rem; fill: currentColor; flex: none; }
-.sh-jig-tab:focus-visible { outline: 1.5px solid var(--reg); outline-offset: 1px; }
-.sh-jig-name { font-family: var(--cond); font-size: var(--fs-note); font-weight: 600; white-space: nowrap; }
-.sh-jig-val { font-family: var(--mono); font-size: var(--fs-note); line-height: 1; color: var(--ink); }
-/* A tab on the left unfolds leftwards, away from the block. */
-.sh-jig-panel.is-start { flex-direction: row-reverse; }
-.sh-jig-panel.is-start .sh-jig-body { flex-direction: row-reverse; }
-.sh-jig-body .field-value { padding-inline: .25rem; }
-.sh-jig-body input[type="number"] { width: 3.25rem; }
+.sh-jig-btn svg { width: 1rem; height: 1rem; fill: currentColor; }
+.sh-jig-btn:hover { color: var(--ink); border-color: var(--rule); }
+.sh-jig-btn:focus-visible { outline: 1.5px solid var(--reg); outline-offset: 1px; }
+.sh-jig-btn.is-on { color: var(--paper); background: var(--ink); border-color: var(--ink); }
 .sh-jig-btn.sh-jig-wide { width: auto; padding: 0 .5rem; font: var(--fs-note) var(--mono); white-space: nowrap; }
+
+/* A wall's openings. Above the ceiling the row grows upwards and its tile
+   opens upwards; beside the side walls it stands upright. */
+.sh-jig-tabs { z-index: 2; display: flex; gap: 3px; }
+.sh-jig-tabs.is-up { align-items: flex-start; }
+.sh-jig-tabs.is-down { align-items: flex-end; }
+.sh-jig-tabs.is-side-l, .sh-jig-tabs.is-side-r { flex-direction: column; }
+.sh-jig-tabs.is-side-l { align-items: flex-start; }
+.sh-jig-tabs.is-side-r { align-items: flex-end; }
+.sh-jig-tab {
+    display: grid; place-items: center;
+    width: 2rem; height: 1.75rem; padding: 0;
+    color: var(--ink); background: var(--paper);
+    border: 1px solid var(--rule);
+    cursor: pointer;
+    transition: color .12s, border-color .12s;
+}
+.sh-jig-tab svg { width: 1rem; height: 1rem; fill: currentColor; }
+.sh-jig-tab:hover { border-color: var(--ink-soft); }
+.sh-jig-tab:focus-visible { outline: 1.5px solid var(--reg); outline-offset: 1px; }
+.sh-jig-tabs.is-hot .sh-jig-tab { border-color: color-mix(in srgb, var(--reg) 60%, var(--rule)); }
+/* Adding is an invitation, so it is dashed like the file drop. */
+.sh-jig-tab.is-add { color: var(--ink-soft); border-style: dashed; }
+.sh-jig-tab.is-add:hover { color: var(--reg); border-color: var(--reg); }
+/* The picked tab is longer, toward the room, and open on the side its tile is on. */
+.sh-jig-tab.is-picked { color: var(--reg); border-color: var(--reg); }
+.sh-jig-tabs.is-down .is-picked { height: 2rem; border-bottom-color: var(--paper); }
+.sh-jig-tabs.is-up .is-picked { height: 2rem; border-top-color: var(--paper); }
+.sh-jig-tabs.is-side-r .is-picked { width: 2.25rem; border-right-color: var(--paper); }
+.sh-jig-tabs.is-side-l .is-picked { width: 2.25rem; border-left-color: var(--paper); }
+/* With no wall there is nothing to open. */
+.sh-jig-nowall { padding: .3125rem .125rem; font-size: var(--fs-note); font-style: italic; color: var(--ink-soft); white-space: nowrap; }
+.sh-jig-nowall[data-wall="left"], .sh-jig-nowall[data-wall="right"] { width: 5.5rem; white-space: normal; }
+.sh-jig-label { font: 600 var(--fs-fine) var(--cond); color: var(--ink); pointer-events: none; }
+
+/* A table's, a flight's or a lift's size: its name and the field that sets it. */
+.sh-jig-size { gap: .375rem; padding: 2px .375rem 2px .5rem; }
+.sh-jig-name { font: 600 var(--fs-note) var(--cond); color: var(--ink-soft); white-space: nowrap; }
+.sh-jig-size .field-value { padding-inline: .25rem; }
+.sh-jig-size input[type="number"] { width: 3.25rem; }
 
 /* Corner dots: filled when the corner is rounded. */
 .sh-corner {
@@ -197,35 +233,6 @@
 .sh-corner:hover:not(:disabled) { transform: translate(-50%, -50%) scale(1.25); }
 .sh-corner:focus-visible { outline: 1.5px solid var(--reg); outline-offset: 2px; }
 .sh-corner:disabled { opacity: .3; cursor: not-allowed; }
-.sh-jig-panel.is-hot .sh-jig-tab { color: var(--reg); }
-
-.sh-jig-set { display: flex; gap: 2px; }
-.sh-jig-panel.is-vertical .sh-jig-set { flex-direction: column; }
-.sh-jig-set, .sh-jig-panel.is-hot .sh-jig-tab { padding-left: .25rem; border-left: 1px solid var(--paper-rule); }
-.sh-jig-panel.is-hot .sh-jig-tab { padding-left: .25rem; border-left: 0; }
-.sh-jig-panel.is-vertical .sh-jig-set { padding: .25rem 0 0; border-left: 0; border-top: 1px solid var(--paper-rule); }
-
-.sh-jig-btn {
-    display: grid; place-items: center;
-    width: 1.5rem; height: 1.5rem; padding: 0;
-    color: var(--ink-soft); background: var(--paper);
-    border: 1px solid transparent;
-    font: 600 var(--fs-label)/1 var(--sans);
-    cursor: pointer;
-    transition: color .12s, background-color .12s, border-color .12s;
-}
-.sh-jig-btn svg { width: 1rem; height: 1rem; fill: currentColor; }
-.sh-jig-btn:hover { color: var(--ink); border-color: var(--rule); }
-.sh-jig-btn:focus-visible { outline: 1.5px solid var(--reg); outline-offset: 1px; }
-.sh-jig-btn.is-on { color: var(--paper); background: var(--ink); border-color: var(--ink); }
-.sh-jig-op { color: var(--ink); }
-.sh-jig-op.is-picked { color: var(--reg); border-color: var(--reg); background: color-mix(in srgb, var(--reg) 10%, var(--paper)); }
-.sh-jig-op.is-idle { opacity: .4; }
-/* Adding is an invitation, so it is dashed like the file drop. */
-.sh-jig-add { border: 1px dashed var(--rule); }
-.sh-jig-add:hover { color: var(--reg); border-color: var(--reg); }
-.sh-jig-del:hover { color: var(--alert); border-color: var(--alert); }
-
 
 .sh-empty {
     position: absolute; inset: 0;
@@ -244,32 +251,36 @@
     font-size: var(--fs-fine); color: var(--ink-soft);
 }
 
-.sh-selection {
-    display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem;
-    min-height: 2.75rem; margin-top: .25rem;
-    font-size: var(--fs-fine); color: var(--ink-soft);
-}
-.sh-selection .chips { margin: 0; }
+/* ── Block card ────────────────────────────────────────────────────────
+   Everything about the selected block that is not one of its walls: it sits
+   above the room, beside the ceiling's panels. */
 
-/* The block's colour and name lead the line; the name is typed in place. */
+.sh-ident-card { z-index: 4; display: grid; grid-template-columns: minmax(0, 1fr); gap: .5rem; width: 21rem; max-width: calc(100% - 28px); padding: .625rem .75rem; }
+.sh-ident-card.is-folded { width: auto; padding: .375rem .5rem; }
 .sh-ident { display: flex; align-items: center; gap: .5rem; }
-.sh-selection input[type="text"] {
-    width: 10rem;
+.sh-ident-card .sh-ident input[type="text"] {
+    flex: 1; width: auto; min-width: 0;
     text-align: left;
-    font-family: var(--sans); font-weight: 600; font-size: var(--fs-label);
-    color: var(--ink);
+    font-family: var(--sans); font-weight: 600; font-size: var(--fs-head); line-height: 1.2;
+    border-bottom-color: var(--ink);
     cursor: text;
 }
+.sh-ident-card.is-folded .sh-ident input[type="text"] { width: 9rem; flex: none; }
+.sh-card-fold { margin: 0; }
 .sh-dims { display: flex; flex-wrap: wrap; gap: .25rem .875rem; }
 .sh-dim { display: flex; align-items: baseline; gap: .25rem; font-family: var(--mono); color: var(--ink); }
 .sh-dim > label { font-size: var(--fs-note); color: var(--ink-soft); cursor: pointer; }
 .sh-dim:focus-within > label { color: var(--reg); }
-.sh-selection .sh-dim input[type="number"] { width: 3rem; }
+.sh-ident-card .sh-dim input[type="number"] { width: 3.25rem; }
 .sh-dim .unit { font-size: var(--fs-note); color: var(--ink-soft); }
-/* Where the block stands, in small type under its name. */
-.sh-ident-text { display: flex; flex-direction: column; gap: .125rem; }
-.sh-ident-text .sh-where { font-size: var(--fs-note); }
-.sh-selection .sh-move { margin-left: auto; }
+/* Where the block stands, in small type. */
+.sh-ident-card .sh-where { margin: 0; font-size: var(--fs-note); }
+.sh-card-actions {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .375rem;
+    padding-top: .5rem; border-top: 1px solid var(--paper-rule);
+}
+.sh-card-actions .chips { margin: 0; }
+.sh-front-note { margin-top: .5rem; }
 
 /* The rarer actions, behind ⋯. */
 .sh-more { position: relative; }
@@ -290,6 +301,13 @@
     background: none; border: 0; cursor: pointer;
 }
 .sh-menu button:hover, .sh-menu button:focus-visible { background: var(--ground-sunk); outline: none; }
+
+/* The zoom, in the front view's head. */
+.sh-zoom { display: flex; align-items: center; gap: .375rem; }
+.sh-zoom .chip { margin: 0; }
+.sh-zoom .num { min-width: 2.75rem; text-align: center; font-family: var(--mono); font-size: var(--fs-note); color: var(--ink-soft); }
+/* Held while the view is set by hand: fit hands it back. */
+.sh-zoom .chip.is-held { color: var(--reg); border-color: var(--reg); }
 
 /* ── Print list ────────────────────────────────────────────────────────── */
 
@@ -378,34 +396,41 @@
 /* The blocks toggle reads as pressed while the row is open. */
 #blocks-toggle[aria-expanded="true"] { color: var(--ink); border-color: var(--ink-soft); }
 
-/* ── Opening card ─────────────────────────────────────────────────────
-   The picked opening's fields, docked beside its room. The same fields the
-   rail used to hold, set a little tighter. */
-.sh-op-card {
-    position: absolute; top: 0; left: 0; z-index: 3;
-    width: 17rem; max-height: calc(100% - 4px); overflow-y: auto;
-    padding: .375rem .625rem .5rem;
+/* ── Opening tile ─────────────────────────────────────────────────────
+   The picked opening's fields, joined to its tab and shaped by the way it
+   opens: wide and short above and below the room, narrow and tall beside it. */
+.sh-tile {
+    z-index: 1; padding: .5rem .625rem .625rem;
     background: var(--paper);
     border: 1px solid var(--reg);
-    box-shadow: 0 0 0 1px var(--reg), 0 6px 16px rgba(20, 24, 26, .14);
-    pointer-events: auto;
+    box-shadow: 0 6px 16px rgba(20, 24, 26, .14);
 }
-.sh-op-card .sh-opening { margin: 0; padding: 0; border: 0; }
-.sh-op-card .sh-opening-head { gap: .375rem; padding-bottom: .375rem; border-bottom: 1px solid var(--rule); }
-.sh-op-card .sh-opening-head > span:first-child { white-space: nowrap; }
-.sh-op-card .sh-opening-head select { margin-right: auto; font-size: var(--fs-fine); }
-.sh-op-card .chip { padding-inline: .375rem; }
-.sh-op-actions { justify-content: flex-end; margin: .375rem 0 0; padding-top: .375rem; border-top: 1px solid var(--paper-rule); }
-.sh-op-row { display: flex; justify-content: space-between; gap: .5rem; padding-block: .375rem; }
+.sh-tile-head {
+    display: flex; align-items: center; gap: .5rem;
+    padding-bottom: .375rem; border-bottom: 1px solid var(--rule);
+    font-size: var(--fs-label); font-weight: 600;
+}
+.sh-tile-title { white-space: nowrap; }
+.sh-tile-gap { flex: 1; }
+.sh-tile select { font-family: var(--sans); font-size: var(--fs-fine); text-align: left; }
+.sh-tile .chip { margin: 0; padding-inline: .375rem; }
+.sh-tile-actions { display: flex; gap: .375rem; margin: 0; }
 .sh-op-seg { display: flex; gap: 2px; }
-.sh-op-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: .125rem 1rem;
-    padding-top: .25rem; border-top: 1px solid var(--paper-rule);
+.sh-tile-fields { padding-top: .375rem; }
+.sh-tile.is-wide .sh-tile-head { white-space: nowrap; }
+.sh-tile.is-wide .sh-tile-fields {
+    display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, auto); grid-auto-columns: max-content;
+    gap: .125rem 1.25rem;
 }
-.sh-mini { display: flex; align-items: baseline; gap: .25rem; font-family: var(--mono); font-size: var(--fs-fine); color: var(--ink); }
-.sh-mini > label { margin-right: auto; font-family: var(--sans); font-size: var(--fs-note); color: var(--ink-soft); cursor: pointer; }
+.sh-tile.is-narrow { width: 10.5rem; }
+.sh-tile.is-narrow > select { width: 100%; margin: .375rem 0 .125rem; }
+.sh-tile-pics { display: flex; justify-content: space-between; padding: .25rem 0 .375rem; }
+.sh-tile.is-narrow .sh-tile-fields { display: grid; gap: .125rem; border-top: 1px solid var(--paper-rule); }
+.sh-tile.is-narrow .sh-tile-actions { justify-content: space-between; margin-top: .375rem; padding-top: .375rem; border-top: 1px solid var(--paper-rule); }
+.sh-mini { display: flex; align-items: baseline; gap: .25rem; font-family: var(--mono); font-size: var(--fs-fine); color: var(--ink); white-space: nowrap; }
+.sh-mini > label { margin-right: auto; padding-right: .5rem; font-family: var(--sans); font-size: var(--fs-note); color: var(--ink-soft); cursor: pointer; }
 .sh-mini:focus-within > label { color: var(--reg); }
-.sh-op-card .sh-mini input[type="number"] { width: 2.75rem; font-size: var(--fs-fine); }
+.sh-tile .sh-mini input[type="number"] { width: 2.75rem; font-size: var(--fs-fine); }
 .sh-mini .unit { font-size: var(--fs-note); color: var(--ink-soft); }
 
 /* Drag to resize a back-wall opening. */
@@ -422,8 +447,10 @@
 #mat .block { touch-action: none; }
 
 /* On a phone the shelf is as wide as the screen allows, so a tall front view
-   is mostly empty grid; and the toolbar wraps, so its groups part by space. */
+   is mostly empty grid; and the toolbar wraps, so its groups part by space.
+   While a block is edited, everything around it needs the height. */
 @media (max-width: 48rem) {
     .sh-mat { height: 24rem; }
+    .sh-mat.is-editing { height: min(82vh, 44rem); }
     .sh-tools > .chips + .chips { padding-left: 0; border-left: 0; }
 }

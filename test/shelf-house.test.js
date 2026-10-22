@@ -323,7 +323,10 @@ test('stairs added to a room open its ceiling and the floor of the room on top',
 });
 
 // Page helpers: wait for the engine, then drive the page from inside it.
+// A desktop-sized view with motion off, so the camera lands where it is going at once.
 const ready = async (p) => {
+  await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  await p.setViewport(1400, 1000);
   for (let i = 0; i < 200 && !(await p.evalJson("!!document.querySelector('#mat .block')")); i++) await new Promise((r) => setTimeout(r, 50));
 };
 const PAGE_HELPERS = `(window.__sh = {
@@ -594,6 +597,8 @@ test('with the grid on, rooms, things and openings land on it as they move',
       assert.strictEqual(it[5].x + it[6].x, Math.round((table + 7.3) / 5) * 5);
 
       // An opening moves and resizes on the grid, from the middle of its wall.
+      // The table is zoomed to, so let go of it to see the whole shelf again.
+      await key('Escape');
       await drag('null', await at(60 - 26, 36 + 4), await at(60 - 15.3, 36 + 9.4));
       let o = (await items())[1].cfg.openings[0];
       assert.deepStrictEqual([o.x, o.y], [-15, 10]);
@@ -603,8 +608,9 @@ test('with the grid on, rooms, things and openings land on it as they move',
       o = (await items())[1].cfg.openings[0];
       assert.strictEqual(o.w % 5, 0);
 
-      // Off again, a millimetre at a time.
-      await p.evalJson("(document.getElementById('grid-on').click(), __sh.pick(5), true)");
+      // Off again, a millimetre at a time. Room 1 has an opening picked, so the
+      // first press on room 5 only closes its tile; the second picks the room.
+      await p.evalJson("(document.getElementById('grid-on').click(), __sh.pick(5), __sh.pick(5), true)");
       await key('ArrowRight');
       assert.strictEqual((await items())[5].x, 66);
     } finally {
@@ -678,13 +684,13 @@ test('a selected room is edited in place from panels on its walls',
     await p.evalJson(`(${PAGE_HELPERS}, document.getElementById('example').click(), __sh.pick(3), true)`);
     const room = async () => (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).find((i) => i.id === 3);
     const click = (sel) => p.evalJson(`(document.querySelector('${sel}').click(), true)`);
-    // Five folded panels, one per wall; nothing lit until one is worked in.
+    // Five panels, one per wall, all out at once; nothing lit until one is worked in.
     assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('.sh-jig-panel')].map((e) => e.dataset.panel)"),
       ['ceiling', 'left', 'right', 'floor', 'back']);
     assert.strictEqual(await p.evalJson("!!document.querySelector('#mat .wall-hi')"), false);
 
-    // Focusing a tab opens its panel and lights that wall.
-    await p.evalJson("(document.querySelector('.sh-jig-panel[data-panel=left] .sh-jig-tab').focus(), true)");
+    // Focusing a wall's weight lights that wall.
+    await p.evalJson("(document.querySelector('.sh-jig-panel[data-panel=left] [data-jig=wall]').focus(), true)");
     assert.strictEqual(await p.evalJson("document.querySelector('.sh-jig-panel[data-panel=left]').classList.contains('is-hot')"), true);
     assert.strictEqual(await p.evalJson("document.querySelectorAll('#mat .wall-hi rect').length"), 1);
 
@@ -693,22 +699,28 @@ test('a selected room is edited in place from panels on its walls',
     // Still working in the same panel, and the missing wall shows as a broken edge.
     assert.strictEqual(await p.evalJson("document.querySelector('.sh-jig-panel[data-panel=left]').contains(document.activeElement)"), true);
     assert.strictEqual(await p.evalJson("document.querySelectorAll('#mat .wall-hi .open').length"), 1);
+    // With no wall there is nothing to open: its row says so, and cannot add.
+    assert.match(await p.evalJson("document.querySelector('[data-el=tabs-left]').textContent"), /No wall/);
+    assert.strictEqual(await p.evalJson("!!document.querySelector('[data-jig=add][data-wall=left]')"), false);
 
-    // Add a round window to the back wall: it lands clear of the one there,
-    // and is picked, so it can be removed again from the same panel.
+    // Add a window to the back wall: it lands clear of the one there, and is
+    // picked with its tile open, so its shape can be set and it can be removed
+    // from the same place.
     const before = (await room()).cfg.openings.length;
-    await p.evalJson("(document.querySelector('.sh-jig-panel[data-panel=back] .sh-jig-tab').focus(), true)");
-    await click('[data-jig=add][data-wall=back][data-v=porthole]');
+    await click('[data-jig=add][data-wall=back]');
     let ops = (await room()).cfg.openings;
     assert.strictEqual(ops.length, before + 1);
     const added = ops.at(-1);
-    assert.deepStrictEqual([added.wall, added.shape], ['back', 'round']);
+    assert.deepStrictEqual([added.wall, added.shape], ['back', 'rect']);
     assert.ok(ops.filter((o) => o.wall === 'back' && o !== added).every((o) => Math.abs(o.x - added.x) >= (o.w + added.w) / 2));
-    assert.strictEqual(await p.evalJson(`!!document.querySelector('.sh-jig-op.is-picked[data-i="${before}"]')`), true);
-    await click(`[data-jig=del][data-i="${before}"]`);
+    assert.strictEqual(await p.evalJson(`!!document.querySelector('.sh-jig-tab.is-picked[data-i="${before}"]')`), true);
+    await click('.sh-tile [data-jig=set][data-v=round]');
+    assert.strictEqual((await room()).cfg.openings.at(-1).shape, 'round');
+    await click(`.sh-tile [data-act=del-opening][data-i="${before}"]`);
     assert.strictEqual((await room()).cfg.openings.length, before);
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-tile')"), false);
 
-    // Undo brings the round window back; the panels follow the history.
+    // Undo brings the window back; the panels follow the history.
     await p.evalJson("(document.getElementById('undo').click(), true)");
     assert.strictEqual((await room()).cfg.openings.length, before + 1);
   });
@@ -769,17 +781,17 @@ test('tables and stairs are sized from panels around them',
     await ready(p);
     await p.evalJson(`(${PAGE_HELPERS}, localStorage.removeItem('shelf-house-units'), document.getElementById('example').click(), true)`);
     const item = async (id) => (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).find((i) => i.id === id);
-    // The table: four sizes, each in a tab that reads its value; none on the rail.
+    // The table: four sizes, each in a panel with its field; none on the rail.
     await p.evalJson("(__sh.pick(6), true)");
     assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('.sh-jig-panel')].map((e) => e.dataset.panel)"), ['topD', 'stemD', 'height', 'baseD']);
-    assert.strictEqual(await p.evalJson("document.querySelector('[data-panel=topD] .sh-jig-val').textContent"), '36');
+    assert.strictEqual(await p.evalJson("document.getElementById('sh-jig-topD').value"), '36');
     assert.strictEqual(await p.evalJson("!!document.querySelector('#inspector input[type=number]')"), false);
-    await p.evalJson("(document.querySelector('[data-panel=topD] .sh-jig-tab').focus(), __sh.set('sh-jig-topD', 40), true)");
+    await p.evalJson("(__sh.set('sh-jig-topD', 40), true)");
     assert.strictEqual((await item(6)).cfg.topD, 40);
-    assert.strictEqual(await p.evalJson("document.querySelector('[data-panel=topD] .sh-jig-val').textContent"), '40');
+    assert.strictEqual(await p.evalJson("document.getElementById('sh-jig-topD').value"), '40');
     // In inches, a typed value is stored in millimetres.
     try {
-      await p.evalJson("(document.querySelector('[data-units=in]').click(), document.querySelector('[data-panel=height] .sh-jig-tab').focus(), __sh.set('sh-jig-height', 1), true)");
+      await p.evalJson("(document.querySelector('[data-units=in]').click(), __sh.set('sh-jig-height', 1), true)");
       assert.strictEqual((await item(6)).cfg.height, 25.4);
     } finally {
       await p.evalJson("(document.querySelector('[data-units=mm]').click(), true)");
@@ -787,13 +799,13 @@ test('tables and stairs are sized from panels around them',
     await p.evalJson("(document.getElementById('undo').click(), true)");
     assert.strictEqual((await item(6)).cfg.height, 26.5);
 
-    // Stairs: run below, steps beside, a turn above.
+    // Stairs: run below, steps beside, a turn above, all out at once.
     await p.evalJson("(__sh.pick(1), document.querySelector('#palette [aria-label=\"Add Stairs\"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), true)");
     const id = await p.evalJson("Math.max(...JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items.map((i) => i.id))");
     assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('.sh-jig-panel')].map((e) => e.dataset.panel)"), ['turn', 'run', 'steps']);
-    await p.evalJson("(document.querySelector('[data-panel=run] .sh-jig-tab').focus(), __sh.set('sh-jig-run', 40), true)");
+    await p.evalJson("(__sh.set('sh-jig-run', 40), true)");
     assert.strictEqual((await item(id)).cfg.run, 40);
-    await p.evalJson("(document.querySelector('[data-panel=turn] .sh-jig-tab').focus(), document.querySelector('[data-jig=flip]').click(), true)");
+    await p.evalJson("(document.querySelector('[data-jig=flip]').click(), true)");
     assert.strictEqual((await item(id)).cfg.flip, true);
   });
 });
@@ -826,7 +838,7 @@ test('a lift raises its shaft through the floors set, as far as rooms above hold
     assert.ok(await p.evalJson("[...document.querySelectorAll('#bom td')].some((td) => td.textContent.trim() === 'Lift')"));
 
     // Three floors: room 5's left wall stands where the shaft would go up, so it stops.
-    await p.evalJson("(document.querySelector('[data-panel=floors] .sh-jig-tab').focus(), __sh.set('sh-jig-floors', 3), true)");
+    await p.evalJson("(__sh.set('sh-jig-floors', 3), true)");
     assert.strictEqual((await items()).find((i) => i.id === id).cfg.floors, 3);
     assert.deepStrictEqual(await shafts(), [1, 1, 0]);
     assert.match(await where(), /serving 2 of 3 floors/);
@@ -860,16 +872,28 @@ test('a lift raises its shaft through the floors set, as far as rooms above hold
   });
 });
 
-test('a side wall takes round and arched windows, and tabs carry no counts',
+test('a wall has one + for its openings, shaped in the tile, and tabs carry no counts',
   { skip: !CHROME && 'no Chrome' }, async () => {
   await withPage('/tools/shelf-house/', async (p) => {
     await ready(p);
     await p.evalJson(`(${PAGE_HELPERS}, document.getElementById('example').click(), __sh.pick(2), true)`);
-    assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('[data-jig=add][data-wall=left]')].map((b) => b.dataset.v)"), ['doorway', 'window', 'porthole', 'arch']);
-    await p.evalJson("(document.querySelector('[data-panel=left] .sh-jig-tab').focus(), document.querySelector('[data-jig=add][data-wall=left][data-v=porthole]').click(), true)");
-    const ops = (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).find((i) => i.id === 2).cfg.openings;
-    assert.deepStrictEqual([ops.at(-1).wall, ops.at(-1).shape], ['left', 'round']);
-    assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('.sh-jig-tab')].map((t) => t.textContent.replace(/\\D/g, ''))"), ['', '', '', '', '']);
+    const ops = async () => (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).find((i) => i.id === 2).cfg.openings;
+    assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('[data-jig=add]')].map((b) => b.dataset.wall)"), ['ceiling', 'left', 'right', 'floor', 'back']);
+
+    // A side wall's tile is narrow and tall, and takes round and arched windows;
+    // the rest are wide and short.
+    await p.evalJson("(document.querySelector('[data-jig=add][data-wall=left]').click(), true)");
+    assert.strictEqual(await p.evalJson("document.querySelector('.sh-tile').classList.contains('is-narrow')"), true);
+    assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('.sh-tile [aria-label=Shape] button')].map((b) => b.dataset.v)"), ['rect', 'arch', 'round']);
+    await p.evalJson("(document.querySelector('.sh-tile [data-jig=set][data-v=round]').click(), true)");
+    assert.deepStrictEqual([(await ops()).at(-1).wall, (await ops()).at(-1).shape], ['left', 'round']);
+    for (const wall of ['ceiling', 'floor', 'back']) {
+      await p.evalJson(`(document.querySelector('[data-jig=add][data-wall=${wall}]').click(), true)`);
+      assert.strictEqual(await p.evalJson("document.querySelector('.sh-tile').classList.contains('is-wide')"), true, wall);
+    }
+    // The tabs are pictures of their shapes, with no counts.
+    assert.ok(await p.evalJson("document.querySelectorAll('.sh-jig-tab').length") > 5);
+    assert.deepStrictEqual(await p.evalJson("[...new Set([...document.querySelectorAll('.sh-jig-tab')].map((t) => t.textContent.replace(/\\D/g, '')))]"), ['']);
   });
 });
 
@@ -892,7 +916,7 @@ test('the layout buttons sit with undo and redo, grouped by what they do',
   });
 });
 
-test('a block\'s name, colour, size and actions are in the line under the front view',
+test('a block\'s name, colour, size and actions are in its card on the front view',
   { skip: !CHROME && 'no Chrome' }, async () => {
   await withPage('/tools/shelf-house/', async (p) => {
     await ready(p);
@@ -901,7 +925,10 @@ test('a block\'s name, colour, size and actions are in the line under the front 
     // There is no rail: the page is the bed, under a head with the tool's name.
     assert.strictEqual(await p.evalJson("!!document.querySelector('.rail, #inspector')"), false);
     assert.strictEqual(await p.evalJson("document.querySelector('.tool-head h1').textContent"), 'Shelf House');
-    assert.deepStrictEqual(await p.evalJson("['sh-name', 'sh-color', 'sh-cfg-w', 'sh-cfg-h', 'sh-cfg-d'].map((id) => document.getElementById(id)?.closest('#block-bar') != null)"), [true, true, true, true, true]);
+    assert.deepStrictEqual(await p.evalJson("['sh-name', 'sh-color', 'sh-cfg-w', 'sh-cfg-h', 'sh-cfg-d'].map((id) => document.getElementById(id)?.closest('.sh-ident-card') != null)"), [true, true, true, true, true]);
+    // The card is on the front view, and nothing about the block is below it.
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-ident-card').closest('.sh-mat')"), true);
+    assert.strictEqual(await p.evalJson("!!document.getElementById('block-bar')"), false);
 
     // Renamed and resized in place; a typed size gets its ↺, and the field it
     // is typed in keeps the focus.
@@ -909,27 +936,27 @@ test('a block\'s name, colour, size and actions are in the line under the front 
     const room = await item(3);
     assert.deepStrictEqual([room.name, room.cfg.h, room.own.h], ['Hall', 80, true]);
     assert.strictEqual(await p.evalJson("document.activeElement.id"), 'sh-cfg-h');
-    assert.ok(await p.evalJson("!!document.querySelector('#block-bar [data-act=size-default][data-dim=h]')"));
+    assert.ok(await p.evalJson("!!document.querySelector('.sh-ident-card [data-act=size-default][data-dim=h]')"));
     // Focusing a size draws it on the room.
     assert.strictEqual(await p.evalJson("document.querySelectorAll('#mat .wall-hi .dim').length"), 3);
     assert.match(await p.evalJson("document.getElementById('selection').textContent"), /floor 2/);
 
     // The rarer actions are behind ⋯, and the menu closes on a choice.
-    await p.evalJson("(document.querySelector('#block-bar .sh-more summary').click(), true)");
-    assert.strictEqual(await p.evalJson("document.querySelector('#block-bar .sh-more').open"), true);
-    await p.evalJson("(document.querySelector('#block-bar [data-act=reset]').click(), true)");
+    await p.evalJson("(document.querySelector('.sh-ident-card .sh-more summary').click(), true)");
+    assert.strictEqual(await p.evalJson("document.querySelector('.sh-ident-card .sh-more').open"), true);
+    await p.evalJson("(document.querySelector('.sh-ident-card [data-act=reset]').click(), true)");
     assert.deepStrictEqual([(await item(3)).name, (await item(3)).cfg.h], ['Wide · doorways', 72]);
-    assert.strictEqual(await p.evalJson("!!document.querySelector('#block-bar .sh-more[open]')"), false);
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-ident-card .sh-more[open]')"), false);
 
     const before = (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).length;
-    await p.evalJson("(document.querySelector('#block-bar [data-act=duplicate]').click(), true)");
+    await p.evalJson("(document.querySelector('.sh-ident-card [data-act=duplicate]').click(), true)");
     assert.strictEqual((await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).length, before + 1);
-    await p.evalJson("(document.querySelector('#block-bar [data-act=delete]').click(), true)");
+    await p.evalJson("(document.querySelector('.sh-ident-card [data-act=delete]').click(), true)");
     assert.strictEqual((await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).length, before);
   });
 });
 
-test('a window is picked on the front view, dragged, resized and edited in its card',
+test('a window is picked on the front view, dragged, resized and edited in its tile',
   { skip: !CHROME && 'no Chrome' }, async () => {
   await withPage('/tools/shelf-house/', async (p) => {
     await ready(p);
@@ -952,8 +979,8 @@ test('a window is picked on the front view, dragged, resized and edited in its c
     await press('null', from, to);
     let o = (await ops())[0];
     assert.deepStrictEqual([o.x, o.y], [-16, 9]);
-    // The room is selected with the window picked and its card open.
-    assert.strictEqual(await p.evalJson("document.querySelector('.sh-op-card .sh-opening-head').textContent.trim().startsWith('Opening 1')"), true);
+    // The room is selected with the window picked and its tile open.
+    assert.strictEqual(await p.evalJson("document.querySelector('.sh-tile .sh-tile-title').textContent.trim()"), 'Opening 1');
     assert.strictEqual(await p.evalJson("document.querySelectorAll('#mat .op-hi rect').length"), 1);
 
     // Its handle resizes it about its centre.
@@ -963,17 +990,16 @@ test('a window is picked on the front view, dragged, resized and edited in its c
     o = (await ops())[0];
     assert.deepStrictEqual([o.w, o.h], [40, 34]);
 
-    // The card's fields and pictures edit it, one undo step each.
-    await p.evalJson("(__sh.set('sh-op-h', 30), document.querySelector('.sh-op-card [data-jig=set][data-v=rect]').click(), true)");
+    // The tile's fields and pictures edit it, one undo step each.
+    await p.evalJson("(__sh.set('sh-op-h', 30), document.querySelector('.sh-tile [data-jig=set][data-v=rect]').click(), true)");
     o = (await ops())[0];
     assert.deepStrictEqual([o.h, o.shape], [30, 'rect']);
     await p.evalJson("(document.getElementById('undo').click(), true)");
     assert.strictEqual((await ops())[0].shape, 'round');
 
-    // Escape closes the card but keeps the room selected; pressing the room
-    // away from its openings drops the pick too.
+    // Escape closes the tile but keeps the room selected.
     await p.evalJson("(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })), true)");
-    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-op-card')"), false);
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-tile')"), false);
     assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-jig-panel')"), true);
   });
 });
@@ -1006,9 +1032,10 @@ test('the settings fold to one line, and the front view and 3D share the width a
 });
 
 // On a phone a tap lifts the finger (pointerleave) before its click arrives,
-// and iOS gives a tapped button no focus. The panels used to fold on that
-// pointerleave, so a tapped button was hidden before its click and nothing
-// happened: removing a wall did not work on a phone.
+// and iOS gives a tapped button no focus. Panels used to fold on that
+// pointerleave, so a tapped button was hidden before its click and removing a
+// wall did nothing. They are all out at once now, but the taps are still
+// checked the way a phone sends them.
 test('panels work by tapping, the way iOS taps',
   { skip: !CHROME && 'no Chrome' }, async () => {
   await withPage('/tools/shelf-house/', async (p) => {
@@ -1019,30 +1046,239 @@ test('panels work by tapping, the way iOS taps',
       // Like iOS: a tap does not focus the button it lands on.
       await p.evalJson("(document.addEventListener('mousedown', (e) => e.preventDefault(), true), document.getElementById('example').click(), document.getElementById('mat').scrollIntoView({ block: 'center' }), true)");
       await new Promise((r) => setTimeout(r, 300));
-      const tap = async (sel) => {
-        const [x, y] = await p.evalJson(`(() => { const r = (${sel}).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+      const tapAt = async (x, y) => {
         await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
         await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
         await new Promise((r) => setTimeout(r, 150));
       };
+      const tap = async (sel) => {
+        const [x, y] = await p.evalJson(`(() => { const r = (${sel}).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+        await tapAt(x, y);
+      };
       const room = async () => (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).find((i) => i.id === 1);
 
       await tap("document.querySelector('#mat .block[data-id=\"1\"] path')");
-      await tap("document.querySelector('.sh-jig-panel[data-panel=left] .sh-jig-tab')");
+      // Everything is out at once, so there is no panel to open first.
       await tap("document.querySelector('[data-jig=wall][data-wall=left][data-v=none]')");
       assert.strictEqual((await room()).walls.left, 'none');
 
-      await tap("document.querySelector('.sh-jig-panel[data-panel=right] .sh-jig-tab')");
-      await tap("document.querySelector('[data-jig=add][data-wall=right][data-v=porthole]')");
+      await tap("document.querySelector('[data-jig=add][data-wall=right]')");
       const o = (await room()).cfg.openings.at(-1);
-      assert.deepStrictEqual([o.wall, o.shape], ['right', 'round']);
-      assert.strictEqual(await p.evalJson("document.querySelector('.sh-jig-panel[data-panel=right]').classList.contains('is-hot')"), true);
+      assert.strictEqual(o.wall, 'right');
+      assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-tile.is-narrow')"), true);
 
-      // A tap outside the panels folds them.
-      await tap("document.querySelector('.tool-head h1')");
-      assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-jig-panel.is-hot')"), false);
+      // A tap on empty paper closes the tile; the next one lets go of the room.
+      // Empty paper: a point of the front view that is neither a block nor a panel.
+      const paper = await p.evalJson(`(() => {
+        const r = document.getElementById('mat').getBoundingClientRect();
+        for (let y = r.bottom - 6; y > r.top; y -= 12) for (let x = r.right - 6; x > r.left; x -= 12) {
+          const el = document.elementFromPoint(x, y);
+          if (el && !el.closest('.block, .sh-jig') && el.closest('#mat')) return [x, y];
+        }
+        return null;
+      })()`);
+      assert.ok(paper, 'no empty paper on the front view');
+      await tapAt(...paper);
+      assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-tile')"), false);
+      assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-ident-card')"), true);
+      await tapAt(...paper);
+      assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-ident-card')"), false);
     } finally {
       await p.send('Emulation.setTouchEmulationEnabled', { enabled: false });
     }
+  });
+});
+
+// ------------------------------------------------------------------ front-view camera
+
+// Page-side helpers for the tests below: where the view is, and where empty
+// paper is (a point on the front view that is neither a block nor a panel).
+const CAMERA_HELPERS = `(window.__cam = {
+    zoom: () => parseInt(document.getElementById('zoom-pct').textContent),
+    inView(sel) {
+      const m = document.getElementById('mat').getBoundingClientRect();
+      const els = [...document.querySelectorAll(sel)];
+      return els.length > 0 && els.every((e) => {
+        const r = e.getBoundingClientRect();
+        return r.left >= m.left - 1 && r.top >= m.top - 1 && r.right <= m.right + 1 && r.bottom <= m.bottom + 1;
+      });
+    },
+    paper() {
+      const r = document.getElementById('mat').getBoundingClientRect();
+      for (let y = r.bottom - 6; y > r.top; y -= 10) for (let x = r.right - 6; x > r.left; x -= 10) {
+        const el = document.elementFromPoint(x, y);
+        if (el && !el.closest('.block, .sh-jig') && el.closest('#mat')) return [x, y];
+      }
+      return null;
+    },
+    press([x, y], [dx, dy] = [0, 0]) {
+      const el = document.elementFromPoint(x, y);
+      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, button: 0 }));
+      if (dx || dy) window.dispatchEvent(new PointerEvent('pointermove', { clientX: x + dx, clientY: y + dy }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientX: x + dx, clientY: y + dy }));
+    },
+    viewBox: () => document.getElementById('mat').getAttribute('viewBox').split(' ').map(Number),
+    name: () => document.getElementById('sh-name')?.value ?? null,
+  }, true)`;
+
+test('picking a room unwraps it and zooms to fit it with every panel; letting go zooms back out',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, ${CAMERA_HELPERS}, document.getElementById('example').click(), true)`);
+    // Nothing picked: the whole shelf, and no panels.
+    assert.strictEqual(await p.evalJson('__cam.zoom()'), 100);
+    assert.strictEqual(await p.evalJson("document.querySelectorAll('.sh-jig [data-el], .sh-ident-card').length"), 0);
+
+    await p.evalJson('(__sh.pick(3), true)');
+    assert.ok(await p.evalJson('__cam.zoom()') > 150, 'the room fills the view');
+    // Every panel, the card included, is in view; the other rooms step back.
+    assert.strictEqual(await p.evalJson("__cam.inView('.sh-jig [data-el], .sh-ident-card')"), true);
+    const blocks = await p.evalJson("document.querySelectorAll('#mat .block').length");
+    assert.strictEqual(await p.evalJson("document.querySelectorAll('#mat .block.dimmed').length"), blocks - 1);
+    assert.strictEqual(await p.evalJson("document.querySelector('#mat .block[data-id=\"3\"]').classList.contains('dimmed')"), false);
+    // A table keeps its room clear: only the rest step back.
+    await p.evalJson('(__sh.pick(1), __sh.pick(6), true)');
+    assert.strictEqual(await p.evalJson("document.querySelectorAll('#mat .block.dimmed').length"), blocks - 2);
+
+    // Escape lets go: the whole shelf again, with no panels.
+    await p.evalJson("(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })), true)");
+    assert.strictEqual(await p.evalJson('__cam.zoom()'), 100);
+    assert.strictEqual(await p.evalJson("document.querySelectorAll('.sh-jig [data-el], .sh-ident-card').length"), 0);
+  });
+});
+
+test('opening a tile keeps the room at its size and shows the wall it is on',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, ${CAMERA_HELPERS}, document.getElementById('example').click(), __sh.pick(1), true)`);
+    const z0 = await p.evalJson('__cam.zoom()');
+    for (const wall of ['ceiling', 'left', 'right', 'floor', 'back']) {
+      await p.evalJson(`(document.querySelector('[data-jig=add][data-wall=${wall}]').click(), true)`);
+      // The zoom holds (to a few percent: it may give a little for the tile),
+      // and the room, its wall and the tile are all in view.
+      const z = await p.evalJson('__cam.zoom()');
+      assert.ok(Math.abs(z - z0) <= 5, `${wall}: ${z}% against ${z0}%`);
+      assert.strictEqual(await p.evalJson("__cam.inView('#mat .block[data-id=\"1\"] path')"), true, `${wall}: the room`);
+      assert.strictEqual(await p.evalJson(`__cam.inView('.sh-tile, [data-el=tabs-${wall}], [data-el=sel-${wall}]')`), true, `${wall}: the tile`);
+      // The tile is shaped by the way it opens.
+      const side = wall === 'left' || wall === 'right';
+      assert.strictEqual(await p.evalJson(`document.querySelector('.sh-tile').classList.contains('${side ? 'is-narrow' : 'is-wide'}')`), true, wall);
+      // It is joined to its tab, which is the picked one.
+      assert.strictEqual(await p.evalJson(`document.querySelectorAll('[data-el=tabs-${wall}] .is-picked').length`), 1, wall);
+      await p.evalJson("(document.querySelector('[data-jig=unpick]').click(), true)");
+      assert.ok(Math.abs(await p.evalJson('__cam.zoom()') - z0) <= 1, `${wall}: back to ${z0}%`);
+    }
+  });
+});
+
+test('with a tile open a press elsewhere only closes it; another room takes a second press',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, ${CAMERA_HELPERS}, document.getElementById('example').click(), __sh.pick(1), true)`);
+    const first = await p.evalJson('__cam.name()');
+    await p.evalJson("(document.querySelector('[data-jig=add][data-wall=back]').click(), true)");
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-tile')"), true);
+
+    // Another room: the tile closes, and that is all.
+    await p.evalJson('(__sh.pick(3), true)');
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-tile')"), false);
+    assert.strictEqual(await p.evalJson('__cam.name()'), first);
+    // A second press goes there.
+    await p.evalJson('(__sh.pick(3), true)');
+    assert.notStrictEqual(await p.evalJson('__cam.name()'), first);
+
+    // Empty paper: the tile first, then the room.
+    await p.evalJson("(document.querySelector('[data-jig=add][data-wall=floor]').click(), true)");
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-tile')"), true);
+    await p.evalJson('(__cam.press(__cam.paper()), true)');
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-tile')"), false);
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-ident-card')"), true);
+    await p.evalJson('(__cam.press(__cam.paper()), true)');
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-ident-card')"), false);
+    assert.strictEqual(await p.evalJson('__cam.zoom()'), 100);
+  });
+});
+
+test('the view zooms by hand, pans on empty paper, and fits again when asked',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.evalJson(`(${PAGE_HELPERS}, ${CAMERA_HELPERS}, document.getElementById('example').click(), __sh.pick(1), true)`);
+    const z0 = await p.evalJson('__cam.zoom()');
+    const held = () => p.evalJson("document.getElementById('zoom-fit').classList.contains('is-held')");
+    assert.strictEqual(await held(), false);
+
+    // + and − go by a quarter, and hold the view until fit.
+    await p.evalJson("(document.getElementById('zoom-in').click(), true)");
+    assert.ok(Math.abs(await p.evalJson('__cam.zoom()') - z0 * 1.25) <= 2);
+    assert.strictEqual(await held(), true);
+    await p.evalJson("(document.getElementById('zoom-out').click(), document.getElementById('zoom-out').click(), true)");
+    assert.ok(await p.evalJson('__cam.zoom()') < z0);
+
+    // Ctrl+scroll (a trackpad pinch) zooms; plain scrolling is left to the page.
+    const wheel = (ctrl) => p.evalJson(`(() => {
+      const e = new WheelEvent('wheel', { bubbles: true, cancelable: true, ctrlKey: ${ctrl}, deltaY: -120, clientX: 400, clientY: 500 });
+      const before = __cam.zoom();
+      document.querySelector('.sh-mat').dispatchEvent(e);
+      return [e.defaultPrevented, before, __cam.zoom()];
+    })()`);
+    const [plainStopped, plainBefore, plainAfter] = await wheel(false);
+    assert.deepStrictEqual([plainStopped, plainAfter], [false, plainBefore]);
+    const [ctrlStopped, ctrlBefore, ctrlAfter] = await wheel(true);
+    assert.deepStrictEqual([ctrlStopped, ctrlAfter > ctrlBefore], [true, true]);
+
+    // Dragging empty paper pans.
+    const vb = await p.evalJson('__cam.viewBox()');
+    await p.evalJson('(__cam.press(__cam.paper(), [-60, -40]), true)');
+    const moved = await p.evalJson('__cam.viewBox()');
+    assert.ok(moved[0] > vb[0] && moved[1] > vb[1], `${vb} → ${moved}`);
+    // A pan is not a click: the room is still selected.
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-ident-card')"), true);
+
+    // Fit hands it back.
+    await p.evalJson("(document.getElementById('zoom-fit').click(), true)");
+    assert.strictEqual(await p.evalJson('__cam.zoom()'), z0);
+    assert.strictEqual(await held(), false);
+
+    // A view set by hand stays through an edit, and goes when another room is picked.
+    await p.evalJson("(document.getElementById('zoom-in').click(), true)");
+    const zin = await p.evalJson('__cam.zoom()');
+    await p.evalJson("(document.querySelector('[data-jig=wall][data-wall=left][data-v=thin]').click(), true)");
+    assert.strictEqual(await p.evalJson('__cam.zoom()'), zin);
+    await p.evalJson('(__sh.pick(3), __sh.pick(3), true)');
+    assert.strictEqual(await held(), false);
+    assert.strictEqual(await p.evalJson('__cam.inView(".sh-jig [data-el], .sh-ident-card")'), true, 'the new room is fitted');
+  });
+});
+
+test('on a narrow view the card folds to its name and colour, and a button unfolds the rest',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await p.setViewport(600, 900);
+    await p.evalJson(`(${PAGE_HELPERS}, ${CAMERA_HELPERS}, document.getElementById('example').click(), true)`);
+    const before = await p.evalJson("document.getElementById('mat').clientHeight");
+    await p.evalJson('(__sh.pick(1), true)');
+    // The view grows while a block is edited, so everything around it has room.
+    assert.ok(await p.evalJson("document.getElementById('mat').clientHeight") > before);
+    assert.strictEqual(await p.evalJson("document.querySelector('.sh-ident-card').classList.contains('is-folded')"), true);
+    assert.deepStrictEqual(await p.evalJson("['sh-name', 'sh-color', 'sh-cfg-w'].map((id) => !!document.getElementById(id))"), [true, true, false]);
+    assert.strictEqual(await p.evalJson("__cam.inView('.sh-jig [data-el], .sh-ident-card')"), true);
+    // Nothing the panels do pushes the page sideways.
+    assert.strictEqual(await p.evalJson('document.documentElement.scrollWidth <= innerWidth'), true);
+    const room = await p.evalJson("document.querySelector('#mat .block[data-id=\"1\"] path').getBoundingClientRect().width");
+    assert.ok(room > 100, `the room is ${room}px wide`);
+
+    await p.evalJson("(document.querySelector('.sh-card-fold').click(), true)");
+    assert.strictEqual(await p.evalJson("document.querySelector('.sh-ident-card').classList.contains('is-folded')"), false);
+    assert.strictEqual(await p.evalJson("!!document.getElementById('sh-cfg-w')"), true);
+    assert.strictEqual(await p.evalJson("__cam.inView('.sh-jig [data-el], .sh-ident-card')"), true);
+
+    // Picking another block folds it again.
+    await p.evalJson('(__sh.pick(3), __sh.pick(3), true)');
+    assert.strictEqual(await p.evalJson("document.querySelector('.sh-ident-card').classList.contains('is-folded')"), true);
   });
 });

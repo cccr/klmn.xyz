@@ -231,8 +231,8 @@ function commit(next, { inspector = true } = {}) {
   state = settle(next);
   if (selectedId != null && !state.items.some((i) => i.id === selectedId)) selectedId = null;
   persist();
-  render();
   if (inspector) renderInspector();
+  render();
 }
 
 function undo() {
@@ -252,8 +252,8 @@ function redo() {
 function afterHistory() {
   if (selectedId != null && !state.items.some((i) => i.id === selectedId)) selectedId = null;
   persist();
-  render();
   renderInspector();
+  render();
   renderSettings();
   renderPalette();
 }
@@ -672,7 +672,6 @@ function addBlock(typeKey) {
 // ------------------------------------------------------------------ 2D mat
 
 const mat = $('mat');
-let viewBox = null;
 
 function fitViewBox(layout) {
   let minX = 0, maxX = 360, maxY = 220, topH = 72;
@@ -692,54 +691,33 @@ function svgEl(tag, attrs = {}) {
   return el;
 }
 
-// Pixels kept clear under the ground line, where a ground-floor room's floor
-// and back-wall panels dock. Reserved whether or not anything is selected, so
-// picking a room never rescales the view.
-const UNDER_GROUND_PX = 84;
-
-function padForPanels(vb) {
-  const W = mat.clientWidth, H = mat.clientHeight;
-  if (!W || !H) return vb;
-  const below = vb.y + vb.h; // mm under the ground line already in view
-  let h = vb.h;
-  for (let i = 0; i < 3; i++) {
-    const scale = Math.min(W / vb.w, H / h);
-    h = vb.h + Math.max(0, UNDER_GROUND_PX / scale - below);
-  }
-  return { ...vb, h };
-}
-
+// The camera (see "front-view camera") sets the viewBox; this draws what it looks at.
 function renderMat(layout) {
-  if (!drag || !drag.moved) viewBox = padForPanels(fitViewBox(layout));
-  const vb = viewBox;
-  mat.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
-  mat.setAttribute('preserveAspectRatio', 'xMidYMax meet');
+  mat.setAttribute('preserveAspectRatio', 'xMinYMin meet');
   mat.replaceChildren();
 
-  // A 10/50 mm grid, or quarter inches under whole ones; the ruler counts
-  // every 50 mm or every 2 in.
-  const [minor, major, every] = inches() ? [MM_PER_IN / 4, MM_PER_IN, MM_PER_IN * 2] : [10, 50, 50];
+  // A 10/50 mm grid, or quarter inches under whole ones.
+  const [minor, major] = inches() ? [MM_PER_IN / 4, MM_PER_IN, MM_PER_IN * 2] : [10, 50, 50];
   const defs = svgEl('defs');
   defs.innerHTML = `
     <pattern id="g10" width="${minor}" height="${minor}" patternUnits="userSpaceOnUse"><path d="M${minor} 0H0V${minor}" fill="none" stroke="var(--mat-minor)" stroke-width="0.5"/></pattern>
     <pattern id="g50" width="${major}" height="${major}" patternUnits="userSpaceOnUse"><rect width="${major}" height="${major}" fill="url(#g10)"/><path d="M${major} 0H0V${major}" fill="none" stroke="var(--mat-major)" stroke-width="0.8"/></pattern>`;
   mat.append(defs);
-  const big = { x: vb.x - 2000, y: vb.y - 2000, width: vb.w + 4000, height: vb.h + 4000 };
+  const big = { x: -20000, y: -20000, width: 40000, height: 40000 };
   mat.append(svgEl('rect', { ...big, fill: 'var(--mat)' }));
   mat.append(svgEl('rect', { ...big, fill: 'url(#g50)' }));
-  mat.append(svgEl('line', { x1: vb.x - 2000, x2: vb.x + vb.w + 2000, y1: 0, y2: 0, class: 'ground' }));
-  for (let i = Math.ceil((vb.x - 400) / every); i * every < vb.x + vb.w + 400; i++) {
-    const t = svgEl('text', { x: i * every, y: 14, class: 'ruler', 'text-anchor': 'middle' });
-    t.textContent = Math.round(toUnit(i * every));
-    mat.append(t);
-  }
+  mat.append(svgEl('line', { x1: -20000, x2: 20000, y1: 0, y2: 0, class: 'ground' }));
+  mat.append(svgEl('g', { class: 'rulers' }));
 
+  // What is not being edited steps back, but the room a thing stands in stays clear.
+  const sel = drag?.moved ? null : layout.items.find((i) => i.id === selectedId);
   const order = [...layout.items].sort((a, b) => isRoom(b) - isRoom(a));
   for (const it of order) {
     const a = absPos(layout, it);
     const prof = profileFor(it.kind, it.cfg);
     const color = it.cfg.color;
     const g = svgEl('g', { class: 'block', 'data-id': it.id });
+    if (sel && it.id !== sel.id && it.id !== sel.parent) g.classList.add('dimmed');
     if (drag && drag.moved && drag.id === it.id) {
       g.classList.add('dragging');
       g.append(svgEl('path', { d: polyPath(prof.shell, a.x + 2.5, a.y - 2.5) + polyPath(prof.room, a.x + 2.5, a.y - 2.5), class: 'shadow' }));
@@ -798,10 +776,19 @@ function select(id) {
 }
 
 mat.addEventListener('pointerdown', (e) => {
+  if (fingers.size > 1) return;
   const g = e.target.closest('.block');
-  if (!g) { select(null); render(); return; }
+  // Empty paper pans, and a click on it lets go (see the camera).
+  if (!g) {
+    if (look) panning = { sx: e.clientX, sy: e.clientY, x: look.x, y: look.y, moved: false };
+    e.preventDefault();
+    return;
+  }
   const id = Number(g.dataset.id);
   const it = state.items.find((i) => i.id === id);
+  // With an opening's tile open, a press anywhere but on its room only closes
+  // the tile: going to another room takes a second, deliberate press.
+  if (jigPick && id !== selectedId) { jigPick = null; e.preventDefault(); render(); return; }
   const a = absPos(state, it);
   const w = toWorld(e);
   // A press on one of a room's openings picks it and may drag it; a press
@@ -832,6 +819,8 @@ function startPaletteDrag(e, typeKey) {
 window.addEventListener('pointermove', (e) => {
   if (!drag) return;
   if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 4) return;
+  // The view holds still under the pointer while something is dragged.
+  if (!drag.moved) stopLook();
   drag.moved = true;
   document.body.style.cursor = 'grabbing';
   if (drag.isNew && !overMat(e)) { drag.preview = null; render(); return; }
@@ -937,16 +926,18 @@ window.addEventListener('keydown', (e) => {
 // to do when nothing is selected. Redrawn with the front view, so it follows
 // a drag; the rest of the line is built with the inspector.
 function renderSelection(layout) {
-  const box = $('selection');
-  if (!box) return;
   const it = layout.items.find((i) => i.id === selectedId);
+  const note = $('front-note');
   if (!it) {
     const tips = [...(layout.info?.values() || [])].filter((v) => v.tips).length;
-    box.innerHTML = tips
+    note.innerHTML = tips
       ? `<span class="sh-warn">${tips === 1 ? 'One room overhangs' : `${tips} rooms overhang`} the room below. Move it back over its support or glue it.</span>`
-      : 'Click a block to tune it. Arrow keys move it, Delete removes it, D duplicates it.';
+      : 'Click a block to unwrap it. Drag it to move it, or use the arrow keys.';
     return;
   }
+  note.textContent = 'Arrow keys move it, Delete removes it, D duplicates it. Click empty paper to let go.';
+  const box = $('selection');
+  if (!box) return;
   const a = absPos(layout, it);
   const info = layout.info?.get(it.id);
   const where = isRoom(it) ? `x ${len(a.x)}, floor ${(info?.level ?? 0) + 1}` : it.parent != null ? 'inside a room' : 'on the ground';
@@ -964,13 +955,18 @@ function liftReach(c, reach) {
   return `, <span class="sh-warn">serving ${reach} of ${c.floors} floors: no room above holds the shaft</span>${latch}`;
 }
 
-// ------------------------------------------------------------------ block line
+// ------------------------------------------------------------------ block card
 
-// Under the front view, the selected block's line: its colour and name, a
-// room's three sizes, where it stands, moving it, and what can be done with
-// it. Sizes a room has set itself carry a ↺ back to the shelf's.
-const bar = $('block-bar');
+// The selected block's card, on the front view above its walls: its colour and
+// name, a room's three sizes, where it stands, moving it, and what can be done
+// with it. Sizes a room has set itself carry a ↺ back to the shelf's. On a
+// phone it folds to its name and colour, and a button unfolds the rest.
+const cardHost = document.createElement('div');
+cardHost.className = 'sh-jig sh-jig-card rail-band no-print';
+mat.parentElement.append(cardHost);
 const DIM_NAME = { w: 'Width', h: 'Height', d: 'Depth' };
+let cardOpen = false;
+const compactCard = () => mat.clientWidth < 700;
 
 function dimField(it, dim) {
   const own = it.own?.[dim];
@@ -982,57 +978,66 @@ function dimField(it, dim) {
     })}</span>`;
 }
 
+let cardCompact = null;
+let cardFor = null;
 function renderBlockBar() {
   const it = selected();
-  const focusId = bar.contains(document.activeElement) ? document.activeElement.id : null;
+  if (it?.id !== cardFor) { cardFor = it?.id ?? null; cardOpen = false; }
+  const focusId = cardHost.contains(document.activeElement) ? document.activeElement.id : null;
+  cardCompact = compactCard();
   if (!it) {
-    bar.innerHTML = '<span id="selection" class="sh-where" aria-live="polite"></span>';
-  } else {
-    const same = state.items.filter((o) => o.id !== it.id && o.kind === it.kind && o.name === it.name).length;
-    const base = typeDef(it.base);
-    const step = bigMove();
-    bar.innerHTML = `
+    cardHost.replaceChildren();
+    return;
+  }
+  const same = state.items.filter((o) => o.id !== it.id && o.kind === it.kind && o.name === it.name).length;
+  const base = typeDef(it.base);
+  const step = bigMove();
+  const folded = cardCompact && !cardOpen;
+  const head = `
       <span class="sh-ident">
         <input id="sh-color" type="color" data-path="cfg.color" value="${it.cfg.color}" aria-label="Colour" title="Colour">
-        <span class="sh-ident-text">
-          <input id="sh-name" type="text" data-path="name" value="${esc(it.name)}" maxlength="40" aria-label="Name" title="Name: type to rename it">
-          <span id="selection" class="sh-where" aria-live="polite"></span>
-        </span>
-      </span>
-      ${isRoom(it) ? `<span class="sh-dims">${['w', 'h', 'd'].map((d) => dimField(it, d)).join('')}</span>` : ''}
-      <span class="chips sh-move">
-        <button type="button" class="chip" data-act="nudge" data-v="-1" title="Move left ${len(step)} (Shift+←)" aria-label="Move left ${len(step)}">◀</button>
-        <button type="button" class="chip" data-act="nudge" data-v="1" title="Move right ${len(step)} (Shift+→)" aria-label="Move right ${len(step)}">▶</button>
-      </span>
-      <span class="chips">
-        <button type="button" class="chip" data-act="duplicate" title="Stack a copy on top (D)">duplicate</button>
-        <button type="button" class="chip" data-act="delete" title="Delete (Del)">delete</button>
-        <button type="button" class="chip" data-act="download" title="Download this block's STL">stl</button>
-        <details class="sh-more">
-          <summary class="chip" title="More" aria-label="More actions">⋯</summary>
-          <div class="sh-menu">
-            <button type="button" data-act="save-type">Save as block type</button>
-            ${same ? `<button type="button" data-act="apply-same">Copy settings to ${same} other “${esc(it.name)}” block${same > 1 ? 's' : ''}</button>` : ''}
-            ${base ? `<button type="button" data-act="reset">Reset to “${esc(base.name)}”</button>` : ''}
-          </div>
-        </details>
+        <input id="sh-name" type="text" data-path="name" value="${esc(it.name)}" maxlength="40" aria-label="Name" title="Name: type to rename it">
+        ${cardCompact ? `<button type="button" class="chip sh-card-fold" data-card="fold" aria-expanded="${!folded}"
+          title="${folded ? 'Show' : 'Hide'} sizes and actions" aria-label="${folded ? 'Show' : 'Hide'} sizes and actions">${folded ? '▾' : '▴'}</button>` : ''}
       </span>`;
-  }
+  const rest = `
+      ${isRoom(it) ? `<span class="sh-dims">${['w', 'h', 'd'].map((d) => dimField(it, d)).join('')}</span>` : ''}
+      <span id="selection" class="sh-where" aria-live="polite"></span>
+      <span class="sh-card-actions">
+        <span class="chips sh-move">
+          <button type="button" class="chip" data-act="nudge" data-v="-1" title="Move left ${len(step)} (Shift+←)" aria-label="Move left ${len(step)}">◀</button>
+          <button type="button" class="chip" data-act="nudge" data-v="1" title="Move right ${len(step)} (Shift+→)" aria-label="Move right ${len(step)}">▶</button>
+        </span>
+        <span class="chips">
+          <button type="button" class="chip" data-act="duplicate" title="Stack a copy on top (D)">duplicate</button>
+          <button type="button" class="chip" data-act="delete" title="Delete (Del)">delete</button>
+          <button type="button" class="chip" data-act="download" title="Download this block's STL">stl</button>
+          <details class="sh-more">
+            <summary class="chip" title="More" aria-label="More actions">⋯</summary>
+            <div class="sh-menu">
+              <button type="button" data-act="save-type">Save as block type</button>
+              ${same ? `<button type="button" data-act="apply-same">Copy settings to ${same} other “${esc(it.name)}” block${same > 1 ? 's' : ''}</button>` : ''}
+              ${base ? `<button type="button" data-act="reset">Reset to “${esc(base.name)}”</button>` : ''}
+            </div>
+          </details>
+        </span>
+      </span>`;
+  cardHost.innerHTML = `<div class="sh-ident-card${folded ? ' is-folded' : ''}" data-el="ident" role="group" aria-label="${esc(it.name)}">${head}${folded ? '' : rest}</div>`;
   if (focusId) $(focusId)?.focus();
   renderSelection(currentView());
 }
 
 // The ⋯ menu closes on a choice, a click elsewhere, or Escape.
-const closeMenus = (except = null) => { for (const d of bar.querySelectorAll('.sh-more[open]')) if (d !== except) d.open = false; };
+const closeMenus = (except = null) => { for (const d of cardHost.querySelectorAll('.sh-more[open]')) if (d !== except) d.open = false; };
 document.addEventListener('click', (e) => closeMenus(e.target.closest?.('.sh-more')));
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenus(); });
 
-// A size field in the line lights the dimension it sets on the front view.
+// A size field in the card lights the dimension it sets on the front view.
 const dimOf = (e) => { const d = e.target.closest?.('.sh-dim'); return d ? `dim-${d.dataset.dim}` : null; };
-bar.addEventListener('pointerover', (e) => { if (dimOf(e) || jigHot?.startsWith('dim-')) setJigHot(dimOf(e)); });
-bar.addEventListener('pointerleave', () => { if (jigHot?.startsWith('dim-') && !bar.querySelector('.sh-dim:focus-within')) setJigHot(null); });
-bar.addEventListener('focusin', (e) => setJigHot(dimOf(e)));
-bar.addEventListener('focusout', (e) => { if (!e.relatedTarget?.closest?.('.sh-dim') && jigHot?.startsWith('dim-')) setJigHot(null); });
+cardHost.addEventListener('pointerover', (e) => { if (dimOf(e) || jigHot?.startsWith('dim-')) setJigHot(dimOf(e)); });
+cardHost.addEventListener('pointerleave', () => { if (jigHot?.startsWith('dim-') && !cardHost.querySelector('.sh-dim:focus-within')) setJigHot(null); });
+cardHost.addEventListener('focusin', (e) => setJigHot(dimOf(e)));
+cardHost.addEventListener('focusout', (e) => { if (!e.relatedTarget?.closest?.('.sh-dim') && jigHot?.startsWith('dim-')) setJigHot(null); });
 
 // ------------------------------------------------------------------ inspector
 
@@ -1085,16 +1090,19 @@ function positionLabels(wall) {
 const ANCHORS = ['centre', 'floor'];
 const ANCHOR_LABEL = { centre: 'Centre of the wall', floor: 'Floor (doorway)' };
 
-// The picked opening's fields, compact enough to sit beside a room on the
-// front view: shape and anchor as pictures, the numbers in two columns.
 const ANCHOR_GLYPH = {
   centre: '<rect x="4.5" y="4.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3" stroke="currentColor" stroke-width="1.2"/>',
   floor: '<rect x="4.5" y="3" width="7" height="10" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M1 13.6h14" stroke="currentColor" stroke-width="1.6"/>',
 };
 
-function openingHTML(o, i) {
+// The picked opening's tile, joined to its tab. It is shaped by the way it
+// opens, so it costs the front view as little as it can: wide and short above
+// the ceiling and below the floor and back wall, narrow and tall beside a side
+// wall. Shape and alignment are pictures, the numbers sit in columns.
+function tileHTML(o, i) {
   const [xl, yl, xh] = positionLabels(o.wall);
   const p = `cfg.openings.${i}`;
+  const side = o.wall === 'left' || o.wall === 'right';
   const onWall = !(o.wall === 'ceiling' || o.wall === 'floor');
   const count = { unit: '', step: 1, min: 1, max: 12 };
   const mini = (short, name, key, opts = {}) => `<span class="sh-mini" title="${esc(opts.hint ? `${name}: ${opts.hint}` : name)}">
@@ -1102,31 +1110,36 @@ function openingHTML(o, i) {
   const seg = (key, values, labels, glyphs) => `<span class="sh-op-seg" role="group" aria-label="${key === 'shape' ? 'Shape' : 'Sits on'}">${values.map((v) =>
     `<button type="button" class="sh-jig-btn${o[key] === v ? ' is-on' : ''}" data-jig="set" data-path="${p}.${key}" data-v="${v}"
       aria-pressed="${o[key] === v}" title="${labels[v]}" aria-label="${labels[v]}">${glyphs(v)}</button>`).join('')}</span>`;
-  return `<div class="sh-opening">
-    <div class="sh-opening-head"><span>Opening ${i + 1}</span>
-      <select id="sh-op-wall" data-path="${p}.wall" aria-label="Wall" title="Wall">${WALLS.map((w) =>
-        `<option value="${w}"${w === o.wall ? ' selected' : ''}>${WALL_LABEL[w]}</option>`).join('')}</select>
-      <button type="button" class="chip" data-jig="unpick" title="Close (Esc)" aria-label="Close">×</button></div>
-    <div class="sh-op-row">
-      ${seg('shape', SHAPES, SHAPE_LABEL, shapeGlyph)}
-      ${onWall ? seg('anchor', ANCHORS, ANCHOR_LABEL, (v) => glyph(ANCHOR_GLYPH[v])) : ''}
-    </div>
-    <div class="sh-op-grid">
-      ${mini(xl === 'Along depth' ? 'Depth' : 'Across', xl, 'x', { min: -500, hint: xh })}
-      ${onWall && o.anchor === 'floor' ? '<span></span>' : mini('Up', yl, 'y', { min: -500, hint: onWall ? 'from the middle of the wall; positive moves it up' : '' })}
-      ${mini('W', 'Width', 'w', { min: 1 })}
-      ${mini('H', 'Height', 'h', { min: 1 })}
-      <span class="sh-mini" title="Panes across × panes up"><label for="sh-op-cols">Panes</label>${numInput(`${p}.cols`, o.cols, { ...count, unit: '', id: 'sh-op-cols', extra: ' aria-label="Panes across"' })}<span class="unit">×</span>${numInput(`${p}.rows`, o.rows, { ...count, unit: '', id: 'sh-op-rows', extra: ' aria-label="Panes up"' })}</span>
-      ${(o.cols > 1 || o.rows > 1) ? mini('Bar', 'Bar width', 'bar', { max: 20, fine: true }) : '<span></span>'}
-      ${mini('Copies', 'Copies', 'count', count)}
-      ${o.count > 1 ? mini('Gap', 'Spacing, centre to centre', 'pitch', { min: 1 }) : '<span></span>'}
-      ${o.shape === 'rect' ? mini('R', 'Corner radius', 'r', { max: 100, fine: true }) : ''}
-    </div>
-    <div class="chips sh-op-actions">
+  const fields = [
+    mini(xl === 'Along depth' ? 'Depth' : 'Across', xl, 'x', { min: -500, hint: xh }),
+    ...(onWall && o.anchor === 'floor' ? [] : [mini('Up', yl, 'y', { min: -500, hint: onWall ? 'from the middle of the wall; positive moves it up' : '' })]),
+    mini('W', 'Width', 'w', { min: 1 }),
+    mini('H', 'Height', 'h', { min: 1 }),
+    `<span class="sh-mini" title="Panes across × panes up"><label for="sh-op-cols">Panes</label>${numInput(`${p}.cols`, o.cols, { ...count, unit: '', id: 'sh-op-cols', extra: ' aria-label="Panes across"' })}<span class="unit">×</span>${numInput(`${p}.rows`, o.rows, { ...count, unit: '', id: 'sh-op-rows', extra: ' aria-label="Panes up"' })}</span>`,
+    ...((o.cols > 1 || o.rows > 1) ? [mini('Bar', 'Bar width', 'bar', { max: 20, fine: true })] : []),
+    mini('Copies', 'Copies', 'count', count),
+    ...(o.count > 1 ? [mini('Gap', 'Spacing, centre to centre', 'pitch', { min: 1 })] : []),
+    ...(o.shape === 'rect' ? [mini('R', 'Corner radius', 'r', { max: 100, fine: true })] : []),
+  ].join('');
+  const title = `<span class="sh-tile-title">Opening ${i + 1}</span>`;
+  const wall = `<select id="sh-op-wall" data-path="${p}.wall" aria-label="Wall" title="Wall">${WALLS.map((w) =>
+    `<option value="${w}"${w === o.wall ? ' selected' : ''}>${WALL_LABEL[w]}</option>`).join('')}</select>`;
+  const close = '<button type="button" class="chip" data-jig="unpick" title="Close (Esc)" aria-label="Close">×</button>';
+  const shape = seg('shape', SHAPES, SHAPE_LABEL, shapeGlyph);
+  const anchor = onWall ? seg('anchor', ANCHORS, ANCHOR_LABEL, (v) => glyph(ANCHOR_GLYPH[v])) : '';
+  const actions = `<span class="chips sh-tile-actions">
       <button type="button" class="chip" data-act="dup-opening" data-i="${i}" title="Add a copy of this opening beside it">copy</button>
-      <button type="button" class="chip" data-act="del-opening" data-i="${i}" title="Remove this opening">remove</button>
-    </div>
-  </div>`;
+      <button type="button" class="chip" data-act="del-opening" data-i="${i}" title="Remove this opening">remove</button></span>`;
+  const label = `role="group" aria-label="Opening ${i + 1}"`;
+  if (side) {
+    return `<div class="sh-tile is-narrow" data-el="tile" ${label}>
+      <div class="sh-tile-head">${title}${close}</div>${wall}
+      <div class="sh-tile-pics">${shape}${anchor}</div>
+      <div class="sh-tile-fields">${fields}</div>${actions}</div>`;
+  }
+  return `<div class="sh-tile is-wide" data-el="tile" ${label}>
+    <div class="sh-tile-head">${title}${wall}${shape}${anchor}<span class="sh-tile-gap"></span>${actions}${close}</div>
+    <div class="sh-tile-fields">${fields}</div></div>`;
 }
 
 // Everything about the selected block is on or under the front view; this
@@ -1259,10 +1272,6 @@ function onAct(e) {
   commit(layout);
 }
 
-bar.addEventListener('input', onFieldInput);
-bar.addEventListener('change', onFieldChange);
-bar.addEventListener('click', onAct);
-
 function saveAsType(it) {
   let name = it.name;
   const taken = (n) => Object.values(PRESETS).some((p) => p.name === n) || customTypes.some((t) => t.name === n);
@@ -1295,21 +1304,18 @@ function flash(msg) {
 
 // ------------------------------------------------------------------ in-place panels
 
-// A selected block is edited where it stands. A room gets a tab on each of its
-// four sides and one for its back wall under the floor tab, setting that
-// wall's weight and adding, picking or removing its openings, plus a dot on
-// each corner that rounds or squares it. A table, a flight of stairs or a
-// lift gets a tab beside each size it has. A tab unfolds on hover or focus,
-// and the part it works on lights up on the front view.
-const JIG_NAME = { ceiling: 'Ceiling', left: 'Left', right: 'Right', floor: 'Floor', back: 'Back wall' };
-const JIG_ADDS = {
-  left: ['doorway', 'window', 'porthole', 'arch'], right: ['doorway', 'window', 'porthole', 'arch'],
-  ceiling: ['skylight'], floor: ['hatch'], back: ['window', 'arch', 'porthole'],
-};
-const ADD_LABEL = { doorway: 'doorway', window: 'window', skylight: 'skylight', hatch: 'hatch', arch: 'arched window', porthole: 'round window' };
+// A selected block is edited where it stands, and everything it has is out at
+// once, in the selection's cyan. A room has, for each wall, its weight (thick,
+// thin or missing) and its openings as a row of tabs with a + to add one: above
+// the ceiling, below the floor and the back wall, upright beside the side
+// walls. The picked opening opens into a tile joined to its tab. Each corner
+// has a dot that rounds or squares it, and the room's card sits above all of
+// it. A table, a flight of stairs or a lift gets a panel beside each size it
+// has. The part a panel works on lights up on the front view while the
+// pointer or focus is in it.
 const KIND_LABEL = { thick: 'Thick', thin: 'Thin', none: 'No wall' };
-// Where each tab docks: above, below, under the one below, or beside.
-const ROOM_SIDES = { ceiling: 'top', left: 'left', right: 'right', floor: 'bottom', back: 'under' };
+// What the + on each wall adds; its shape and alignment are set in the tile.
+const ADD_KIND = { back: 'window', left: 'window', right: 'window', ceiling: 'skylight', floor: 'hatch' };
 // The walls each corner joins; a corner beside a missing wall is square.
 const CORNER_WALLS = { tl: ['left', 'ceiling'], tr: ['right', 'ceiling'], br: ['right', 'floor'], bl: ['left', 'floor'] };
 
@@ -1332,10 +1338,11 @@ function freeX(cfg, o) {
   return 0;
 }
 
-let jigHot = null;      // the tab being worked in
+let jigHot = null;      // the wall, size, corner or dimension being worked in
 let jigPick = null;     // { id, i }: the opening picked from a tab
 
 const glyph = (body) => `<svg viewBox="0 0 16 16" aria-hidden="true">${body}</svg>`;
+const PLUS = glyph('<path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" fill="none"/>');
 function weightGlyph(kind, vertical) {
   const bar = (t) => (vertical ? `<rect x="${8 - t / 2}" y="1" width="${t}" height="14"/>` : `<rect x="1" y="${8 - t / 2}" width="14" height="${t}"/>`);
   if (kind === 'thick') return glyph(bar(5));
@@ -1348,56 +1355,47 @@ function shapeGlyph(shape) {
   if (shape === 'arch') return glyph('<path d="M4 14V7.5a4 4 0 0 1 8 0V14z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>');
   return glyph('<rect x="3" y="3" width="10" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>');
 }
-const ADD_SHAPE = { doorway: 'arch', window: 'rect', skylight: 'rect', hatch: 'rect', arch: 'arch', porthole: 'round' };
 
-// One tab and what it unfolds into.
-function jigPanel({ id, side, name, label, tab, title, body }) {
-  const vertical = side === 'left' || side === 'right' ? !!tab.vertical : false;
-  return `<div class="sh-jig-panel${vertical ? ' is-vertical' : ''}${side === 'left' && !vertical ? ' is-start' : ''}${jigHot === id ? ' is-hot' : ''}"
-      data-panel="${id}" data-side="${side}" role="group" aria-label="${name}">
-    <button type="button" class="sh-jig-tab" data-jig="open" data-panel="${id}" aria-expanded="${jigHot === id}"
-      title="${esc(title)}" aria-label="${esc(title)}">${tab.html}</button>
-    <span class="sh-jig-body">${body}</span>
-  </div>`;
+// A wall's openings: a tab for each, and a + to add one. With no wall there
+// is nothing to open, so the row says so.
+function tabsHTML(it, wall, picked) {
+  const name = WALL_LABEL[wall];
+  const hot = jigHot === wall ? ' is-hot' : '';
+  if (it.walls[wall] === 'none') return `<p class="sh-jig-nowall${hot}" data-el="tabs-${wall}" data-wall="${wall}">No wall, so no openings</p>`;
+  const way = { ceiling: 'up', left: 'side-l', right: 'side-r' }[wall] || 'down';
+  const tabs = it.cfg.openings.map((o, i) => [o, i]).filter(([o]) => o.wall === wall).map(([o, i]) => `<button type="button"
+      class="sh-jig-tab${i === picked ? ' is-picked' : ''}" data-jig="pick" data-wall="${wall}" data-i="${i}" aria-pressed="${i === picked}"
+      title="Opening ${i + 1}: ${SHAPE_LABEL[o.shape].toLowerCase()}, ${len(o.w)} × ${len(o.h)}" aria-label="${name}, opening ${i + 1}">${shapeGlyph(o.shape)}</button>`).join('');
+  const add = `<button type="button" class="sh-jig-tab is-add" data-jig="add" data-wall="${wall}" data-v="${ADD_KIND[wall]}"
+      title="Add an opening to the ${name.toLowerCase()}" aria-label="${name}: add an opening">${PLUS}</button>`;
+  return `<div class="sh-jig-tabs is-${way}${hot}" data-el="tabs-${wall}" data-wall="${wall}" role="group" aria-label="${name} openings">${tabs}${add}</div>`;
 }
 
-function roomPanels(it) {
+function roomHTML(it) {
   const st = state.settings;
   const what = (k) => (k === 'none' ? 'no wall' : `${KIND_LABEL[k].toLowerCase()}, ${len(st[k])}`);
-  return Object.entries(ROOM_SIDES).map(([wall, side]) => {
-    const vertical = side === 'left' || side === 'right';
-    const kind = it.walls[wall];
-    const name = JIG_NAME[wall];
-    const ops = it.cfg.openings.map((o, i) => [o, i]).filter(([o]) => o.wall === wall);
+  const picked = jigPick && jigPick.id === it.id ? jigPick.i : null;
+  let h = '';
+  for (const wall of ['ceiling', 'left', 'right', 'floor', 'back']) {
+    const vertical = wall === 'left' || wall === 'right';
+    const kind = it.walls[wall], name = WALL_LABEL[wall];
     const weights = WALL_KINDS.map((k) => `<button type="button" class="sh-jig-btn${k === kind ? ' is-on' : ''}" data-jig="wall" data-wall="${wall}" data-v="${k}"
         aria-pressed="${k === kind}" title="${KIND_LABEL[k]}${k === 'none' ? '' : `, ${len(st[k])}`}" aria-label="${name}: ${what(k)}">${weightGlyph(k, vertical)}</button>`).join('');
-    const picked = jigPick && jigPick.id === it.id && ops.some(([, i]) => i === jigPick.i) ? jigPick.i : null;
-    const chips = ops.map(([o, i]) => `<button type="button" class="sh-jig-btn sh-jig-op${i === picked ? ' is-picked' : ''}${kind === 'none' ? ' is-idle' : ''}"
-        data-jig="pick" data-wall="${wall}" data-i="${i}" aria-pressed="${i === picked}" title="Opening ${i + 1}: ${SHAPE_LABEL[o.shape].toLowerCase()}, ${len(o.w)} × ${len(o.h)}"
-        aria-label="${name}, opening ${i + 1}">${shapeGlyph(o.shape)}</button>`).join('');
-    const del = picked != null ? `<button type="button" class="sh-jig-btn sh-jig-del" data-jig="del" data-wall="${wall}" data-i="${picked}"
-        title="Remove opening ${picked + 1}" aria-label="Remove opening ${picked + 1}">×</button>` : '';
-    const adds = kind === 'none' ? '' : JIG_ADDS[wall].map((a) => `<button type="button" class="sh-jig-btn sh-jig-add" data-jig="add" data-wall="${wall}" data-v="${a}"
-        title="Add a ${ADD_LABEL[a]}" aria-label="${name}: add a ${ADD_LABEL[a]}">${shapeGlyph(ADD_SHAPE[a])}</button>`).join('');
-    return {
-      id: wall, side, name,
-      title: `${name}: ${what(kind)}`,
-      tab: { vertical, html: `${vertical ? '' : `<span class="sh-jig-name">${name}</span>`}${weightGlyph(kind, vertical)}` },
-      body: `<span class="sh-jig-set">${weights}</span>${chips || adds ? `<span class="sh-jig-set">${chips}${del}${adds}</span>` : ''}`,
-    };
-  });
+    h += `<div class="sh-jig-panel${vertical ? ' is-vertical' : ''}${jigHot === wall ? ' is-hot' : ''}" data-el="sel-${wall}" data-panel="${wall}" data-wall="${wall}"
+      role="group" aria-label="${name}: ${what(kind)}">${weights}</div>${tabsHTML(it, wall, picked)}`;
+  }
+  h += '<span class="sh-jig-label" data-el="label-back">Back wall</span>';
+  if (picked != null && it.cfg.openings[picked]) h += tileHTML(it.cfg.openings[picked], picked);
+  return h;
 }
 
-// A size of a table or a flight: the tab reads its value, and unfolds into
-// the field that sets it.
+// A size of a table or a flight: its name and the field that sets it.
 function sizePanel(it, id, side, name, short, path, opts = {}) {
   const v = getPath(it, path);
-  const shown = opts.unit === '' ? fmt(v) : fmtLen(v);
   return {
     id, side, name,
-    title: `${name}: ${opts.unit === '' ? shown : len(v)}${opts.hint ? `. ${opts.hint}` : ''}`,
-    tab: { html: `<span class="sh-jig-name">${short}</span><span class="sh-jig-val">${shown}</span>` },
-    body: `<span class="field-value">${numInput(path, v, { ...opts, id: `sh-jig-${id}`, extra: ` data-jig="num" aria-label="${name}"` })}</span>`,
+    title: `${name}: ${opts.unit === '' ? fmt(v) : len(v)}${opts.hint ? `. ${opts.hint}` : ''}`,
+    body: `<label class="sh-jig-name" for="sh-jig-${id}">${short}</label><span class="field-value">${numInput(path, v, { ...opts, id: `sh-jig-${id}`, extra: ` data-jig="num" aria-label="${name}"` })}</span>`,
   };
 }
 
@@ -1422,8 +1420,7 @@ function furniturePanels(it, layout) {
       {
         id: 'turn', side: 'top', name: 'Turn',
         title: `Rises to the ${c.flip ? 'left' : 'right'}`,
-        tab: { html: `<span class="sh-jig-name">Rises ${c.flip ? 'left' : 'right'}</span>` },
-        body: `<button type="button" class="sh-jig-btn sh-jig-wide" data-jig="flip" title="Rise to the ${c.flip ? 'right' : 'left'} instead"
+        body: `<span class="sh-jig-name">Rises ${c.flip ? 'left' : 'right'}</span><button type="button" class="sh-jig-btn sh-jig-wide" data-jig="flip" title="Rise to the ${c.flip ? 'right' : 'left'} instead"
           aria-label="Rise to the ${c.flip ? 'right' : 'left'} instead">turn ⇄</button>`,
       },
       sizePanel(it, 'run', 'bottom', 'Run length', 'Run', 'cfg.run', { min: 10 }),
@@ -1441,6 +1438,11 @@ function furniturePanels(it, layout) {
   ];
 }
 
+function furnitureHTML(it, layout) {
+  return furniturePanels(it, layout).map((p) => `<div class="sh-jig-panel sh-jig-size${jigHot === p.id ? ' is-hot' : ''}" data-el="size-${p.id}" data-panel="${p.id}"
+    data-side="${p.side}" role="group" aria-label="${esc(p.name)}" title="${esc(p.title)}">${p.body}</div>`).join('');
+}
+
 // The dots that round or square each corner, outer ring and inner.
 function cornerDots(it) {
   return ['outer', 'inner'].flatMap((ring) => CORNERS.map((key) => {
@@ -1449,7 +1451,7 @@ function cornerDots(it) {
     const name = `${ring === 'outer' ? 'Outer' : 'Inner'} ${CORNER_LABEL[key]} corner`;
     const title = forced ? `${name}: square, because a wall beside it is missing`
       : `${name}: ${on ? 'rounded' : 'square'}. Shift-click to set all four ${ring} corners`;
-    return `<button type="button" class="sh-corner${on ? ' on' : ''}" data-jig="corner" data-ring="${ring}" data-c="${key}"
+    return `<button type="button" class="sh-corner${on ? ' on' : ''}" data-el="dot-${ring}-${key}" data-jig="corner" data-ring="${ring}" data-c="${key}"
       aria-pressed="${on}" title="${title}" aria-label="${title}"${forced ? ' disabled' : ''}></button>`;
   })).join('');
 }
@@ -1531,41 +1533,63 @@ window.addEventListener('pointerup', () => {
   const moved = opDrag.moved;
   opDrag = null;
   if (moved) endEdit();
+  // The view held still while the opening was held; fit it now.
+  render();
 });
 
-// The picked opening's card: its fields, docked beside the room.
-function openingCard(it) {
-  const o = pickedOpening(it);
-  if (!o) return '';
-  return `<div class="sh-op-card" data-panel="op-card" role="group" aria-label="Opening ${jigPick.i + 1}">${openingHTML(o, jigPick.i)}</div>`
-    + (o.wall === 'back' ? `<span class="sh-op-handle" data-jig="resize" title="Drag to resize" aria-hidden="true"></span>` : '');
-}
-
 const jig = document.createElement('div');
-jig.className = 'sh-jig no-print';
+jig.className = 'sh-jig rail-band no-print';
 mat.parentElement.append(jig);
+
+// The elements of the selection's panels, by what they are.
+const jigEl = (n) => jig.querySelector(`[data-el="${n}"]`) || cardHost.querySelector(`[data-el="${n}"]`);
 
 function renderJig(layout) {
   const it = layout.items.find((i) => i.id === selectedId);
   const active = jig.contains(document.activeElement) ? document.activeElement : null;
   const focusKey = active ? (active.id ? `#${active.id}` : jigKey(active)) : null;
-  if (!it || (drag && drag.moved)) {
+  // The panels wait out a press on a block: they unwrap when it is let go.
+  cardHost.hidden = !!drag;
+  if (selectedId !== jigSel && !drag) { jigSel = selectedId; unwrapNext = selectedId != null; }
+  if (!it || drag) {
     jig.replaceChildren();
     if (!it) jigHot = null;
     drawJigHighlight(layout);
+    drawPick(layout);
     return;
   }
-  const panels = isRoom(it) ? roomPanels(it) : furniturePanels(it, layout);
-  // Forget a hot tab or corner that this block does not have.
-  const corner = isRoom(it) && /^(corner-(outer|inner)-(tl|tr|br|bl)|dim-[whd])$/.test(jigHot || '');
-  if (!corner && !panels.some((p) => p.id === jigHot)) jigHot = null;
-  // The panels' fields read like the band's, so they take its input styles.
-  if (!pickedOpening(it)) jigPick = null;
-  jig.innerHTML = `<div class="rail-band">${panels.map(jigPanel).join('')}${isRoom(it) ? cornerDots(it) : ''}${openingCard(it)}</div>`;
+  // Forget a hot wall, size, corner or dimension that this block does not have.
+  const hotOk = isRoom(it) ? /^(back|left|right|ceiling|floor|corner-(outer|inner)-(tl|tr|br|bl)|dim-[whd])$/.test(jigHot || '')
+    : furniturePanels(it, layout).some((p) => p.id === jigHot);
+  if (!hotOk) jigHot = null;
+  // A wall with no wall has no openings to work on.
+  const pick = pickedOpening(it);
+  if (!pick || it.walls[pick.wall] === 'none') jigPick = null;
+  const handle = pickedOpening(it)?.wall === 'back' ? '<span class="sh-op-handle" data-jig="resize" title="Drag to resize" aria-hidden="true"></span>' : '';
+  jig.innerHTML = (isRoom(it) ? roomHTML(it) + cornerDots(it) : furnitureHTML(it, layout)) + handle;
   placeJig(layout, it);
+  if (unwrapNext) { unwrapNext = false; unwrap(layout, it); }
   if (focusKey) jig.querySelector(focusKey)?.focus();
   drawJigHighlight(layout);
   drawPick(layout);
+}
+
+// The panels fly out from the block when it is first selected.
+let unwrapNext = false;
+let jigSel = null;
+function unwrap(layout, it) {
+  if (!look) return;
+  const B = boxOf(layout, it, look);
+  const cx = (B.l + B.r) / 2, cy = (B.t + B.b) / 2;
+  for (const host of [jig, cardHost]) {
+    for (const el of host.querySelectorAll('[data-el]')) {
+      el.style.setProperty('--fx', `${Math.round((cx - (el.offsetLeft + el.offsetWidth / 2)) * 0.6)}px`);
+      el.style.setProperty('--fy', `${Math.round((cy - (el.offsetTop + el.offsetHeight / 2)) * 0.6)}px`);
+    }
+    host.classList.remove('is-unwrapping');
+    void host.offsetWidth;
+    host.classList.add('is-unwrapping');
+  }
 }
 
 // The picked opening, outlined on the front view.
@@ -1589,79 +1613,125 @@ const jigKey = (el) => {
   return `[data-jig="${b.dataset.jig}"]${attr('panel')}${attr('wall')}${attr('v')}${attr('i')}${attr('ring')}${attr('c')}${attr('path')}`;
 };
 
-// Dock each tab against its side, just outside the selection outline. An
-// open panel unfolds away from its tab (rightwards above and below, outwards
-// beside), so the tab never moves from under the pointer.
-function placeJig(layout, it) {
-  const box = jig.getBoundingClientRect();
-  const ctm = mat.getScreenCTM();
-  if (!ctm || !box.width) return;
-  const a = absPos(layout, it), sz = sizeOf(it);
-  const pt = (x, y) => {
-    const p = new DOMPoint(x, -y).matrixTransform(ctm);
-    return { x: p.x - box.left, y: p.y - box.top };
+// Docks everything around the block's box `B` (view pixels): each wall's
+// weight against it, its openings' tabs beyond that, and the tile joined to
+// the picked tab, opening away from the room. Returns
+// the box that takes in what `mode` counts: all of it; 'notile', laid out as if
+// no tile were open; 'focus', the room, the picked opening's wall, and its tile.
+const JIG_GAP = 8;
+function layoutJig(it, B, mode = 'all') {
+  const cx = (B.l + B.r) / 2, cy = (B.t + B.b) / 2;
+  const sz = sizeOf(it), k = (B.r - B.l) / sz.w;
+  const W = (e) => e?.offsetWidth || 0, H = (e) => e?.offsetHeight || 0;
+  const at = (e, x, y) => {
+    if (e) { e.style.left = `${Math.round(x)}px`; e.style.top = `${Math.round(y)}px`; }
+    return { l: x, t: y, r: x + W(e), b: y + H(e) };
   };
-  const tl = pt(a.x - 3.5, a.y + sz.h + 3.5), br = pt(a.x + sz.w + 3.5, a.y - 3.5);
-  const r = { l: tl.x, t: tl.y, r: br.x, b: br.y };
-  const cx = (r.l + r.r) / 2, cy = (r.t + r.b) / 2, gap = 5, pad = 3;
-  const fit = (el, x, y) => {
-    const fx = clamp(x, 2, box.width - el.offsetWidth - 2), fy = clamp(y, 2, box.height - el.offsetHeight - 2);
-    el.style.transform = `translate(${Math.round(fx)}px, ${Math.round(fy)}px)`;
-  };
-  const bottomTab = jig.querySelector('.sh-jig-panel[data-side="bottom"] .sh-jig-tab');
-  for (const el of jig.querySelectorAll('.sh-jig-panel')) {
-    const tab = el.querySelector('.sh-jig-tab');
-    const tw = tab.offsetWidth + 2 * pad, th = tab.offsetHeight + 2 * pad;
-    const side = el.dataset.side;
-    if (side === 'top') fit(el, cx - tw / 2, r.t - gap - th);
-    else if (side === 'bottom') fit(el, cx - tw / 2, r.b + gap);
-    else if (side === 'under') fit(el, cx - tw / 2, r.b + gap + (bottomTab ? bottomTab.offsetHeight + 2 * pad + 3 : 0));
-    else if (side === 'right') fit(el, r.r + gap, cy - th / 2);
-    // A left tab unfolds leftwards, so it is placed by its right edge.
-    else fit(el, r.l - gap - (el.classList.contains('is-vertical') ? tw : el.offsetWidth), cy - th / 2);
-  }
-  // The opening card goes beside the room's side tabs, on whichever side has
-  // room for it, top-aligned with the room; the resize handle on the top
-  // right corner of the opening's first copy.
-  const card = jig.querySelector('.sh-op-card');
-  if (card) {
-    const sideW = (s) => jig.querySelector(`.sh-jig-panel[data-side="${s}"]`)?.offsetWidth || 0;
-    let x = r.r + gap + sideW('right') + 8;
-    if (x + card.offsetWidth > box.width - 2) {
-      const left = r.l - gap - sideW('left') - 8 - card.offsetWidth;
-      x = left >= 2 ? left : box.width - card.offsetWidth - 2;
+  const tile = jigEl('tile');
+  const tileWall = tile && mode !== 'notile' ? pickedOpening(it)?.wall : null;
+  const wide = tile?.classList.contains('is-wide');
+  let stackL = cx, stackT = B.t;
+
+  if (isRoom(it)) {
+    // The ceiling: its weight, its tabs above it, the tile above those.
+    const sc = jigEl('sel-ceiling'), tc = jigEl('tabs-ceiling');
+    const rsc = at(sc, cx - W(sc) / 2, B.t - JIG_GAP - H(sc));
+    const rtc = at(tc, cx - W(tc) / 2, rsc.t - 4 - H(tc));
+    stackL = Math.min(rsc.l, rtc.l); stackT = rtc.t;
+    if (tileWall === 'ceiling') {
+      const r = at(tile, wide ? cx - W(tile) / 2 : rtc.l, rtc.t + 1 - H(tile));
+      stackL = Math.min(stackL, r.l); stackT = r.t;
     }
-    fit(card, x, r.t);
-  }
-  const handle = jig.querySelector('.sh-op-handle');
-  const o = pickedOpening(it);
-  if (handle && o) {
-    const [first] = openingBoxes(it.cfg, o);
-    const p = pt(a.x + first.x1, a.y + first.y1);
-    handle.style.left = `${Math.round(p.x)}px`;
-    handle.style.top = `${Math.round(p.y)}px`;
+
+    // The floor, then the back wall under it, each with its tabs below it.
+    const sf = jigEl('sel-floor'), tf = jigEl('tabs-floor');
+    const rsf = at(sf, cx - W(sf) / 2, B.b + JIG_GAP);
+    const rtf = at(tf, rsf.l, rsf.b + 4);
+    let bottom = rtf.b;
+    if (tileWall === 'floor') bottom = at(tile, wide ? cx - W(tile) / 2 : rtf.l, rtf.b - 1).b;
+    const lb = jigEl('label-back'), sb = jigEl('sel-back'), tb = jigEl('tabs-back');
+    const bx = cx - W(sb) / 2;
+    const rlb = at(lb, bx, bottom + 16);
+    const rsb = at(sb, bx, rlb.b + 4);
+    const rtb = at(tb, bx, rsb.b + 4);
+    if (tileWall === 'back') at(tile, wide ? cx - W(tile) / 2 : rtb.l, rtb.b - 1);
+
+    // Left and right: the weight upright beside the wall, its tabs upright
+    // beside that, and the tile opening sideways from them.
+    const sl = jigEl('sel-left'), tl = jigEl('tabs-left');
+    const rsl = at(sl, B.l - JIG_GAP - W(sl), cy - H(sl) / 2);
+    const rtl = at(tl, rsl.l - 6 - W(tl), rsl.t);
+    if (tileWall === 'left') at(tile, rtl.l + 1 - W(tile), rtl.t);
+    const sr = jigEl('sel-right'), tr = jigEl('tabs-right');
+    const rsr = at(sr, B.r + JIG_GAP, cy - H(sr) / 2);
+    const rtr = at(tr, rsr.r + 6, rsr.t);
+    if (tileWall === 'right') at(tile, rtr.r - 1, rtr.t);
+
+    // Corner dots: the outer ring just outside each corner, the inner ring
+    // just inside each corner of the interior, so the two never sit together.
+    const b = innerBox(it.cfg);
+    const pos = {
+      outer: { tl: [B.l, B.t], tr: [B.r, B.t], br: [B.r, B.b], bl: [B.l, B.b] },
+      inner: { tl: [B.l + b.x0 * k, B.b - b.y1 * k], tr: [B.l + b.x1 * k, B.b - b.y1 * k], br: [B.l + b.x1 * k, B.b - b.y0 * k], bl: [B.l + b.x0 * k, B.b - b.y0 * k] },
+    };
+    const dir = { tl: [-1, -1], tr: [1, -1], br: [1, 1], bl: [-1, 1] };
+    for (const ring of ['outer', 'inner']) {
+      for (const c of CORNERS) {
+        const d = jigEl(`dot-${ring}-${c}`);
+        if (!d) continue;
+        const off = ring === 'outer' ? 7 : -9;
+        d.style.left = `${Math.round(pos[ring][c][0] + dir[c][0] * off)}px`;
+        d.style.top = `${Math.round(pos[ring][c][1] + dir[c][1] * off)}px`;
+      }
+    }
+    const o = pickedOpening(it);
+    const handle = jig.querySelector('.sh-op-handle');
+    if (handle && o) {
+      const [first] = openingBoxes(it.cfg, o);
+      handle.style.left = `${Math.round(B.l + first.x1 * k)}px`;
+      handle.style.top = `${Math.round(B.b - first.y1 * k)}px`;
+    }
+  } else {
+    // A panel on each side it has, centred on that side.
+    for (const e of jig.querySelectorAll('.sh-jig-size')) {
+      const side = e.dataset.side;
+      if (side === 'top') {
+        const r = at(e, cx - W(e) / 2, B.t - JIG_GAP - H(e));
+        stackL = r.l; stackT = r.t;
+      } else if (side === 'bottom') at(e, cx - W(e) / 2, B.b + JIG_GAP);
+      else if (side === 'left') at(e, B.l - JIG_GAP - W(e), cy - H(e) / 2);
+      else at(e, B.r + JIG_GAP, cy - H(e) / 2);
+    }
   }
 
-  // Corner dots: the outer ring just outside each corner, the inner ring just
-  // inside each corner of the interior, so the two never sit on each other.
-  if (!isRoom(it)) return;
-  const b = innerBox(it.cfg);
-  const corner = {
-    outer: { tl: [0, sz.h], tr: [sz.w, sz.h], br: [sz.w, 0], bl: [0, 0] },
-    inner: { tl: [b.x0, b.y1], tr: [b.x1, b.y1], br: [b.x1, b.y0], bl: [b.x0, b.y0] },
-  };
-  const dir = { tl: [-1, -1], tr: [1, -1], br: [1, 1], bl: [-1, 1] };
-  for (const el of jig.querySelectorAll('.sh-corner')) {
-    const [x, y] = corner[el.dataset.ring][el.dataset.c];
-    const p = pt(a.x + x, a.y + y);
-    const [dx, dy] = dir[el.dataset.c];
-    const k = el.dataset.ring === 'outer' ? 7 : -9;
-    el.style.left = `${Math.round(p.x + dx * k)}px`;
-    el.style.top = `${Math.round(p.y + dy * k)}px`;
+  // The card: beside the ceiling's stack, on its left; on a narrow view there
+  // is no width to spare, so above it.
+  const id = jigEl('ident');
+  if (id) {
+    if (compactCard()) at(id, cx - W(id) / 2, stackT - 8 - H(id));
+    else at(id, stackL - 14 - W(id), B.t - 20 - H(id));
   }
+
+  const u = { l: B.l, t: B.t, r: B.r, b: B.b };
+  const focusWall = pickedOpening(it)?.wall;
+  for (const host of [jig, cardHost]) {
+    if (host.hidden) continue;
+    for (const e of host.children) {
+      const n = e.dataset.el;
+      if (!n) continue;
+      if (mode === 'notile' && n === 'tile') continue;
+      if (mode === 'focus' && !(n === 'tile' || n === `sel-${focusWall}` || n === `tabs-${focusWall}` || (focusWall === 'back' && n === 'label-back'))) continue;
+      u.t = Math.min(u.t, e.offsetTop); u.b = Math.max(u.b, e.offsetTop + e.offsetHeight);
+      // On a narrow view the card is as wide as the view allows and sits over the
+      // room, so it takes height from the fit but not width.
+      if (n === 'ident' && compactCard()) continue;
+      u.l = Math.min(u.l, e.offsetLeft); u.r = Math.max(u.r, e.offsetLeft + e.offsetWidth);
+    }
+  }
+  return u;
 }
 
-// What the hot tab works on, lit on the front view: a wall as a strip its own
+// What the hot panel works on, lit on the front view: a wall as a strip its own
 // thickness (a dashed edge where there is none) or the whole back face; a
 // corner as an arc; a part of a table; a whole flight.
 function drawJigHighlight(layout) {
@@ -1728,41 +1798,39 @@ function drawJigHighlight(layout) {
 function setJigHot(id) {
   if (jigHot === id) return;
   jigHot = id;
-  for (const p of jig.querySelectorAll('.sh-jig-panel')) {
-    p.classList.toggle('is-hot', p.dataset.panel === id);
-    p.querySelector('.sh-jig-tab').setAttribute('aria-expanded', p.dataset.panel === id);
+  for (const p of jig.querySelectorAll('.sh-jig-panel, .sh-jig-tabs, .sh-jig-nowall')) {
+    p.classList.toggle('is-hot', (p.dataset.wall ?? p.dataset.panel) === id);
   }
-  const it = selected();
-  if (it) placeJig(state, it);
   drawJigHighlight(currentView());
 }
 const hotOf = (e) => {
-  const p = e.target.closest?.('.sh-jig-panel');
-  if (p) return p.dataset.panel;
+  const p = e.target.closest?.('[data-wall], .sh-jig-size');
+  if (p) return p.dataset.wall ?? p.dataset.panel;
   const d = e.target.closest?.('.sh-corner');
   return d ? `corner-${d.dataset.ring}-${d.dataset.c}` : null;
 };
 jig.addEventListener('pointerover', (e) => setJigHot(hotOf(e)));
-// A mouse leaving the panels folds them. A finger "leaves" every time it
-// lifts, before the tap's click arrives, so folding then would hide the
-// button being tapped (iOS gives a tapped button no focus to hold it open):
-// a touch-opened panel folds when something outside it is tapped instead.
 jig.addEventListener('pointerleave', (e) => {
   if (e.pointerType === 'mouse' && !jig.contains(document.activeElement)) setJigHot(null);
 });
-document.addEventListener('pointerdown', (e) => {
-  if (jigHot && e.pointerType !== 'mouse' && !jig.contains(e.target) && !bar.contains(e.target)) setJigHot(null);
-}, true);
 jig.addEventListener('focusin', (e) => setJigHot(hotOf(e)));
 jig.addEventListener('focusout', (e) => { if (!jig.contains(e.relatedTarget) && !jig.matches(':hover')) setJigHot(null); });
 // The panels sit over the mat; a press on one is not a press on the shelf.
 jig.addEventListener('pointerdown', (e) => e.stopPropagation());
+cardHost.addEventListener('pointerdown', (e) => e.stopPropagation());
 
-// Fields in the panels and the opening card edit the block as the rail did:
-// typed numbers apply on Enter or when the field loses focus, spinner arrows
-// as they go, each one undo step.
+// Fields in the panels and the card edit the block as the rail did: typed
+// numbers apply on Enter or when the field loses focus, spinner arrows as they
+// go, each one undo step.
 jig.addEventListener('input', onFieldInput);
-jig.addEventListener('change', (e) => { onFieldChange(e); renderJig(state); });
+jig.addEventListener('change', (e) => { onFieldChange(e); refreshPanels(); });
+cardHost.addEventListener('input', onFieldInput);
+cardHost.addEventListener('change', onFieldChange);
+cardHost.addEventListener('click', (e) => {
+  const fold = e.target.closest('[data-card="fold"]');
+  if (fold) { cardOpen = !cardOpen; renderBlockBar(); refreshPanels(); return; }
+  onAct(e);
+});
 jig.addEventListener('pointerdown', (e) => {
   const h = e.target.closest('.sh-op-handle');
   const it = selected();
@@ -1771,20 +1839,35 @@ jig.addEventListener('pointerdown', (e) => {
   e.preventDefault();
 });
 
+// Escape closes the tile even from inside one of its fields, which the page-wide
+// key handler leaves alone.
+jig.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !jigPick) return;
+  e.stopPropagation();
+  jigPick = null;
+  refreshPanels();
+});
+
+// Redraws the panels and lets the view follow, without redrawing the shelf.
+function refreshPanels() {
+  const v = currentView();
+  renderJig(v);
+  syncLook(v);
+}
+
 jig.addEventListener('click', (e) => {
   if (e.target.closest('[data-act]')) { onAct(e); return; }
   const b = e.target.closest('[data-jig]');
   const it = selected();
   if (!b || !it) return;
   const act = b.dataset.jig;
-  if (act === 'open') { setJigHot(b.dataset.panel); return; }
-  if (act === 'unpick') { jigPick = null; renderJig(state); return; }
+  if (act === 'unpick') { jigPick = null; refreshPanels(); return; }
   if (act === 'set') { liveEdit(b.dataset.path, b.dataset.v); endEdit(); return; }
   if (act === 'num') return;
   if (act === 'pick') {
     const i = Number(b.dataset.i);
     jigPick = jigPick && jigPick.id === it.id && jigPick.i === i ? null : { id: it.id, i };
-    renderJig(state);
+    refreshPanels();
     return;
   }
   const layout = layoutCopy();
@@ -1796,9 +1879,6 @@ jig.addEventListener('click', (e) => {
     o.x = freeX(m.cfg, o);
     m.cfg.openings.push(o);
     jigPick = { id: m.id, i: m.cfg.openings.length - 1 };
-  } else if (act === 'del') {
-    m.cfg.openings.splice(Number(b.dataset.i), 1);
-    jigPick = null;
   } else if (act === 'corner') {
     const { ring, c } = b.dataset;
     const to = !m.cfg[ring][c];
@@ -1808,10 +1888,234 @@ jig.addEventListener('click', (e) => {
   else return;
   reflow(layout, old);
   commit(layout);
-  // The control that was used may have gone (a removed opening): stay in the panel.
+  // The control that was used may have gone: stay in its wall's panel.
   if (!jig.contains(document.activeElement)) jig.querySelector(`.sh-jig-panel[data-panel="${b.dataset.wall}"] [data-jig="wall"].is-on`)?.focus();
 });
 
+// ------------------------------------------------------------------ front-view camera
+
+// The front view is a camera over the shelf: `x, y` are the millimetres at its
+// top left (y up) and `s` the pixels to a millimetre. Picking a block zooms it
+// to fit the block and every panel around it, and it fits again when the room
+// changes size. Opening an opening's tile never zooms: the view only slides to
+// show the room, the wall it is on and the tile. Folding the block goes back to
+// the whole shelf. By hand, − + fit, pinch or Ctrl+scroll, and dragging empty
+// paper move it, and a hand-set view stays until another block or opening is
+// picked, or fit is pressed.
+const ZOOM_MIN = 0.15, ZOOM_MAX = 14, FIT_PAD = 12;
+let look = null;
+let lookManual = false;
+let lookGoal = null;
+let lookFrame = 0;
+let lookSize = '';
+let lookSel = null;
+let lookPick = '';
+const motionOff = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// A block's box on the view, in pixels, for a camera.
+function boxOf(layout, it, c) {
+  const a = absPos(layout, it), sz = sizeOf(it);
+  return { l: (a.x - c.x) * c.s, t: (c.y - (a.y + sz.h)) * c.s, r: (a.x + sz.w - c.x) * c.s, b: (c.y - a.y) * c.s };
+}
+
+// The whole shelf, standing on the ground line.
+function shelfLook(layout) {
+  const W = mat.clientWidth, H = mat.clientHeight;
+  const vb = fitViewBox(layout);
+  const s = Math.min(W / vb.w, H / vb.h);
+  return { x: vb.x - (W / s - vb.w) / 2, y: -(vb.y + vb.h - H / s), s };
+}
+
+// The block and everything around it, as large as they fit. A block in a room
+// brings its room along, so it is seen where it stands.
+function fitLook(layout, it) {
+  const W = mat.clientWidth, H = mat.clientHeight;
+  const a = absPos(layout, it), sz = sizeOf(it);
+  const host = it.parent != null ? layout.items.find((h) => h.id === it.parent) : null;
+  const hb = host && (() => { const ha = absPos(layout, host), hs = sizeOf(host); return { x0: ha.x - a.x, x1: ha.x + hs.w - a.x, y0: ha.y - a.y, y1: ha.y + hs.h - a.y }; })();
+  const reach = (s, mode) => {
+    const B = { l: 0, t: 0, r: sz.w * s, b: sz.h * s };
+    const u = layoutJig(it, B, mode);
+    if (hb && mode !== 'focus') {
+      u.l = Math.min(u.l, hb.x0 * s); u.r = Math.max(u.r, hb.x1 * s);
+      u.t = Math.min(u.t, (sz.h - hb.y1) * s); u.b = Math.max(u.b, (sz.h - hb.y0) * s);
+    }
+    return { B, u };
+  };
+  // The panels are a fixed size, so what they take comes out of the block:
+  // settle the scale in a few rounds, as the card's overhang depends on it.
+  const solve = (mode) => {
+    let s = 1;
+    for (let i = 0; i < 7; i++) {
+      const { B, u } = reach(s, mode);
+      s = clamp(Math.min((W - 2 * FIT_PAD - (B.l - u.l) - (u.r - B.r)) / sz.w, (H - 2 * FIT_PAD - (B.t - u.t) - (u.b - B.b)) / sz.h), ZOOM_MIN, ZOOM_MAX);
+    }
+    return s;
+  };
+  const centre = (s, mode) => {
+    const { u } = reach(s, mode);
+    const ox = (W - (u.r - u.l)) / 2 - u.l, oy = (H - (u.b - u.t)) / 2 - u.t;
+    return { x: a.x - ox / s, y: a.y + sz.h + oy / s, s };
+  };
+  if (!pickedOpening(it) || !jigEl('tile')) return centre(solve('all'), 'all');
+  // A tile is open: keep the zoom the room has without it, and show just the
+  // room, that wall and the tile; zoom out only if even those do not fit.
+  return centre(Math.min(solve('notile'), solve('focus')), 'focus');
+}
+
+function drawRulers() {
+  const g = mat.querySelector('.rulers');
+  if (!g || !look) return;
+  g.replaceChildren();
+  const steps = inches() ? [2, 4, 10, 20, 40, 100].map((v) => v * MM_PER_IN) : [50, 100, 200, 500, 1000, 2000];
+  const every = steps.find((v) => v * look.s >= 56) ?? steps.at(-1);
+  const x1 = look.x + mat.clientWidth / look.s;
+  for (let i = Math.ceil((look.x - every) / every); i * every < x1 + every; i++) {
+    const t = svgEl('text', { x: i * every, y: 14 / look.s, class: 'ruler', 'text-anchor': 'middle' });
+    t.style.fontSize = `${10 / look.s}px`;
+    t.textContent = Math.round(toUnit(i * every));
+    g.append(t);
+  }
+}
+
+// Puts the camera on the drawing and the panels where it says.
+function applyLook() {
+  const W = mat.clientWidth, H = mat.clientHeight;
+  if (!look || !W || !H || !state) return;
+  const layout = currentView();
+  mat.setAttribute('viewBox', `${look.x} ${-look.y} ${W / look.s} ${H / look.s}`);
+  drawRulers();
+  const it = layout.items.find((i) => i.id === selectedId);
+  if (it && jig.querySelector('[data-el]')) placeJig(layout, it);
+  $('zoom-pct').textContent = `${Math.round((look.s / shelfLook(layout).s) * 100)}%`;
+  $('zoom-fit').classList.toggle('is-held', lookManual);
+}
+
+function placeJig(layout, it) {
+  if (look) layoutJig(it, boxOf(layout, it, look));
+}
+
+function stopLook() {
+  cancelAnimationFrame(lookFrame);
+  lookFrame = 0;
+  lookGoal = null;
+}
+
+function goLook(t) {
+  stopLook();
+  const W = mat.clientWidth, H = mat.clientHeight;
+  if (!look || motionOff()) { look = t; applyLook(); return; }
+  applyLook();
+  lookGoal = t;
+  const f = { s: look.s, cx: look.x + W / 2 / look.s, cy: look.y - H / 2 / look.s };
+  const to = { s: t.s, cx: t.x + W / 2 / t.s, cy: t.y - H / 2 / t.s };
+  const t0 = performance.now(), D = 420;
+  const step = (now) => {
+    const q = clamp((now - t0) / D, 0, 1), e = 1 - (1 - q) ** 3;
+    const s = Math.exp(Math.log(f.s) + (Math.log(to.s) - Math.log(f.s)) * e);
+    look = { s, x: f.cx + (to.cx - f.cx) * e - W / 2 / s, y: f.cy + (to.cy - f.cy) * e + H / 2 / s };
+    applyLook();
+    if (q < 1) lookFrame = requestAnimationFrame(step);
+    else { lookFrame = 0; lookGoal = null; }
+  };
+  lookFrame = requestAnimationFrame(step);
+}
+
+const sameLook = (a, b) => a && b && Math.abs(a.s / b.s - 1) < 0.002 && Math.abs(a.x - b.x) * b.s < 0.5 && Math.abs(a.y - b.y) * b.s < 0.5;
+
+// Called after every redraw: picks the camera the selection calls for.
+function syncLook(layout) {
+  const W = mat.clientWidth, H = mat.clientHeight;
+  if (!W || !H) return;
+  const pick = jigPick ? `${jigPick.id}:${jigPick.i}` : '';
+  if (selectedId !== lookSel || pick !== lookPick) lookManual = false;
+  lookSel = selectedId;
+  lookPick = pick;
+  if (!look) { look = shelfLook(layout); lookSize = `${W}x${H}`; applyLook(); return; }
+  const resized = lookSize !== `${W}x${H}`;
+  lookSize = `${W}x${H}`;
+  // Held still while a block or an opening is held down, so the view does not
+  // move under the pointer, and when set by hand. It fits when let go.
+  if (drag || opDrag || lookManual) { applyLook(); return; }
+  const it = layout.items.find((i) => i.id === selectedId);
+  const target = it ? fitLook(layout, it) : shelfLook(layout);
+  if (resized) { stopLook(); look = target; applyLook(); return; }
+  if (lookGoal ? sameLook(target, lookGoal) : sameLook(target, look)) { if (!lookGoal) applyLook(); return; }
+  goLook(target);
+}
+
+// By hand.
+function zoomAt(px, py, f) {
+  if (!look) return;
+  stopLook();
+  lookManual = true;
+  const wx = look.x + px / look.s, wy = look.y - py / look.s;
+  const s = clamp(look.s * f, ZOOM_MIN, ZOOM_MAX);
+  look = { s, x: wx - px / s, y: wy + py / s };
+  applyLook();
+}
+$('zoom-in').addEventListener('click', () => zoomAt(mat.clientWidth / 2, mat.clientHeight / 2, 1.25));
+$('zoom-out').addEventListener('click', () => zoomAt(mat.clientWidth / 2, mat.clientHeight / 2, 1 / 1.25));
+$('zoom-fit').addEventListener('click', () => { lookManual = false; syncLook(currentView()); });
+// Pinch on a trackpad arrives as Ctrl+scroll; plain scrolling still scrolls the page.
+mat.parentElement.addEventListener('wheel', (e) => {
+  if (!e.ctrlKey && !e.metaKey) return;
+  e.preventDefault();
+  const r = mat.getBoundingClientRect();
+  zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.01));
+}, { passive: false });
+
+// Empty paper pans, and a click on it lets go; two fingers pinch and pan.
+let panning = null;
+const fingers = new Map();
+let pinch = null;
+const matPoint = (x, y) => { const r = mat.getBoundingClientRect(); return [x - r.left, y - r.top]; };
+const pinchState = () => {
+  const [p, q] = [...fingers.values()];
+  return { d: Math.hypot(p[0] - q[0], p[1] - q[1]) || 1, x: (p[0] + q[0]) / 2, y: (p[1] + q[1]) / 2 };
+};
+mat.parentElement.addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'touch') return;
+  fingers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (fingers.size === 2) {
+    drag = null; opDrag = null; panning = null;
+    document.body.style.cursor = '';
+    stopLook();
+    pinch = pinchState();
+  }
+}, true);
+window.addEventListener('pointermove', (e) => {
+  if (fingers.has(e.pointerId)) {
+    fingers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pinch && fingers.size === 2) {
+      const now = pinchState();
+      lookManual = true;
+      look = { ...look, x: look.x - (now.x - pinch.x) / look.s, y: look.y + (now.y - pinch.y) / look.s };
+      zoomAt(...matPoint(now.x, now.y), now.d / pinch.d);
+      pinch = now;
+    }
+    return;
+  }
+  if (!panning) return;
+  const dx = e.clientX - panning.sx, dy = e.clientY - panning.sy;
+  if (!panning.moved && Math.hypot(dx, dy) < 4) return;
+  if (!panning.moved) { stopLook(); lookManual = true; }
+  panning.moved = true;
+  look = { ...look, x: panning.x - dx / look.s, y: panning.y + dy / look.s };
+  applyLook();
+});
+const lift = (e) => {
+  fingers.delete(e.pointerId);
+  if (fingers.size < 2) pinch = null;
+  if (!panning) return;
+  const p = panning;
+  panning = null;
+  if (p.moved || e.type === 'pointercancel') return;
+  // A click on empty paper: with a tile open it only closes the tile.
+  if (jigPick) { jigPick = null; render(); } else if (selectedId != null) { select(null); render(); }
+};
+window.addEventListener('pointerup', lift);
+window.addEventListener('pointercancel', lift);
 
 // ------------------------------------------------------------------ shelf settings
 
@@ -2041,7 +2345,12 @@ split.addEventListener('dblclick', () => setSplit(SPLIT_DEFAULT));
 let resizeFrame = 0;
 new ResizeObserver(() => {
   cancelAnimationFrame(resizeFrame);
-  resizeFrame = requestAnimationFrame(() => { if (!drag && !opDrag && state) render(); });
+  resizeFrame = requestAnimationFrame(() => {
+    if (drag || opDrag || !state) return;
+    // The card folds to a line on a narrow view, and the camera fits again.
+    if (cardCompact !== compactCard()) renderBlockBar();
+    render();
+  });
 }).observe(mat);
 
 // ------------------------------------------------------------------ 3D view
@@ -2361,10 +2670,13 @@ function updateHistoryButtons() {
 function render() {
   const view = currentView();
   settle(view);
+  // On a phone the front view grows while a block is being edited.
+  mat.parentElement.classList.toggle('is-editing', selectedId != null);
   renderMat(view);
   render3D(view);
   renderSelection(view);
   renderJig(view);
+  syncLook(view);
   renderOffGrid();
   renderBom();
   updateHistoryButtons();

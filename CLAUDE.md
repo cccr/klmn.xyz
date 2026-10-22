@@ -6,7 +6,7 @@ the visitor's browser and ships as plain HTML, CSS and ES5-flavoured JS.
 
 ```
 hugo --quiet          # build to public/
-cd test && npm test   # 162 tests: jsdom for behaviour, headless Chrome for layout
+cd test && npm test   # 167 tests: jsdom for behaviour, headless Chrome for layout
 ```
 
 ## Pages and their files
@@ -89,12 +89,23 @@ Modular dollhouse rooms stacked into a shelf, tuned one by one, checked in 3D an
   It is a pure module with no DOM.
 - `static/tools/shelf-house/shelf-house.js`: the page. It covers the blocks and their
   settings, the front view and editing on it, the three.js 3D view and the downloads.
+  Picking a block unwraps it: its walls' weights and openings, its corners and its card
+  (name, colour, sizes, actions) are all out around it on the front view, docked by
+  `layoutJig`. The front view is a camera (`look`): picking zooms to fit the block and
+  every panel, opening an opening's tile keeps that zoom and only slides to the wall,
+  and by hand it is − + fit, pinch or Ctrl+scroll, and dragging empty paper. While a tile
+  is open, a press anywhere else only closes it. Panels are placed by script and measured
+  at once, so nothing that sets where they are may have a transition.
 - `static/tools/shelf-house/shelf-house.css`
 - `static/tools/shelf-house/vendor/`: `three.module.js`, `OrbitControls.js`,
   `manifold.js` + `manifold.wasm`, `fflate.js`, all at pinned versions. Do not edit
   them. To upgrade one, replace the file with the same path from its npm package.
 - Tests: `test/shelf-house.test.js`. It imports `geometry.js` and the vendored
-  manifold directly under node, and drives the page in Chrome.
+  manifold directly under node, and drives the page in Chrome at 1400 wide with
+  motion off, so the camera lands where it is going at once.
+- History: `docs/superpowers/specs/2026-10-21-shelf-house-unwrap-design.md`, and
+  `/notes/shelf-house-opening-tile/`, which measures six ways of fitting an opening's
+  tile; the one built is "keep the zoom, shaped tile".
 - It is the one page written as ES modules, because three.js and manifold-3d ship only
   as modules. The import map in the layout resolves them, so still nothing
   loads from a CDN. Without WebGL the 3D pane shows a notice and the rest of the

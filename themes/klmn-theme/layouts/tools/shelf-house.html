@@ -72,7 +72,15 @@
         <div class="trim">
             <div class="sh-views" id="views">
                 <section class="sh-pane" aria-label="Front view">
-                    <div class="sh-pane-head"><h2>Front view</h2></div>
+                    <div class="sh-pane-head">
+                        <h2>Front view</h2>
+                        <span class="sh-zoom" role="group" aria-label="Zoom the front view">
+                            <button type="button" class="chip" id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+                            <span class="num" id="zoom-pct" aria-live="off">100%</span>
+                            <button type="button" class="chip" id="zoom-in" title="Zoom in (pinch or Ctrl+scroll also work)" aria-label="Zoom in">+</button>
+                            <button type="button" class="chip" id="zoom-fit" title="Fit the block you are editing, or the whole shelf">fit</button>
+                        </span>
+                    </div>
                     <div class="sh-mat artifact">
                         <svg id="mat" tabindex="0" role="application"
                              aria-label="Shelf layout. Select a block and use arrow keys to move it, Delete to remove it."></svg>
@@ -98,7 +106,7 @@
             </div>
         </div>
 
-        <div class="sh-selection rail-band no-print" id="block-bar" aria-label="Selected block"></div>
+        <p class="sh-front-note rail-hint no-print" id="front-note" aria-live="polite"></p>
 
         <section class="sh-print" aria-label="Print list">
             <h2>Print list</h2>
