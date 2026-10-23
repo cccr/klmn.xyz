@@ -22,6 +22,17 @@ const geometry = () => (lib = lib || load());
 buildSite();
 test.after(closeAll);
 
+test('a new room\'s sizes sit on the starting grid, in millimetres and in inches', async () => {
+  const { g } = await geometry();
+  // 5 mm and ⅛ in, as the page's grid starts; walls and radii are too fine for it.
+  const on = (v, step) => Math.abs(v / step - Math.round(v / step)) < 1e-9;
+  for (const k of ['wide', 'narrow', 'h', 'd']) {
+    assert.ok(on(g.ROOM_DEFAULTS[k], 5), `${k} ${g.ROOM_DEFAULTS[k]} mm`);
+    assert.ok(on(g.ROOM_DEFAULTS_IN[k] / 25.4, 0.125), `${k} ${g.ROOM_DEFAULTS_IN[k] / 25.4} in`);
+  }
+  for (const k of ['thick', 'thin', 'outerR', 'innerR']) assert.strictEqual(g.ROOM_DEFAULTS_IN[k], g.ROOM_DEFAULTS[k]);
+});
+
 test('stairs are one watertight solid, run × rise × depth, and turn without changing', async () => {
   const { g, k } = await geometry();
   const cfg = g.defaultStairs({ run: 60, rise: 70, depth: 25 });
@@ -46,15 +57,15 @@ test('stairs are one watertight solid, run × rise × depth, and turn without ch
 test('a stairwell is placed in each room\'s own coordinates and clipped to it', async () => {
   const { g } = await geometry();
   const room = (x, w) => ({ x, y: 0, cfg: g.defaultRoom({ w }) });
-  // Absolute x 20–76, z 3–29.5 (back half of a 56 mm deep room).
-  const below = g.stairwell(room(0, 120), 20, 76, 3, 29.5, 'ceiling');
-  assert.deepStrictEqual([below.x, below.y, below.w, below.h], [-12, -13.25, 56, 26.5]);
+  // Absolute x 20–76, z 3–29 (back half of a 55 mm deep room).
+  const below = g.stairwell(room(0, 120), 20, 76, 3, 29, 'ceiling');
+  assert.deepStrictEqual([below.x, below.y, below.w, below.h], [-12, -13, 56, 26]);
   // A narrower room on top, shifted right: same absolute hole, its own offsets.
-  const above = g.stairwell(room(40, 78), 20, 76, 3, 29.5, 'floor');
+  const above = g.stairwell(room(40, 78), 20, 76, 3, 29, 'floor');
   assert.strictEqual(above.wall, 'floor');
   assert.strictEqual(above.x, 48 - 40 - 39);
   // A room that only shares the hole's span with its wall gets nothing.
-  assert.strictEqual(g.stairwell(room(74, 78), 20, 76, 3, 29.5, 'floor'), null);
+  assert.strictEqual(g.stairwell(room(74, 78), 20, 76, 3, 29, 'floor'), null);
 });
 
 test('a room cuts its stairwells and shows them edge-on in the front view', async () => {
@@ -104,7 +115,7 @@ test('a lift shaft is built into a room, and the car runs in its grooves on a sl
   const { g, k } = await geometry();
   const cfg = g.defaultRoom();
   // Without magnets, which have a test of their own.
-  const lift = g.defaultLift({ rise: 66, depth: 26.5, back: 0, wall: 3, panel: 1.5 });
+  const lift = g.defaultLift({ rise: 64, depth: 26.5, back: 0, wall: 3, panel: 1.5 });
   // Outer left edge at x 40, from the back wall's inside face forward.
   const s = g.liftShaft({ x: 0, y: 0, cfg }, 40, lift, 3);
   assert.deepStrictEqual(s, { x: 40, w: 32, t: 3, z0: 3, z1: 29.5, floor: false, ceiling: false, magnets: null });
@@ -161,7 +172,7 @@ test('a lift shaft is built into a room, and the car runs in its grooves on a sl
 test('magnets in the car and the back wall latch it at each floor', async () => {
   const { g, k } = await geometry();
   const cfg = g.defaultRoom();
-  const lift = g.defaultLift({ w: 32, rise: 66, depth: 26.5, back: 3, wall: 3, panel: 1.5 });
+  const lift = g.defaultLift({ w: 32, rise: 64, depth: 26.5, back: 3, wall: 3, panel: 1.5 });
   const b = g.innerBox(cfg);
   const round = (at) => at.map(([x, y]) => [Math.round(x * 100) / 100, Math.round(y * 100) / 100]);
   // A car this size takes one 4 × 2 mm disc, which holds it three times over:
@@ -298,11 +309,11 @@ test('a room with no wall on a side is open there and still one clean solid', as
   const m = g.buildRoom(k, open);
   assert.strictEqual(m.status(), 'NoError');
   assert.deepStrictEqual(m.boundingBox().min.map(Math.round), [0, 0, 0]);
-  assert.deepStrictEqual(m.boundingBox().max.map(Math.round), [120, 72, 56]);
+  assert.deepStrictEqual(m.boundingBox().max.map(Math.round), [120, 70, 55]);
   // Nothing of the left wall or the back is left, and the doorway on the
   // missing wall cuts nothing: what remains is ceiling, floor and right wall.
   const t = full.walls;
-  const solid = (120 * (t.ceiling + t.floor) + (72 - t.ceiling - t.floor) * t.right) * 56;
+  const solid = (120 * (t.ceiling + t.floor) + (70 - t.ceiling - t.floor) * t.right) * 55;
   assert.ok(Math.abs(m.volume() - solid) < 1e-6, `${m.volume()} vs ${solid}`);
   // The front view draws the room's interior no wider than the room.
   const xs = g.frontProfile(k, 'room', open).room.flat().map(([x]) => x);
@@ -419,13 +430,13 @@ test('inches change what the page shows and reads, never what it stores',
     await ready(p);
     await p.evalJson(`(document.getElementById('example').click(), ${PAGE_HELPERS})`);
     // Start from the factory settings, whatever an earlier test left behind.
-    await p.evalJson("(__sh.set('sh-wide', 120), __sh.set('sh-h', 72), __sh.set('sh-d', 56), true)");
+    await p.evalJson("(__sh.set('sh-wide', 120), __sh.set('sh-h', 70), __sh.set('sh-d', 55), true)");
     await p.evalJson("(document.querySelector('[data-units=\"in\"]').click(), true)");
     try {
       assert.strictEqual(await p.evalJson("document.getElementById('sh-wide').value"), '4.72');
       await p.evalJson("(__sh.set('sh-wide', 5), true)");
       assert.strictEqual((await p.evalJson('__sh.sizes()'))[1][0], 127);
-      assert.ok(await p.evalJson("[...document.querySelectorAll('#bom .sh-size')].some((td) => td.textContent.trim() === '5 × 2.83 × 2.2 in')"));
+      assert.ok(await p.evalJson("[...document.querySelectorAll('#bom .sh-size')].some((td) => td.textContent.trim() === '5 × 2.76 × 2.17 in')"));
       assert.match(await p.evalJson("document.getElementById('overall').textContent"), / in$/);
     } finally {
       await p.evalJson("(localStorage.removeItem('shelf-house-units'), true)");
@@ -489,7 +500,7 @@ test('the example is laid out for the sizes in the shelf settings',
       assert.strictEqual(table.parent, 5);
       assert.strictEqual(table.x, (140 - 36) / 2);
     } finally {
-      await p.evalJson("(__sh.set('sh-wide', 120), __sh.set('sh-narrow', 80), __sh.set('sh-h', 72), true)");
+      await p.evalJson("(__sh.set('sh-wide', 120), __sh.set('sh-narrow', 80), __sh.set('sh-h', 70), true)");
     }
   });
 });
@@ -528,7 +539,7 @@ test('rooms keep their places against each other when the shelf\'s widths change
       await widths(120, 78);
       assert.deepStrictEqual(await at(), { 1: [0, 0], 2: [140, 0], 3: [0, 72], 4: [98, 72] });
     } finally {
-      await widths(120, 80);
+      await p.evalJson("(__sh.set('sh-wide', 120), __sh.set('sh-narrow', 80), __sh.set('sh-h', 70), true)");
     }
   });
 });
@@ -646,7 +657,7 @@ test('with the grid on, rooms, things and openings land on it as they move',
       await key('ArrowRight');
       assert.strictEqual((await items())[5].x, 66);
     } finally {
-      await p.evalJson("(localStorage.removeItem('shelf-house-grid'), true)");
+      await p.evalJson("(localStorage.removeItem('shelf-house-grid'), __sh.set('sh-h', 70), true)");
     }
   });
 });
@@ -680,7 +691,7 @@ test('one press puts whatever is off the grid on it, and one undo takes it back'
       assert.strictEqual((await saved()).settings.h, 72);
       assert.strictEqual(await p.evalJson(`!!${button}`), true);
     } finally {
-      await p.evalJson("(localStorage.removeItem('shelf-house-grid'), __sh.set('sh-h', 72), __sh.set('sh-d', 56), true)");
+      await p.evalJson("(localStorage.removeItem('shelf-house-grid'), __sh.set('sh-h', 70), __sh.set('sh-d', 55), true)");
     }
   });
 });
@@ -766,7 +777,7 @@ test('the blocks sit over the front view as pictures, in a row that folds away',
     assert.strictEqual(await p.evalJson("!!document.querySelector('.rail #palette')"), false);
     assert.strictEqual(await p.evalJson("!!(document.getElementById('palette').compareDocumentPosition(document.getElementById('mat')) & Node.DOCUMENT_POSITION_FOLLOWING)"), true);
     assert.deepStrictEqual(await p.evalJson("[...document.querySelectorAll('#palette .sh-card')].filter((b) => b.textContent.trim()).length"), 0);
-    assert.match(await p.evalJson("document.querySelector('#palette [aria-label=\"Add Narrow · blank\"]').title"), /^Narrow · blank, 80 × 72 mm/);
+    assert.match(await p.evalJson("document.querySelector('#palette [aria-label=\"Add Narrow · blank\"]').title"), /^Narrow · blank, 80 × 70 mm/);
     // Folding is remembered.
     try {
       await p.evalJson("(document.getElementById('blocks-toggle').click(), true)");
@@ -977,7 +988,7 @@ test('a block\'s name, colour, size and actions are in its card on the front vie
     await p.evalJson("(document.querySelector('.sh-ident-card .sh-more summary').click(), true)");
     assert.strictEqual(await p.evalJson("document.querySelector('.sh-ident-card .sh-more').open"), true);
     await p.evalJson("(document.querySelector('.sh-ident-card [data-act=reset]').click(), true)");
-    assert.deepStrictEqual([(await item(3)).name, (await item(3)).cfg.h], ['Wide · doorways', 72]);
+    assert.deepStrictEqual([(await item(3)).name, (await item(3)).cfg.h], ['Wide · doorways', 70]);
     assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-ident-card .sh-more[open]')"), false);
 
     const before = (await p.evalJson("JSON.parse(localStorage.getItem('shelf-house-layout-v3')).items")).length;
@@ -1045,7 +1056,7 @@ test('the settings fold to one line, and the front view and 3D share the width a
       // Folded, the band reads its sizes on one line; the fold is remembered.
       await p.evalJson("(document.getElementById('settings-fold').click(), true)");
       assert.strictEqual(await p.evalJson("document.getElementById('settings').offsetHeight"), 0);
-      assert.match(await p.evalJson("document.getElementById('settings-summary').textContent"), /^rooms 120 or 80 × 72 × 56, walls 3 \/ 1\.5, corners 8 \/ 5 mm$/);
+      assert.match(await p.evalJson("document.getElementById('settings-summary').textContent"), /^rooms 120 or 80 × 70 × 55, walls 3 \/ 1\.5, corners 8 \/ 5 mm$/);
       assert.strictEqual(await p.evalJson("localStorage.getItem('shelf-house-settings')"), 'folded');
 
       // The front view starts wider than 3D; the divider moves with the keys,

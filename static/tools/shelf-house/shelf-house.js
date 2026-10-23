@@ -5,7 +5,7 @@ import { zipSync } from 'fflate';
 import {
   PRESETS, OPENING_PRESETS, CORNERS, WALLS, SHAPES,
   blockSize, buildBlock, frontProfile, meshArrays, toSTL, innerBox,
-  defaultStairs, isStairs, stairwell, ROOM_DEFAULTS, migrateOpening,
+  defaultStairs, isStairs, stairwell, ROOM_DEFAULTS, ROOM_DEFAULTS_IN, migrateOpening,
   defaultLift, isLift, liftShaft, liftWall, liftMagnets,
 } from './geometry.js';
 
@@ -43,8 +43,8 @@ const fmtLen = (mm) => (inches() ? (Math.round((mm / MM_PER_IN) * 100) / 100).to
 const len = (mm) => `${fmtLen(mm)} ${unitName()}`;
 // The sideways step of the nudge chips and Shift+arrow: 10 mm, or half an inch.
 const bigStep = () => (inches() ? MM_PER_IN / 2 : 10);
-// The factory room widths are round in either unit: 120 or 80 mm, 5 or 3 in.
-const roomDefaults = () => (inches() ? { ...ROOM_DEFAULTS, wide: 127, narrow: 76.2 } : ROOM_DEFAULTS);
+// The factory room sizes are round in either unit (see ROOM_DEFAULTS).
+const roomDefaults = () => (inches() ? ROOM_DEFAULTS_IN : ROOM_DEFAULTS);
 
 // ------------------------------------------------------------------ grid
 
@@ -131,7 +131,7 @@ const defaultFor = (it, dim, s = state.settings) => (dim === 'w' ? s[it.size ===
 // Rooms and room types saved before settings existed were made at the factory
 // sizes of the time: anything else was set by hand. Their wall openings move
 // to anchors.
-const FACTORY_V2 = { ...ROOM_DEFAULTS, narrow: 78 };
+const FACTORY_V2 = { ...ROOM_DEFAULTS, narrow: 78, h: 72, d: 56 };
 
 function migrateItem(it) {
   // Lifts used to run on a strand of filament glued into each shaft wall.

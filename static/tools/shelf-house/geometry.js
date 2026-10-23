@@ -18,8 +18,11 @@ const SEG = 16; // segments per quarter circle
 // thicknesses and the corner radii. Rooms follow the page's settings, which
 // start from these, on every size the user has not set themselves; each wall
 // is thick, thin or missing and takes its thickness from the settings, and
-// every rounded corner takes the shelf's outer or inner radius.
-export const ROOM_DEFAULTS = { wide: 120, narrow: 80, h: 72, d: 56, thick: 3, thin: 1.5, outerR: 8, innerR: 5 };
+// every rounded corner takes the shelf's outer or inner radius. The four
+// room sizes sit on the page's starting grid in either unit: 120 or 80 by 70
+// by 55 mm, or 5 or 3 by 2¾ by 2¼ in. Walls and radii are too fine for it.
+export const ROOM_DEFAULTS = { wide: 120, narrow: 80, h: 70, d: 55, thick: 3, thin: 1.5, outerR: 8, innerR: 5 };
+export const ROOM_DEFAULTS_IN = { ...ROOM_DEFAULTS, wide: 127, narrow: 76.2, h: 69.85, d: 57.15 };
 
 export function defaultRoom(over = {}) {
   return {
@@ -63,7 +66,7 @@ export function defaultTable(over = {}) {
 // stand in (its interior height, half its depth) and are set by the layout;
 // `flip` makes it rise to the left instead of the right.
 export function defaultStairs(over = {}) {
-  return { form: 'stairs', run: 56, steps: 8, flip: false, rise: 66, depth: 26.5, color: '#a98467', ...over };
+  return { form: 'stairs', run: 56, steps: 8, flip: false, rise: 64, depth: 26, color: '#a98467', ...over };
 }
 
 export const isStairs = (cfg) => cfg.form === 'stairs';
@@ -77,7 +80,7 @@ export const isStairs = (cfg) => cfg.form === 'stairs';
 // outside of each side of the car runs in a V-groove up the shaft wall facing
 // it, and magnets in the car and the back wall latch it at each floor.
 export function defaultLift(over = {}) {
-  return { form: 'lift', w: 32, floors: 2, rise: 66, depth: 26.5, back: 3, wall: 3, panel: 1.5, color: '#8d99ae', ...over };
+  return { form: 'lift', w: 32, floors: 2, rise: 64, depth: 26, back: 3, wall: 3, panel: 1.5, color: '#8d99ae', ...over };
 }
 
 export const isLift = (cfg) => cfg.form === 'lift';
