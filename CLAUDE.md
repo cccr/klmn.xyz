@@ -6,7 +6,7 @@ the visitor's browser and ships as plain HTML, CSS and ES5-flavoured JS.
 
 ```
 hugo --quiet          # build to public/
-cd test && npm test   # 167 tests: jsdom for behaviour, headless Chrome for layout
+cd test && npm test   # 171 tests: jsdom for behaviour, headless Chrome for layout
 ```
 
 ## Pages and their files
@@ -94,7 +94,8 @@ Modular dollhouse rooms stacked into a shelf, tuned one by one, checked in 3D an
   `layoutJig`. The front view is a camera (`look`): picking zooms to fit the block and
   every panel, opening an opening's tile keeps that zoom and only slides to the wall,
   and by hand it is − + fit, pinch or Ctrl+scroll, and dragging empty paper. While a tile
-  is open, a press anywhere else only closes it. Panels are placed by script and measured
+  is open, a press anywhere else only closes it, and while a field in it has focus the
+  camera holds still. Panels are placed by script and measured
   at once, so nothing that sets where they are may have a transition.
 - `static/tools/shelf-house/shelf-house.css`
 - `static/tools/shelf-house/vendor/`: `three.module.js`, `OrbitControls.js`,

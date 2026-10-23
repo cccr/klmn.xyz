@@ -1022,6 +1022,7 @@ function renderBlockBar() {
           </details>
         </span>
       </span>`;
+  cardHost.classList.remove('is-unwrapping');
   cardHost.innerHTML = `<div class="sh-ident-card${folded ? ' is-folded' : ''}" data-el="ident" role="group" aria-label="${esc(it.name)}">${head}${folded ? '' : rest}</div>`;
   if (focusId) $(focusId)?.focus();
   renderSelection(currentView());
@@ -1566,6 +1567,8 @@ function renderJig(layout) {
   const pick = pickedOpening(it);
   if (!pick || it.walls[pick.wall] === 'none') jigPick = null;
   const handle = pickedOpening(it)?.wall === 'back' ? '<span class="sh-op-handle" data-jig="resize" title="Drag to resize" aria-hidden="true"></span>' : '';
+  // The panels are rebuilt on every edit; only the first time they fly out.
+  jig.classList.remove('is-unwrapping');
   jig.innerHTML = (isRoom(it) ? roomHTML(it) + cornerDots(it) : furnitureHTML(it, layout)) + handle;
   placeJig(layout, it);
   if (unwrapNext) { unwrapNext = false; unwrap(layout, it); }
@@ -1589,6 +1592,8 @@ function unwrap(layout, it) {
     host.classList.remove('is-unwrapping');
     void host.offsetWidth;
     host.classList.add('is-unwrapping');
+    clearTimeout(host.unwrapTimer);
+    host.unwrapTimer = setTimeout(() => host.classList.remove('is-unwrapping'), 500);
   }
 }
 
@@ -1814,7 +1819,14 @@ jig.addEventListener('pointerleave', (e) => {
   if (e.pointerType === 'mouse' && !jig.contains(document.activeElement)) setJigHot(null);
 });
 jig.addEventListener('focusin', (e) => setJigHot(hotOf(e)));
-jig.addEventListener('focusout', (e) => { if (!jig.contains(e.relatedTarget) && !jig.matches(':hover')) setJigHot(null); });
+jig.addEventListener('focusout', (e) => {
+  if (!jig.contains(e.relatedTarget) && !jig.matches(':hover')) setJigHot(null);
+  // Focus leaving the tile lets the view fit again. A rebuild takes focus away
+  // and puts it back at once, so look again once that has settled.
+  if (e.target.closest?.('.sh-tile') && !e.relatedTarget?.closest?.('.sh-tile')) {
+    setTimeout(() => { if (!tileFocused() && state) syncLook(currentView()); }, 0);
+  }
+});
 // The panels sit over the mat; a press on one is not a press on the shelf.
 jig.addEventListener('pointerdown', (e) => e.stopPropagation());
 cardHost.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -1823,7 +1835,13 @@ cardHost.addEventListener('pointerdown', (e) => e.stopPropagation());
 // numbers apply on Enter or when the field loses focus, spinner arrows as they
 // go, each one undo step.
 jig.addEventListener('input', onFieldInput);
-jig.addEventListener('change', (e) => { onFieldChange(e); refreshPanels(); });
+jig.addEventListener('change', (e) => {
+  // Moving the opening to another wall takes its tile with it: follow it.
+  lookForce = e.target.id === 'sh-op-wall';
+  onFieldChange(e);
+  refreshPanels();
+  lookForce = false;
+});
 cardHost.addEventListener('input', onFieldInput);
 cardHost.addEventListener('change', onFieldChange);
 cardHost.addEventListener('click', (e) => {
@@ -1910,6 +1928,9 @@ let lookFrame = 0;
 let lookSize = '';
 let lookSel = null;
 let lookPick = '';
+let lookForce = false;
+// Focus is in the picked opening's tile: its fields are being edited.
+const tileFocused = () => !!document.activeElement?.closest?.('.sh-tile');
 const motionOff = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // A block's box on the view, in pixels, for a camera.
@@ -2035,8 +2056,10 @@ function syncLook(layout) {
   const resized = lookSize !== `${W}x${H}`;
   lookSize = `${W}x${H}`;
   // Held still while a block or an opening is held down, so the view does not
-  // move under the pointer, and when set by hand. It fits when let go.
-  if (drag || opDrag || lookManual) { applyLook(); return; }
+  // move under the pointer, while a field of an opening's tile has focus, so an
+  // edit that changes the tile does not make the view slide, and when set by
+  // hand. It fits when let go.
+  if (drag || opDrag || lookManual || (tileFocused() && !lookForce)) { applyLook(); return; }
   const it = layout.items.find((i) => i.id === selectedId);
   const target = it ? fitLook(layout, it) : shelfLook(layout);
   if (resized) { stopLook(); look = target; applyLook(); return; }

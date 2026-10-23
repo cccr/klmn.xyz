@@ -1314,3 +1314,101 @@ test('on a narrow view the card folds to its name and colour, and a button unfol
     assert.strictEqual(await p.evalJson("document.querySelector('.sh-ident-card').classList.contains('is-folded')"), true);
   });
 });
+
+// ------------------------------------------------------------------ editing an opening's tile
+
+// These run with motion on: the blink and the slide they guard against are
+// animations, and with reduced motion neither shows.
+const withMotion = (p) => p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// Every distinct viewBox the front view takes from now on.
+const WATCH_VIEW = `(() => {
+  window.__vb = [];
+  new MutationObserver(() => window.__vb.push(document.getElementById('mat').getAttribute('viewBox')))
+    .observe(document.getElementById('mat'), { attributes: true, attributeFilter: ['viewBox'] });
+  return true;
+})()`;
+const seen = (p) => p.evalJson('new Set(window.__vb).size');
+
+test('the panels fly out when a block is picked, and not again on every edit',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await withMotion(p);
+    await p.evalJson(`(${PAGE_HELPERS}, ${CAMERA_HELPERS}, document.getElementById('example').click(), true)`);
+    const unwrapping = () => p.evalJson("document.querySelector('.sh-jig').classList.contains('is-unwrapping')");
+    await p.evalJson('(__sh.pick(4), true)');
+    assert.strictEqual(await unwrapping(), true, 'flying out');
+    await wait(700);
+    assert.strictEqual(await unwrapping(), false, 'landed');
+
+    // An edit rebuilds the panels; none of them may start fading in again.
+    await p.evalJson("(document.querySelector('[data-jig=add][data-wall=left]').click(), true)");
+    await wait(700);
+    const states = await p.evalJson(`(() => {
+      document.getElementById('sh-op-count').focus();
+      __sh.set('sh-op-count', 3);
+      return [...document.querySelectorAll('.sh-jig [data-el], .sh-ident-card')].map((e) => [getComputedStyle(e).animationName, getComputedStyle(e).opacity]);
+    })()`);
+    assert.ok(states.length > 10);
+    assert.deepStrictEqual([...new Set(states.map((s) => s.join(' ')))], ['none 1']);
+    // Nor when the card is rebuilt, by renaming the room.
+    await p.evalJson("(document.getElementById('sh-name').focus(), __sh.set('sh-name', 'Hall'), true)");
+    assert.strictEqual(await p.evalJson("getComputedStyle(document.querySelector('.sh-ident-card')).animationName"), 'none');
+  });
+});
+
+test('while a field of an opening\'s tile has focus the view holds still, and fits when focus leaves',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await withMotion(p);
+    await p.evalJson(`(${PAGE_HELPERS}, ${CAMERA_HELPERS}, document.getElementById('example').click(), __sh.pick(4), true)`);
+    await wait(700);
+    // A narrow tile that grows a row with more than one copy, so the fit would move.
+    await p.evalJson("(document.querySelector('[data-jig=add][data-wall=left]').click(), true)");
+    await wait(700);
+    await p.evalJson(WATCH_VIEW);
+
+    // Editing from the field: nothing slides, for any number of steps.
+    await p.evalJson("(document.getElementById('sh-op-count').focus(), true)");
+    for (const n of [4, 2, 4, 1]) await p.evalJson(`(__sh.set('sh-op-count', ${n}), true)`);
+    await p.evalJson("(document.getElementById('sh-op-count').focus(), __sh.set('sh-op-count', 4), true)");
+    await wait(700);
+    assert.strictEqual(await seen(p), 1, 'the view moved while the field had focus');
+    assert.strictEqual(await p.evalJson("document.activeElement.id"), 'sh-op-count', 'the field keeps its focus');
+
+    // Focus leaving the tile lets the view fit the bigger tile: it slides, once.
+    await p.evalJson("(document.getElementById('sh-op-count').blur(), true)");
+    await wait(700);
+    assert.ok(await seen(p) > 1, 'the view fits again');
+    assert.strictEqual(await p.evalJson("__cam.inView('.sh-tile, [data-el=tabs-left], [data-el=sel-left], #mat .block[data-id=\"4\"] path')"), true);
+    const settled = await seen(p);
+    await wait(300);
+    assert.strictEqual(await seen(p), settled, 'and then holds');
+
+    // The tile's other controls pause it too, and Escape lets it go.
+    await p.evalJson("(document.querySelector('.sh-tile [data-jig=set][data-v=round]').focus(), true)");
+    await p.evalJson("(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })), true)");
+    assert.strictEqual(await p.evalJson("!!document.querySelector('.sh-tile')"), false);
+  });
+});
+
+test('moving an opening to another wall from its tile takes the view with it',
+  { skip: !CHROME && 'no Chrome' }, async () => {
+  await withPage('/tools/shelf-house/', async (p) => {
+    await ready(p);
+    await withMotion(p);
+    await p.evalJson(`(${PAGE_HELPERS}, ${CAMERA_HELPERS}, document.getElementById('example').click(), __sh.pick(4), true)`);
+    await wait(700);
+    await p.evalJson("(document.querySelector('[data-jig=add][data-wall=left]').click(), true)");
+    await wait(700);
+    // The wall is chosen in the tile, so it has focus; the tile moves across the
+    // room, and the view must follow it.
+    await p.evalJson("(document.getElementById('sh-op-wall').focus(), __sh.set('sh-op-wall', 'ceiling'), true)");
+    await wait(700);
+    assert.strictEqual(await p.evalJson("document.querySelector('.sh-tile').classList.contains('is-wide')"), true);
+    assert.strictEqual(await p.evalJson("__cam.inView('.sh-tile, [data-el=tabs-ceiling]')"), true);
+    assert.strictEqual(await p.evalJson("document.activeElement.id"), 'sh-op-wall');
+  });
+});

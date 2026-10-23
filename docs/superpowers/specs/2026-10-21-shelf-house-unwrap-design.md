@@ -50,6 +50,11 @@ The front view is a camera over the shelf.
   pressed.
 - While a block or an opening is held down the camera holds still, so the view
   never moves under the pointer. It fits when let go.
+- While focus is in an opening's tile, the camera holds still too. Some edits
+  change the tile's size (copies above 1 adds a Gap row), which made the view
+  slide on every step of a spinner. It fits once, when focus leaves the tile.
+  Changing the wall from the tile is the exception: the tile moves across the
+  room, so the view follows it.
 
 ## Closing
 
@@ -73,6 +78,9 @@ is edited, since everything around the block needs the room.
   site gives every element a near-instant `transition: all`, which leaves the
   old position to read back and throws the fit. `.sh-jig > *` and `.sh-mat`
   set `transition: none` for this.
+- The panels are rebuilt on every edit, and a CSS animation starts over on a
+  rebuilt element. The fly-out class is therefore removed once it has played
+  (and before any rebuild), or every panel fades in again on every edit.
 - Screenshots that resize the page (`captureBeyondViewport`) show the camera
   mid-refit. Capture inside the viewport.
 - Not built: dragging a block while zoomed in does not zoom out for you. The
