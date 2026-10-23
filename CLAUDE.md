@@ -236,3 +236,7 @@ Two constraints that came from rejected work, so they do not get re-proposed:
   and a test asserts no third-party host is needed.
 - `@page` may set `margin` but never `size` — WebKit ignores the size
   descriptor, which is what broke printing in Safari.
+- **GitHub issues carry a page label.** Every issue gets the `enhancement` or `bug`
+  type label plus one label named after the page's slug (`shelf-house`, `qr`, `adraw`,
+  …). Create the slug label first if it does not exist yet. An issue about the site as
+  a whole, such as the design system, gets no slug label.
