@@ -1,0 +1,93 @@
+{{ define "head" }}
+<link rel="stylesheet" href="/tools/perfboard/perfboard.css">
+{{ end }}
+
+{{ define "main" }}
+<div class="pb" id="app">
+    <header class="tool-head">
+        <h1>Perfboard Planner</h1>
+        <p>Place parts on a 2.54 mm prototype board, route jumper wires on either side, and take away
+           a cut list and the order to solder them.</p>
+    </header>
+
+    <div class="pb-job no-print">
+        <input id="board-name" class="pb-board-name" type="text" maxlength="60" aria-label="Board name">
+        <button id="board-size" class="chip num" type="button" title="Change the board size"></button>
+        <div class="pb-file" role="group" aria-label="Board file">
+            <div class="chips">
+                <button id="file-new" class="chip" type="button" title="Start a new board">new</button>
+                <button id="file-open" class="chip" type="button" title="Open a board saved as JSON">open</button>
+                <button id="file-save" class="chip" type="button" title="Save the board as JSON (Ctrl/Cmd S). The page also remembers the last one in this browser.">save</button>
+            </div>
+            <div class="chips">
+                <button id="file-svg" class="chip" type="button" title="Export the side on screen as SVG, at true size">svg</button>
+                <button id="file-png" class="chip" type="button" title="Export the side on screen as PNG">png</button>
+                <button id="file-print" class="chip" type="button" title="Print both sides, the cut list and the build order">print</button>
+            </div>
+            <input id="file-input" type="file" accept=".json,application/json" hidden>
+        </div>
+    </div>
+
+    <div class="pb-bar no-print" role="toolbar" aria-label="Board tools">
+        <div class="seg pb-tools" role="group" aria-label="Tools">
+            <button type="button" data-tool="select" title="Select and move (V)">Select</button>
+            <button type="button" data-tool="routed" title="Wire laid flat along the grid (W)">Flat wire</button>
+            <button type="button" data-tool="direct" title="Wire straight from hole to hole (D)">Straight wire</button>
+            <button type="button" data-tool="bridge" title="Solder bridge between pads on the bottom (B)">Solder bridge</button>
+        </div>
+
+        <div id="wire-colors" class="pb-swatches" role="group" aria-label="Colour for new wires"></div>
+
+        <div class="seg pb-sides" role="group" aria-label="Side of the board">
+            <button type="button" data-view="top" title="Component side (F flips)">Top</button>
+            <button type="button" data-view="bottom" title="Solder side, mirrored (F flips)">Bottom</button>
+        </div>
+
+        <div class="chips">
+            <button id="undo" class="chip" type="button" title="Undo (Ctrl/Cmd Z)">undo</button>
+            <button id="redo" class="chip" type="button" title="Redo (Shift Ctrl/Cmd Z)">redo</button>
+            <button id="fit" class="chip" type="button" title="Show the whole board">fit</button>
+        </div>
+
+        <div class="chips">
+            <details id="layers-menu" class="pb-menu">
+                <summary class="chip" title="Choose what is shown on the board">layers</summary>
+                <div id="layers-list" class="pb-menu-list" role="group" aria-label="Layers shown on the board"></div>
+            </details>
+            <button id="picture" class="chip" type="button">add picture</button>
+        </div>
+    </div>
+
+    <div class="pb-workspace">
+        <aside id="parts" class="pb-panel pb-parts no-print" aria-label="Parts"></aside>
+        <section class="pb-bench trim" aria-label="Board">
+            <div id="board-wrap" class="pb-board-wrap artifact"></div>
+            <div id="status" class="pb-status" aria-live="off"></div>
+        </section>
+        <aside id="side" class="pb-panel pb-side no-print" aria-label="Wires, build steps and issues"></aside>
+    </div>
+
+    <dialog id="board-dialog" class="pb-dialog" aria-label="Board size"></dialog>
+    <div id="toast" class="pb-toast notice notice-alert" role="alert" hidden></div>
+</div>
+
+<div id="print-sheet"></div>
+
+<script src="/tools/perfboard/model/project.js"></script>
+<script src="/tools/perfboard/model/footprints.js"></script>
+<script src="/tools/perfboard/model/geometry.js"></script>
+<script src="/tools/perfboard/model/nets.js"></script>
+<script src="/tools/perfboard/model/checks.js"></script>
+<script src="/tools/perfboard/model/buildOrder.js"></script>
+<script src="/tools/perfboard/model/serialize.js"></script>
+<script src="/tools/perfboard/store.js"></script>
+<script src="/tools/perfboard/ui/dom.js"></script>
+<script src="/tools/perfboard/ui/render.js"></script>
+<script src="/tools/perfboard/ui/boardView.js"></script>
+<script src="/tools/perfboard/ui/partsPanel.js"></script>
+<script src="/tools/perfboard/ui/footprintEditor.js"></script>
+<script src="/tools/perfboard/ui/sidePanel.js"></script>
+<script src="/tools/perfboard/ui/files.js"></script>
+<script src="/tools/perfboard/ui/picture.js"></script>
+<script src="/tools/perfboard/main.js"></script>
+{{ end }}

@@ -191,7 +191,7 @@ test('no page scrolls sideways, down to a phone',
   { skip: !CHROME && 'no Chrome' }, async () => {
   const pages = ['/', '/tools/', '/tools/qr/', '/tools/mass-qr/',
                  '/tools/milling/', '/tools/wiggler/', '/tools/ripple/', '/tools/adraw/',
-                 '/tools/shelf-house/',
+                 '/tools/shelf-house/', '/tools/perfboard/',
                  '/games/', '/games/11dots/', '/design/', '/notes/shelf-house-opening-tile/'];
   for (const url of pages) {
     for (const w of [1400, 900, 760, 390]) {

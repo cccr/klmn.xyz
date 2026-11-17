@@ -6,7 +6,7 @@ the visitor's browser and ships as plain HTML, CSS and ES5-flavoured JS.
 
 ```
 hugo --quiet          # build to public/
-cd test && npm test   # 171 tests: jsdom for behaviour, headless Chrome for layout
+cd test && npm test   # 197 tests: jsdom for behaviour, headless Chrome for layout
 ```
 
 ## Pages and their files
@@ -61,6 +61,23 @@ Feeds, speeds, chipload, SFM and DOC/WOC for a cutter, material and machine.
 - `themes/klmn-theme/layouts/tools/milling.html`
 - `static/tools/milling/milling.js`, `milling.css`
 - Tests: no test file of its own. `test/design.test.js` checks contrast on its `.field-value` and `.rail-hint`.
+
+**`perfboard` — Perfboard Planner** · `/tools/perfboard/`
+Parts on a 2.54 mm prototype board, jumper wires on either side, a cut list, build order and checks.
+- `content/tools/perfboard/index.md`
+- `themes/klmn-theme/layouts/tools/perfboard.html`: markup, and the `<script>` tags **in load
+  order**. The scripts are classic scripts sharing one namespace, `globalThis.PCB`; a file may only
+  use what the files above it define.
+- `static/tools/perfboard/model/*.js`: the pure model (geometry, nets, checks, build order, JSON
+  load/save, footprints). No DOM, so the tests `require()` them directly under node.
+- `static/tools/perfboard/store.js`: the one state object, undo/redo, autosave to `perfboard-*`
+  localStorage keys. `ui/*.js`: the board view (SVG, pointer tools), the panels, dialogs, files and
+  the floating reference-picture window. `main.js` starts it all.
+- `static/tools/perfboard/perfboard.css`: every class of its own starts with `pb-`. The board view
+  is the artifact (paper, trim marks); the drawing colours of the board itself are SVG attributes
+  in `ui/render.js`, because the same drawing is exported and printed.
+- Tests: `test/perfboard.test.js` (the model under node, the page in Chrome with real mouse input)
+- History: `docs/superpowers/specs/2026-11-16-perfboard-design.md`
 
 **`qr` — QR Code Generator** · `/tools/qr/`, alias `/qr`
 Text or URL to a QR code; error correction, size, colours; PNG or SVG download.
