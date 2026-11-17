@@ -5,6 +5,11 @@
    sits on paper under registration marks. Parts and the cut list sit either side of it on the bench,
    separated by rules rather than panels. Every class here starts with pb-. */
 
+/* The scripts show and hide things with the hidden attribute. A class that sets display (the
+   picture window is a flex column) would otherwise beat it, and the element would stay on screen.
+   The picture window is appended to <body>, outside .pb, so it is named here too. */
+.pb [hidden], .pb-picture-win[hidden], .pb-picture-win [hidden] { display: none !important; }
+
 /* Plain buttons that are styled as list rows or tabs below; the site reset clears their background
    but not the browser's border. */
 .pb-fp-pick, .pb-fp-edit, .pb-tab, .pb-step-text, .pb-issue, .pb-menu-list button { border: 0; }

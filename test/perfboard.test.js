@@ -349,29 +349,60 @@ test('a wire drawn in the bottom view goes on the bottom, and hidden layers cann
   });
 });
 
-test('a picture opens in a window that hides and remembers its marks',
+// Checks what is on screen, not the hidden flag: the flag was set while a display: flex rule kept
+// the window drawn, and a test that read only the flag passed.
+test('the picture window\'s own Hide and Remove buttons take it off the screen',
   { skip: !CHROME && 'no Chrome' }, async () => {
   await withPage('/tools/perfboard/', async (p) => {
     await p.setViewport(1400, 1000);
     await fresh(p);
-    // evalJson does not wait for a promise, so the paste runs in the page and the test waits here.
-    await p.evalJson(`((() => {
-      const c = document.createElement('canvas'); c.width = 300; c.height = 200;
-      c.getContext('2d').fillRect(0, 0, 300, 200);
-      c.toBlob((blob) => {
-        const dt = new DataTransfer(); dt.items.add(new File([blob], 'schematic.png', { type: 'image/png' }));
-        document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
-      }, 'image/png');
-    })(), true)`);
-    for (let i = 0; i < 60 && !(await p.evalJson("document.querySelector('.pb-picture-title').textContent")); i++) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    assert.equal(await p.evalJson("document.querySelector('.pb-picture-title').textContent"), 'schematic.png');
+    const paste = async (name) => {
+      // evalJson does not wait for a promise, so the paste runs in the page and the test waits here.
+      await p.evalJson(`((() => {
+        const c = document.createElement('canvas'); c.width = 300; c.height = 200;
+        c.getContext('2d').fillRect(0, 0, 300, 200);
+        c.toBlob((blob) => {
+          const dt = new DataTransfer(); dt.items.add(new File([blob], '${name}', { type: 'image/png' }));
+          document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
+        }, 'image/png');
+      })(), true)`);
+      for (let i = 0; i < 60 && (await p.evalJson("document.querySelector('.pb-picture-title').textContent")) !== name; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    };
+    const onScreen = () => p.evalJson(`(() => {
+      const w = document.querySelector('.pb-picture-win');
+      const r = w.getBoundingClientRect();
+      return getComputedStyle(w).display !== 'none' && r.width > 0 && w.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+    })()`);
+    const clickBar = async (label) => {
+      const at = await p.evalJson(`(() => {
+        const b = [...document.querySelectorAll('.pb-picture-bar button')].find((x) => x.textContent === ${JSON.stringify(label)});
+        const r = b.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      })()`);
+      for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
+        await p.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: type === 'mouseMoved' ? 'none' : 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount: 1 });
+      }
+    };
+
+    await paste('schematic.png');
+    assert.equal(await onScreen(), true);
     assert.equal(await p.evalJson("document.getElementById('picture').textContent"), 'hide picture');
-    await p.evalJson("(document.getElementById('picture').click(), true)");
-    assert.equal(await p.evalJson("document.querySelector('.pb-picture-win').hidden"), true);
+
+    await clickBar('Hide');
+    assert.equal(await onScreen(), false, 'Hide leaves the window on screen');
+    assert.equal(await p.evalJson("document.getElementById('picture').textContent"), 'show picture');
     const saved = await p.evalJson("JSON.parse(localStorage.getItem('perfboard-picture'))");
     assert.equal(saved.hidden, true);
     assert.deepEqual(saved.marks, []);
+
+    await p.evalJson("(document.getElementById('picture').click(), true)");
+    assert.equal(await onScreen(), true, 'the toolbar button brings it back');
+
+    await clickBar('×');
+    assert.equal(await onScreen(), false, 'Remove leaves the window on screen');
+    assert.equal(await p.evalJson("document.getElementById('picture').textContent"), 'add picture');
+    assert.equal(await p.evalJson("localStorage.getItem('perfboard-picture')"), null);
   });
 });
