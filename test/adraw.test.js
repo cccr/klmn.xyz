@@ -175,3 +175,142 @@ test('printing sends the drawing alone, as vector lines at true size', { skip },
     assert.deepEqual([m.rail, m.canvas, m.area], [false, false, true]);
   });
 });
+
+// ── typecloud: the one pattern with a text parameter ─────────────────────────
+
+const BS = String.fromCharCode(92); // a backslash, spelled so no tool layer eats it
+const typecloudUrl = (text, extra) =>
+  '/tools/adraw/?patch=typecloud&seed=4&fill=0&fonts=1' + (extra || '') + '&text=' + encodeURIComponent(text);
+
+// Types into the text field the way a person does, and waits for the redraw
+// to land in the address bar.
+async function typeText(page, text) {
+  await page.evalJson(`(function () { var t = document.getElementById('p-text');
+    t.value = ${JSON.stringify(text)}; t.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+  await waitFor(page, `location.search.indexOf(${JSON.stringify('text=' + encodeURIComponent(text).replace(/%20/g, '+'))}) >= 0`,
+    'the redraw');
+}
+
+test('typecloud gets a text field, not a slider, for its text', { skip }, async () => {
+  await withPage('/tools/adraw/?patch=typecloud&seed=4', async (p) => {
+    await waitFor(p, drawn('typecloud'), 'the typecloud drawing');
+    const m = await p.evalJson(`(function () { var t = document.getElementById('p-text');
+      return { tag: t && t.tagName, value: t && t.value,
+        sliderForText: !!document.querySelector('input[type="range"][data-key="text"]'),
+        sliders: document.querySelectorAll('#params input[type="range"]').length }; })()`);
+    assert.equal(m.tag, 'TEXTAREA');
+    assert.ok(m.value.indexOf(';') > 0, `the box starts with the engine's default phrases, got "${m.value}"`);
+    assert.equal(m.sliderForText, false);
+    assert.ok(m.sliders >= 5, `${m.sliders} sliders for the numeric settings`);
+  });
+});
+
+test('typecloud: ; splits the text into chunks, and typing redraws', { skip }, async () => {
+  const count = async (page) => +(await page.evalJson("document.getElementById('specPaths').textContent"));
+  let one;
+  await withPage(typecloudUrl('HHHH'), async (p) => {
+    await waitFor(p, drawn('typecloud'), 'the one-chunk drawing');
+    one = await count(p);
+  });
+  await withPage(typecloudUrl('HHHH;HHHH;HHHH'), async (p) => {
+    await waitFor(p, drawn('typecloud'), 'the three-chunk drawing');
+    assert.equal(await count(p), one * 3, 'three chunks in one font draw three times the strokes');
+
+    await typeText(p, 'HHHH');
+    await waitFor(p, `+document.getElementById('specPaths').textContent === ${one}`, 'the redraw with one chunk');
+  });
+});
+
+test('typecloud: text, with an escaped semicolon, survives the link and reaches the file', { skip }, async () => {
+  const text = 'a' + BS + ';b;c d';
+  await withPage(typecloudUrl(text), async (p) => {
+    await waitFor(p, drawn('typecloud'), 'the linked drawing');
+    assert.equal(await p.evalJson("document.getElementById('p-text').value"), text, 'the box is restored from the link');
+    const svg = await download(p, 'btnSvg');
+    assert.ok(svg.text.indexOf('text=' + text) >= 0, 'the file records the text it was drawn from');
+    assert.equal(await p.evalJson("new URLSearchParams(location.search).get('text')"), text);
+  });
+});
+
+test('Wiggle hands over a typecloud drawing', { skip }, async () => {
+  await withPage('/tools/adraw/?patch=typecloud&seed=4', async (p) => {
+    await waitFor(p, drawn('typecloud'), 'the drawing');
+    const h = await p.evalJson(`(function () {
+      window.open = function () { return {}; };
+      document.getElementById('btnWiggle').click();
+      var h = JSON.parse(localStorage.getItem('klmn:wiggler-handoff'));
+      return { name: h.name, svg: h.svg };
+    })()`);
+    assert.equal(h.name, 'typecloud-4.svg');
+    assert.match(h.svg, /<path d="M/);
+  });
+});
+
+// ── typecloud with regular fonts: solid letters and the PNG ──────────────────
+
+// Share of the canvas that is dark ink. Line letters leave most of the sheet
+// white; solid ones are far heavier.
+const INK_SHARE = `(function () {
+  var c = document.getElementById('canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  var dark = 0, n = d.length / 4;
+  for (var i = 0; i < d.length; i += 4) if (d[i] < 110) dark++;
+  return dark / n;
+})()`;
+
+test('typecloud with regular fonts fills its letters on the canvas', { skip }, async () => {
+  let lines, solid;
+  await withPage('/tools/adraw/?patch=typecloud&seed=3&style=0', async (p) => {
+    await waitFor(p, drawn('typecloud'), 'the line-font drawing');
+    lines = await p.evalJson(INK_SHARE);
+  });
+  await withPage('/tools/adraw/?patch=typecloud&seed=3&style=1', async (p) => {
+    await waitFor(p, drawn('typecloud'), 'the regular-font drawing');
+    assert.equal(await p.evalJson("document.getElementById('p-style').value"), '1', 'the setting is restored from the link');
+    solid = await p.evalJson(INK_SHARE);
+  });
+  assert.ok(lines < 0.08, `line letters cover ${(lines * 100).toFixed(1)}% of the sheet`);
+  assert.ok(solid > 0.2, `solid letters cover only ${(solid * 100).toFixed(1)}% of the sheet`);
+});
+
+test('the PNG download is a PNG, named for the pattern and seed', { skip }, async () => {
+  await withPage('/tools/adraw/?patch=typecloud&seed=6&style=1', async (p) => {
+    await waitFor(p, drawn('typecloud'), 'the drawing');
+    await p.evalJson(`(function () {
+      window.__png = null;
+      var click = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () {
+        HTMLAnchorElement.prototype.click = click;
+        var name = this.download;
+        fetch(this.href).then(function (r) { return r.arrayBuffer(); }).then(function (b) {
+          window.__png = { name: name, size: b.byteLength, head: Array.prototype.slice.call(new Uint8Array(b, 0, 4)) };
+        });
+      };
+      return true;
+    })()`);
+    await p.evalJson("(document.getElementById('btnPng').click(), true)");
+    await waitFor(p, 'window.__png', 'the PNG');
+    const png = await p.evalJson('window.__png');
+    assert.equal(png.name, 'typecloud-6.png');
+    assert.deepEqual(png.head, [0x89, 0x50, 0x4e, 0x47]);
+    assert.ok(png.size > 20000, `the PNG is only ${png.size} bytes`);
+  });
+});
+
+test('SVG of solid letters still carries their outlines', { skip }, async () => {
+  await withPage('/tools/adraw/?patch=typecloud&seed=6&style=1', async (p) => {
+    await waitFor(p, drawn('typecloud'), 'the drawing');
+    const svg = await download(p, 'btnSvg');
+    assert.equal(svg.name, 'typecloud-6.svg');
+    assert.match(svg.text, /<path d="M/);
+    assert.match(svg.text, /style=1/);
+  });
+});
+
+test('the Fonts slider of typecloud goes up to 11', { skip }, async () => {
+  await withPage('/tools/adraw/?patch=typecloud&seed=2&fonts=11', async (p) => {
+    await waitFor(p, drawn('typecloud'), 'the drawing');
+    const m = await p.evalJson(`(function () { var s = document.getElementById('p-fonts');
+      return { min: s.min, max: s.max, value: s.value }; })()`);
+    assert.deepEqual([m.min, m.max, m.value], ['1', '11', '11']);
+  });
+});

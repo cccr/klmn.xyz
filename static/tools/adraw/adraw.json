@@ -32,6 +32,8 @@
     "stipple":    { "category": "cells",  "preview": { "seed": 3,  "values": { "cell": 40, "spacing": 1.6 } } },
 
     "topo":       { "category": "fields", "preview": { "seed": 2,  "values": { "scale": 250, "levels": 14, "octaves": 2, "detail": 1.2 } } },
-    "flow":       { "category": "fields", "preview": { "seed": 8,  "values": { "scale": 300, "separation": 3.4, "curl": 0.2 } } }
+    "flow":       { "category": "fields", "preview": { "seed": 8,  "values": { "scale": 300, "separation": 3.4, "curl": 0.2 } } },
+
+    "typecloud":  { "category": "other",  "preview": { "seed": 1,  "values": { "max": 40, "min": 6, "gap": 2 }, "text": { "text": "WORDS; fill the page; many fonts; sizes; ink; lines" } } }
   }
 }

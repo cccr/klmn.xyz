@@ -6,7 +6,7 @@ the visitor's browser and ships as plain HTML, CSS and ES5-flavoured JS.
 
 ```
 hugo --quiet          # build to public/
-cd test && npm test   # 197 tests: jsdom for behaviour, headless Chrome for layout
+cd test && npm test   # 205 tests: jsdom for behaviour, headless Chrome for layout
 ```
 
 ## Pages and their files
@@ -37,6 +37,12 @@ Pen-plotter line art (vortex, contour, flow field, hatching), exported as SVG or
   output** of adraw (github.com/cccr/adraw), compiled to WebAssembly and
   overwritten by adraw's `make deploy-klmn`. Make changes to them in adraw, not here.
   `adraw.json` decides which pattern a visitor sees first.
+- `adraw.js` builds the controls from the parameter list the engine reports. A parameter
+  with `kind: "text"` (only `typecloud` has one) becomes a `.rail textarea` instead of a
+  slider; its text rides in the query string like the numbers and is redrawn after a pause in typing.
+  A path the engine flags `fill` (typecloud with `style=1`, regular fonts) is filled on the canvas
+  instead of stroked, and the PNG button saves it as a raster image: solid letters cannot be plotted,
+  so SVG and G-code give their outlines. The wasm is about 10 MB because the fonts are inside it.
 - Tests: `test/adraw.test.js`. These run in real Chrome only, because jsdom cannot run the engine.
 - Hands off to **wiggler**: the Wiggle button writes `klmn:wiggler-handoff`
   to localStorage and opens `/tools/wiggler/`, which reads it once

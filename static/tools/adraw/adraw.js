@@ -34,6 +34,7 @@
         btnRotate:  document.getElementById('btnRotate'),
         btnSvg:     document.getElementById('btnSvg'),
         btnGcode:   document.getElementById('btnGcode'),
+        btnPng:     document.getElementById('btnPng'),
         btnPrint:   document.getElementById('btnPrint'),
         btnWiggle:  document.getElementById('btnWiggle'),
         btnReset:   document.getElementById('btnReset'),
@@ -102,13 +103,20 @@
         c.lineJoin = 'round';
         c.lineCap = 'round';
 
+        // A path flagged fill is a solid shape (a letter of a regular font): fill
+        // them all in one go with the nonzero rule, so a letter's counters stay
+        // open, and stroke the rest as lines. An older engine sends no flags.
         var all = new Path2D();
+        var solid = new Path2D();
         frame.paths.forEach(function (flat, i) {
             if (flat.length < 4) return;
-            all.moveTo(flat[0], flat[1]);
-            for (var j = 2; j < flat.length; j += 2) all.lineTo(flat[j], flat[j + 1]);
-            if (frame.closed[i]) all.closePath();
+            var target = frame.fill && frame.fill[i] ? solid : all;
+            target.moveTo(flat[0], flat[1]);
+            for (var j = 2; j < flat.length; j += 2) target.lineTo(flat[j], flat[j + 1]);
+            if (frame.closed[i]) target.closePath();
         });
+        c.fillStyle = cssVar('--ink');
+        c.fill(solid, 'nonzero');
         c.stroke(all);
         return { w: w, h: h };
     }
@@ -200,6 +208,32 @@
         patch.params.forEach(function (spec) {
             var id = 'p-' + spec.key;
 
+            // A text parameter has no range, so no slider: it gets the rail's
+            // free-text box, with its description under it.
+            if (spec.kind === 'text') {
+                var group = document.createElement('div');
+                group.className = 'param-text';
+                var name = document.createElement('label');
+                name.className = 'sr-only';
+                name.htmlFor = id;
+                name.textContent = spec.label;
+                var box = document.createElement('textarea');
+                box.id = id;
+                box.rows = 3;
+                box.spellcheck = false;
+                box.value = spec.defaultText || '';
+                box.setAttribute('data-key', spec.key);
+                box.addEventListener('input', drawSoon);
+                var hint = document.createElement('p');
+                hint.className = 'rail-hint';
+                hint.textContent = spec.description;
+                group.appendChild(name);
+                group.appendChild(box);
+                group.appendChild(hint);
+                els.params.appendChild(group);
+                return;
+            }
+
             var field = document.createElement('div');
             field.className = 'field field-tight';
             field.title = spec.description;
@@ -250,6 +284,9 @@
             var spec = patch.params.filter(function (x) { return x.key === key; })[0];
             q.set(key, quantize(spec, parseFloat(s.value)));
         });
+        Array.prototype.forEach.call(els.params.querySelectorAll('textarea[data-key]'), function (t) {
+            q.set(t.getAttribute('data-key'), t.value);
+        });
         return q;
     }
 
@@ -290,9 +327,22 @@
             s.value = Math.min(spec.max, Math.max(spec.min, +raw));
             s.refresh();
         });
+        Array.prototype.forEach.call(els.params.querySelectorAll('textarea[data-key]'), function (t) {
+            var raw = q.get(t.getAttribute('data-key'));
+            if (raw !== null) t.value = raw;
+        });
     }
 
     /* ── Rendering ─────────────────────────────────────────────── */
+
+    // Typing is not dragging: a slider tick is one draw, but a keystroke is
+    // one of many, and each draw runs the engine on the main thread. Wait for a
+    // pause in the typing, then draw once.
+    var typingTimer = null;
+    function drawSoon() {
+        clearTimeout(typingTimer);
+        typingTimer = setTimeout(draw, 250);
+    }
 
     // Coalesced: while a frame is being drawn, remember that another is
     // wanted and draw exactly one more when it lands, so dragging a slider
@@ -378,6 +428,7 @@
             q.set('patch', job.tile.name);
             q.set('seed', job.tile.previewSeed);
             Object.keys(job.tile.preview || {}).forEach(function (k) { q.set(k, job.tile.preview[k]); });
+            Object.keys(job.tile.previewText || {}).forEach(function (k) { q.set(k, job.tile.previewText[k]); });
             api('/api/render?' + q).then(function (res) { return res.json(); }).then(function (frame) {
                 paint(job.canvas, frame, 280, 198, 0.5);
             }).catch(function () { /* a missing thumbnail is not worth a notice */ }).then(function () {
@@ -490,6 +541,7 @@
     els.btnReset.addEventListener('click', function () { buildParams(); draw(); });
     els.btnSvg.addEventListener('click', function () { download('svg'); });
     els.btnGcode.addEventListener('click', function () { download('gcode'); });
+    els.btnPng.addEventListener('click', function () { download('png'); });
     els.btnPrint.addEventListener('click', function () { window.print(); });
     els.btnWiggle.addEventListener('click', sendToWiggler);
 
